@@ -193,6 +193,11 @@ class Block(Model):
   
 # represent a track, which can contain multiple blocks
 class Track(ModelList):
+
+  # names of the cyclical pitch classes starting at MIDI note 0
+  PITCH_CLASS_NAMES = ( 
+    'A', 'Bb', 'B', 'C', 'Db', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'Ab' )
+
   def __init__(self, blocks=(), duration=60):
     ModelList.__init__(self, blocks)
     self._duration = duration
@@ -209,6 +214,13 @@ class Track(ModelList):
     # whether the track is enabled for playback 
     # (this will be controlled by the track list)
     self.enabled = True
+    
+  # get a name for a MIDI note number
+  def name_of_pitch(self, pitch):
+    # snap to the closest whole number
+    pitch = int(round(pitch))
+    # look it up in the list of pitch classes
+    return(self.PITCH_CLASS_NAMES[pitch % 12])
     
   # the total length of time of the track content (in seconds)
   @property

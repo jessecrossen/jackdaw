@@ -50,6 +50,7 @@ class DocumentWindow(Gtk.Window):
     self.transport = None
     self.mixer = None
     self.tracks_view = None
+    self.track_headers_view = None
     self.document = doc.Document()
     
   @property
@@ -76,6 +77,9 @@ class DocumentWindow(Gtk.Window):
     if (self.tracks_view):
       self.tracks_view.destroy()
       self.tracks_view = None
+    if (self.track_headers_view):
+      self.track_headers_view.destroy()
+      self.track_headers_view = None
     # dump the undo stack and clear the selection
     views.ViewManager = views.ViewManagerSingleton()
   # attach to a new document
@@ -85,10 +89,15 @@ class DocumentWindow(Gtk.Window):
     self.transport = controllers.Transport()
     self.control_surface = inputs.NanoKONTROL2(
       transport=self.transport, mixer=self.mixer)
+    # add a view for track headers
+    self.track_headers_view = views.TrackListHeaderView(
+      tracks=self.document.tracks)
+    self.doc_box.pack_start(self.track_headers_view, False, False, 0)
+    self.track_headers_view.set_size_request(100, 100)
     # add a view for the document's tracks
-    self.tracks_view = views.TrackListView(tracks=self.document.tracks, 
-                                           transport=self.transport,
-                                           mixer=self.mixer)
+    self.tracks_view = views.TrackListView(
+      tracks=self.document.tracks, 
+      transport=self.transport)
     self.doc_box.pack_end(self.tracks_view, True, True, 0)
     # bind the menu to the new items
     self._bind_menu()
@@ -130,6 +139,7 @@ class DocumentWindow(Gtk.Window):
     vm = views.ViewManager
     self.menu.undo_action.set_sensitive(vm.can_undo)
     self.menu.redo_action.set_sensitive(vm.can_redo)
+    
   
 class App:
   def __init__(self):

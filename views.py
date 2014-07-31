@@ -7,6 +7,7 @@ from gi.repository import Gtk, Gdk, GLib
 
 import observable
 import state
+import geom
 
 # make a singleton for handling things like selection state
 class ViewManagerSingleton(observable.Object):
@@ -424,9 +425,6 @@ class BlockView(DrawableView):
   def __init__(self, block):
     DrawableView.__init__(self, block)
     self._pitches = None
-    # initialize the layout cache
-    self._pitch_height = 0
-    self._pitch_to_y = dict()
     self.make_transparent()
     self.make_interactive()
   # expose 'block' as an alternate name for 'model' for readability
@@ -451,22 +449,29 @@ class BlockView(DrawableView):
     else:
       self.set_state(Gtk.StateType.NORMAL)
     DrawableView.on_change(self)
-  
+  # get the height of a pitch
+  @property
+  def pitch_height(self):
+    # divide the available space evenly between pitches
+    try:
+      return(int(math.floor(self._height / len(self.pitches))))
+    except ZeroDivisionError:
+      return(0)
   # map between a pitch and a y coordinate on the view
   def y_of_pitch(self, pitch):
     try:
-      return(self._pitch_to_y[pitch])
-    except KeyError:
+      i = self.pitches.index(pitch)
+    except ValueError:
       return(None)
+    h = self.pitch_height
+    return(self._height - int(math.ceil(h / 2)) - (i * h))
   def pitch_of_y(self, y):
-    closest = None
-    closest_distance = None
-    for (pitch, pitch_y) in self._pitch_to_y.iteritems():
-      distance = abs(y - pitch_y)
-      if ((closest_distance is None) or (distance < closest_distance)):
-        closest_distance = distance
-        closest = pitch
-    return(closest)
+    if (len(self.pitches) == 0):
+      return(None)
+    h = self.pitch_height
+    y = self._height - y - int(math.ceil(h / 2))
+    i = min(max(0, int(round(y / h))), len(self.pitches) - 1)
+    return(self.pitches[i])
   # map between time and an x coordinate on the view
   def x_of_time(self, time):
     try:
@@ -493,24 +498,15 @@ class BlockView(DrawableView):
     state = self.get_state_flags()
     bg = style.get_background_color(state)
     fg = style.get_color(state)
+    selected = ((state & Gtk.StateFlags.SELECTED) != 0)
+    backdrop = ((state & Gtk.StateFlags.BACKDROP) != 0)
     # fill the background when selected
-    if (bg.alpha > 0):
+    if ((selected) and (not backdrop)):
       cr.set_source_rgba(bg.red, bg.green, bg.blue, 0.75)
       cr.rectangle(0, 0, width, height)
       cr.fill()
     # cache the pitch list for speed
     pitches = self.pitches
-    # divide the available space evenly between pitches
-    try:
-      self._pitch_height = int(math.floor(height / len(pitches)))
-    except ZeroDivisionError:
-      self._pitch_height = 0
-    # map pitches to y coordinates
-    self._pitch_to_y = dict()
-    y = height - int(math.ceil(self._pitch_height / 2))
-    for pitch in pitches:
-      self._pitch_to_y[pitch] = y
-      y -= self._pitch_height
     # get the pitches that are being used in the block
     used_pitches = pitches
     if (self._pitches != None):
@@ -569,13 +565,13 @@ class BlockView(DrawableView):
       # set the height of the event box based on velocity and center 
       #  it vertically on the guideline, leaving at max a pixel above and 
       #  below to separate from notes on other pitches
-      h = (self._pitch_height - 2) * velocity
+      h = (self.pitch_height - 2) * velocity
       y -= round(h / 2)
       # make sure all notes are at least as wide as they are tall
       w = round(self.x_of_time(time + duration)) - x
       w = max(w, h)
       # set the color depending on whether the note is selected
-      if ((event in selection) and (self.block not in selection)):
+      if ((event in selection) and (not selected) and (not backdrop)):
         c = style.get_background_color(Gtk.StateFlags.SELECTED)
         cr.set_source_rgba(c.red, c.green, c.blue, 0.9)
       else:
@@ -596,7 +592,7 @@ class BlockView(DrawableView):
     notes = [ ]
     # get the minimum duration of a note for it to be square
     #  (discounting that it may be drawn smaller to show velocity)
-    min_duration = self.time_of_x(self._pitch_height)
+    min_duration = self.time_of_x(self.pitch_height)
     # find matching notes events
     for event in self.block.events:
       try:
@@ -634,6 +630,10 @@ class BlockView(DrawableView):
   # update selection when clicked
   def on_click(self, x, y, state):
     self.begin_action()
+    self.select_at(x, y, state)
+    self.end_action()
+    return(True)
+  def select_at(self, x, y, state):
     # update the selection
     targets = self.selection_at_pos(x, y)
     context = self.block
@@ -654,8 +654,6 @@ class BlockView(DrawableView):
       ViewManager.select(targets[0], context)
     # give this view the input focus for keyboard commands
     ViewManager.focused = self.block
-    self.end_action()
-    return(True)
   # initiate dragging
   def start_drag(self, x, y, state):
     # store state before dragging starts
@@ -685,7 +683,7 @@ class BlockView(DrawableView):
     # if we're dragging an unselected item, clear and select it
     else:
       ViewManager.clear_selection()
-      self.on_click(x, y, 0)
+      self.select_at(x, y, 0)
       for target in ViewManager.selection:
         self._dragging_target = target
         break
@@ -767,7 +765,7 @@ class BlockView(DrawableView):
       return(True)
   # get the number of pitch steps to move for the given y offset
   def get_pitch_delta(self, dy):
-    pitch_delta = - (dy / self._pitch_height)
+    pitch_delta = - (dy / self.pitch_height)
     if (abs(pitch_delta) > 0.5):
       if (pitch_delta > 0):
         return(int(math.ceil(pitch_delta)))
@@ -899,7 +897,6 @@ class BlockView(DrawableView):
 class TrackView(LayoutView):
   def __init__(self, track):
     LayoutView.__init__(self, track)
-    self.track.add_listener(self.on_track_change)
     self.make_transparent()
     self.make_interactive()
   # expose 'track' as an alternate name for 'model' for readability
@@ -917,52 +914,40 @@ class TrackView(LayoutView):
       return(float(x) * (self.track.duration / float(self._width)))
     except ZeroDivisionError:
       return(0)
-  # map between pitch and a y coordinate on the view
+  # get the height of a pitch
+  @property
+  def pitch_height(self):
+    # divide the available space evenly between pitches
+    try:
+      return(int(math.floor(self._height / len(self.track.pitches))))
+    except ZeroDivisionError:
+      return(0)
+  # map between a pitch and a y coordinate on the view
   def y_of_pitch(self, pitch):
-    if (len(self.blocks) > 0):
-      view = self.get_view_for_model(self.blocks, self.blocks[0])
-      if (view is not None):
-        return(view.y_of_pitch(pitch))
-    return(None)
+    try:
+      i = self.track.pitches.index(pitch)
+    except ValueError:
+      return(None)
+    h = self.pitch_height
+    return(self._height - int(math.ceil(h / 2)) - (i * h))
   def pitch_of_y(self, y):
-    if (len(self.blocks) > 0):
-      view = self.get_view_for_model(self.blocks, self.blocks[0])
-      if (view is not None):
-        return(view.pitch_of_y(y))
-    return(None)
-  # update from a change to the track
-  def on_track_change(self):
-    # change the background to indicate track state   
-    style = self.get_style_context() 
-    default_bg = style.get_background_color(self.get_state())
-    normal_fg = style.get_color(Gtk.StateType.NORMAL)
-    bg = Gdk.RGBA()
-    bg.red = default_bg.red
-    bg.green = default_bg.green
-    bg.blue = default_bg.blue
-    bg.alpha = 0.0
-    if (self.track.arm):
-      bg.red = 1.0
-      bg.green = 0.0
-      bg.blue = 0.0
-      bg.alpha = 0.25
-    elif (not self.track.enabled):
-      bg.red = normal_fg.red
-      bg.green = normal_fg.green
-      bg.blue = normal_fg.blue
-      bg.alpha = 0.25
-    self.override_background_color(Gtk.StateFlags.NORMAL, bg)
+    if (len(self.track.pitches) == 0):
+      return(None)
+    h = self.pitch_height
+    y = self._height - y - int(math.ceil(h / 2))
+    i = min(max(0, int(round(y / h))), len(self.track.pitches) - 1)
+    return(self.track.pitches[i])
+    
   # place blocks in the track
   def layout(self, width, height):
     # get views for the track's blocks and position them by time
     views = self.allocate_views_for_models(self.track, lambda b: BlockView(b))
     for view in views:
       if (view is None): continue
-      r = Gdk.Rectangle()
-      r.x = self.x_of_time(view.block.time)
-      r.y = 0
-      r.width = self.x_of_time(view.block.time + view.block.duration) - r.x
-      r.height = height
+      x = self.x_of_time(view.block.time)
+      r = geom.Rectangle(
+        x, 0,
+        self.x_of_time(view.block.time + view.block.duration) - x, height)
       view.size_allocate(r)
     # transfer track-wide pitch list to all views, 
     #  unless one of the views is being dragged 
@@ -971,16 +956,22 @@ class TrackView(LayoutView):
       pitches = self.track.pitches
       for view in views:
         view.pitches = pitches
+    # update the header to show the new pitches
+    header_view = ViewManager.view_for_model(self.track, TrackHeaderView)
+    if (header_view is not None):
+      header_view.on_change()
 
 # manage the layout of a set of tracks so that it can be 
 #  coordinated between the list and header views
 class TrackLayout(object):
   def __init__(self, tracks):
     self.tracks = tracks
+    # the spacing between tracks
+    self.spacing = 4
   # get the total number of vertical pixels to allocate for the track
   def get_track_height(self, track):
     # always allocate a minimal amount of space for the header
-    return(max(60, self.get_track_view_height(track)))
+    return(max(80, self.get_track_view_height(track)))
   # get the height to allocate for the track view itself
   def get_track_view_height(self, track):
     return(len(track.pitches) * 20)
@@ -990,30 +981,30 @@ class TrackLayout(object):
     if ((track_index >= 0) and (track_index < len(self.tracks))):
       y = 0
       for i in range(0, track_index):
-        y += self.get_track_height(self.tracks[i])
+        y += self.spacing + self.get_track_height(self.tracks[i])
     return(y)
   def track_index_of_y(self, y):
     next_y = 0
     i = 0
     for track in self.tracks:
+      if (i > 0):
+        next_y += self.spacing
       next_y += self.get_track_height(track)
       if (y < next_y):
         return(i)
-      i += 0
+      i += 1
     return(None)
 
 # display a list of tracks stacked vertically
 class TrackListView(LayoutView):
-  def __init__(self, tracks, transport=None, mixer=None, track_layout=None):
+  def __init__(self, tracks, transport=None, track_layout=None):
     LayoutView.__init__(self, tracks)
-    self.mixer = mixer
-    if (self.mixer):
-      self.mixer.add_listener(self.on_change)
     self.track_layout = track_layout
     if (self.track_layout is None):
       self.track_layout = TrackLayout(self.tracks)
     # make a background view
-    self.back = TrackListBackgroundView(transport=transport, 
+    self.back = TrackListBackgroundView(self.tracks,
+                                        transport=transport, 
                                         manager=ViewManager)
     self.back.x_of_time = self.x_of_time
     self.add(self.back)
@@ -1044,22 +1035,16 @@ class TrackListView(LayoutView):
   def layout(self, width, height):
     views = self.allocate_views_for_models(self.tracks, lambda t: TrackView(t))
     i = 0
-    y = 0
     for view in views:
-      r = Gdk.Rectangle()
       track_height = self.track_layout.get_track_height(view.track)
-      r.x = 0
-      r.y = self.track_layout.y_of_track_index(i)
-      r.width = self.x_of_time(view.track.duration)
-      r.height = self.track_layout.get_track_view_height(view.track)
+      r = geom.Rectangle(
+        0, self.track_layout.y_of_track_index(i),
+        self.x_of_time(view.track.duration), 
+        self.track_layout.get_track_view_height(view.track))
       r.y += round((track_height - r.height) / 2)
       view.size_allocate(r)
       i += 1
-      y += track_height
-    r = Gdk.Rectangle()
-    r.width = width
-    r.height = height
-    self.back.size_allocate(r)
+    self.back.size_allocate(geom.Rectangle(0, 0, width, height))
   # deselect when the user clicks
   def on_click(self, x, y, state):
     ViewManager.clear_selection()
@@ -1091,11 +1076,12 @@ class TrackListView(LayoutView):
     if (was_selected):
       ViewManager.select(block_view.block)
     if (had_focus):
-      block_view.grab_focus()   
+      block_view.grab_focus()
+
 # display a background behind a list of tracks
 class TrackListBackgroundView(DrawableView):
-  def __init__(self, transport=None, manager=None):
-    DrawableView.__init__(self, transport)
+  def __init__(self, tracks, transport=None, manager=None):
+    DrawableView.__init__(self, tracks)
     self.transport = transport
     if (transport):
       self.transport.add_listener(self.on_change)
@@ -1103,18 +1089,44 @@ class TrackListBackgroundView(DrawableView):
     if (manager):
       self.manager.add_listener(self.on_change)
     self.x_of_time = lambda self, x: x
+  # expose 'tracks' as an alternate name for 'model'
+  @property
+  def tracks(self):
+    return(self._model)
   # draw guide markers in the background
   def redraw(self, cr, width, height):
+    # get colors
     style = self.get_style_context()
     fg = style.get_color(Gtk.StateType.NORMAL)
+    backdrop = ((self.get_state_flags() & Gtk.StateFlags.BACKDROP) != 0)
+    fade = 1.0
+    if (backdrop):
+      fade = 0.25
+    # draw backgrounds behind the tracks to show their states
+    track_list_view = self.get_parent_with_attribute('tracks')
+    if (track_list_view is not None):
+      i = 0
+      for track in self.tracks:
+        r = geom.Rectangle(0, track_list_view.y_of_track_index(i), 
+              width, track_list_view.track_layout.get_track_height(track))
+        if (track.arm):
+          cr.set_source_rgba(1.0, 0.0, 0.0, 0.25 * fade)
+          cr.rectangle(r.x, r.y, r.width, r.height)
+          cr.fill()
+        if (not track.enabled):
+          cr.set_source_rgba(fg.red, fg.green, fg.blue, 0.25 * fade)
+          cr.rectangle(r.x, r.y, r.width, r.height)
+          cr.fill()
+        i += 1
+    # draw transport state
     if (self.transport):
       # draw the transport's current time point with a fill on the left
       #  so we can easily see whether we're before or after it
-      x = round(self.x_of_time(self.transport.time))
-      cr.set_source_rgba(fg.red, fg.green, fg.blue, 0.1)
+      x = max(1, round(self.x_of_time(self.transport.time)))
+      cr.set_source_rgba(fg.red, fg.green, fg.blue, 0.1 * fade)
       cr.rectangle(0, 0, x, height)
       cr.fill()
-      cr.set_source_rgba(1.0, 0.0, 0.0, 0.75)
+      cr.set_source_rgba(1.0, 0.0, 0.0, 0.75 * fade)
       cr.set_line_width(2)
       cr.move_to(x, 0)
       cr.line_to(x, height)
@@ -1122,7 +1134,7 @@ class TrackListBackgroundView(DrawableView):
       # draw all the marks on the transport
       for t in self.transport.marks:
         x = round(self.x_of_time(t))
-        cr.set_source_rgba(fg.red, fg.green, fg.blue, 0.75)
+        cr.set_source_rgba(fg.red, fg.green, fg.blue, 0.75 * fade)
         cr.set_dash((2, 2))
         cr.set_line_width(2)
         cr.move_to(x, 0)
@@ -1133,7 +1145,7 @@ class TrackListBackgroundView(DrawableView):
       snapped_time = ViewManager.snapped_time
       if (snapped_time is not None):
         x = round(self.x_of_time(snapped_time)) + 0.5
-        cr.set_source_rgba(fg.red, fg.green, fg.blue, 0.75)
+        cr.set_source_rgba(fg.red, fg.green, fg.blue, 0.75 * fade)
         cr.set_line_width(1)
         cr.set_dash((2, 3))
         cr.move_to(x, 0)
@@ -1141,19 +1153,200 @@ class TrackListBackgroundView(DrawableView):
         cr.stroke()
   
 # display a header with general track information
-class TrackHeaderView(LayoutView):
+class TrackHeaderView(DrawableView):
   def __init__(self, track, track_view):
-    LayoutView.__init__(self, track)
+    DrawableView.__init__(self, track)
     self.track_view = track_view
+    self.level_rect = geom.Rectangle()
+    self.pan_rect = geom.Rectangle()
+    self.mute_rect = geom.Rectangle()
+    self.solo_rect = geom.Rectangle()
+    self.arm_rect = geom.Rectangle()
+    self.pitches_area = geom.Rectangle()
+    self.pitch_areas = [ ]
+    self._draggable_areas = ( self.level_rect, self.pan_rect )
+    self._dragging_target = None
+    self.make_interactive()
   # expose 'track' as an alternate name for 'model' for readability
   @property
   def track(self):
     return(self._model)
+  # draw the header
+  def redraw(self, cr, width, height):
+    # get style
+    style = self.get_style_context()
+    fg = style.get_color(self.get_state())
+    # allocate horizontal space
+    level_width = 20
+    button_width = 20
+    spacing = 4
+    button_spacing = 4
+    # place the pan/level bar
+    x = spacing
+    self.pan_rect.x = x
+    self.pan_rect.y = 0
+    self.pan_rect.width = self.pan_rect.height = level_width
+    self.level_rect.x = x
+    self.level_rect.y = self.pan_rect.y + self.pan_rect.height
+    self.level_rect.width = level_width
+    self.level_rect.height = height - self.pan_rect.height
+    x += level_width + spacing
+    # place the track mode buttons
+    button_size = min(button_width, 
+      math.floor((height - (2 * button_spacing)) / 3))
+    self.mute_rect.width = self.mute_rect.height = button_size
+    self.solo_rect.width = self.solo_rect.height = button_size
+    self.arm_rect.width = self.arm_rect.height = button_size
+    y = height - 1
+    y -= button_size
+    self.arm_rect.x = x
+    self.arm_rect.y = y
+    y -= button_size + button_spacing
+    self.solo_rect.x = x
+    self.solo_rect.y = y
+    y -= button_size + button_spacing
+    self.mute_rect.x = x
+    self.mute_rect.y = y
+    x += button_width + spacing
+    # place the pitch labels as a group
+    self.pitches_area.x = x
+    self.pitches_area.y = 0
+    self.pitches_area.height = height
+    self.pitches_area.width = width - x
+    # draw the pan control
+    cr.set_source_rgba(fg.red, fg.green, fg.blue, 1.0)
+    cr.set_line_width(2)
+    x = self.pan_rect.x + (self.pan_rect.width / 2)
+    x += self.track.pan * ((self.pan_rect.width / 2) - 1)
+    x = round(x)
+    cr.move_to(x, self.pan_rect.y)
+    cr.line_to(x, self.pan_rect.y + self.pan_rect.height)
+    cr.stroke()
+    # draw the mixer bar
+    h = max(2, round(self.level_rect.height * self.track.level))
+    cr.set_source_rgba(fg.red, fg.green, fg.blue, 0.25)
+    y = self.level_rect.y + self.level_rect.height - h
+    cr.rectangle(self.level_rect.x, y, self.level_rect.width, h)
+    cr.fill()
+    cr.set_source_rgba(fg.red, fg.green, fg.blue, 1.0)
+    y += 1
+    cr.set_line_width(2)
+    cr.move_to(self.level_rect.x, y)
+    cr.line_to(self.level_rect.x + self.level_rect.width, y)
+    cr.stroke()
+    # draw the buttons
+    self.draw_button(cr, self.mute_rect, 'M', fg, self.track.mute)
+    self.draw_button(cr, self.solo_rect, 'S', fg, self.track.solo)
+    self.draw_button(cr, self.arm_rect, 'R', fg, self.track.arm)
+    # draw the pitch labels
+    self.pitch_areas = [ ]
+    ty = 0
+    if (self.track_view):
+      cr.set_source_rgba(fg.red, fg.green, fg.blue, 0.5)
+      font_size = math.floor(self.track_view.pitch_height * 0.75)
+      cr.set_font_size(font_size)
+      x = self.pitches_area.x + self.pitches_area.width - round(font_size / 2)
+      ty = (height - self.track_view._height) / 2
+      for pitch in self.track.pitches:
+        py = self.track_view.y_of_pitch(pitch)
+        if (py is None): continue
+        y = ty + py
+        name = self.track.name_of_pitch(pitch)
+        (bx, by, tw, th, nx, ny) = cr.text_extents(name)
+        cr.move_to(
+          x - tw - bx, 
+          y - (th / 2) - by)
+        cr.show_text(name)
+  
+  def draw_button(self, cr, area, label, color, toggled):
+    radius = 3
+    cr.set_source_rgba(color.red, color.green, color.blue, 0.1)
+    self.draw_round_rect(cr, area.x, area.y, area.width, area.height, radius)
+    cr.fill()
+    if (toggled):
+      cr.set_source_rgba(color.red, color.green, color.blue, 1.0)
+      cr.set_line_width(2)
+      self.draw_round_rect(cr, area.x, area.y, area.width, area.height, radius)
+      cr.stroke()
+    if (len(label) > 0):
+      if (toggled):
+        cr.set_source_rgba(color.red, color.green, color.blue, 1.0)
+      else:
+        cr.set_source_rgba(color.red, color.green, color.blue, 0.5)
+      cr.set_font_size(round(min(area.width, area.height) / 2))
+      (bx, by, tw, th, nx, ny) = cr.text_extents(label)
+      cr.move_to(area.x + (area.width / 2) - (tw / 2) - bx, 
+                 area.y + (area.height / 2) - (th / 2) - by)
+      cr.show_text(label)
+  
+  # edit track properties by clicking
+  def on_click(self, x, y, state):
+    if (self.mute_rect.contains(x, y)):
+      self.track.mute = not self.track.mute
+      return(True)
+    elif (self.solo_rect.contains(x, y)):
+      self.track.solo = not self.track.solo
+      return(True)
+    elif (self.arm_rect.contains(x, y)):
+      self.track.arm = not self.track.arm
+      return(True)
+  
+  # edit track properties by dragging
+  def start_drag(self, x, y, state):
+    self._last_dx = 0
+    self._last_dy = 0
+    for area in self._draggable_areas:
+      if (area.contains(x, y)):
+        self._dragging_target = area
+        self._original_level = self.track.level
+        self._original_pan = self.track.pan
+        return(True)
+    self._dragging_target = self
+    return(True)
+  def on_drag(self, dx, dy, state):
+    if (self._dragging_target is self):
+      ddy = dy - self._last_dy
+      track_delta = 0
+      if (ddy < - (self._height / 2)):
+        track_delta = -1
+      elif (ddy > (self._height / 2)):
+        track_delta = 1
+      if (self.apply_track_delta(track_delta)):
+        self._last_dy = dy
+    else:
+      area = self._dragging_target
+      # holding down control moves in finer increments
+      if ((state & Gdk.ModifierType.CONTROL_MASK) != 0):
+        dx *= 0.5
+        dy *= 0.5
+      if (area is self.level_rect):
+        self.track.level = min(max(
+          0, self._original_level - (dy / area.height)), 1)
+      elif (area is self.pan_rect):
+        self.track.pan = min(max(
+          -1, self._original_pan + (dx / area.width)), 1)
+  # move the track up and down in the list
+  def apply_track_delta(self, track_delta):
+    if (track_delta == 0):
+      return(False)
+    track_list_view = self.get_parent_with_attribute('tracks')
+    if (track_list_view is None):
+      return(False)
+    tracks = track_list_view.tracks
+    index = tracks.index(self.track)
+    new_index = min(max(0, index + track_delta), len(tracks) - 1)
+    if (new_index != index):
+      new_tracks = list(tracks)
+      del new_tracks[index]
+      new_tracks.insert(new_index, self.track)
+      tracks[0:] = new_tracks
+      return(True)
+    return(False)
     
 # display a list of track headers
 class TrackListHeaderView(LayoutView):
-  def __init__(self, track_list, track_layout=None):
-    LayoutView.__init__(self, track)
+  def __init__(self, tracks, track_layout=None):
+    LayoutView.__init__(self, tracks)
     self.track_layout = track_layout
     if (self.track_layout is None):
       self.track_layout = TrackLayout(self.tracks)
@@ -1161,4 +1354,22 @@ class TrackListHeaderView(LayoutView):
   @property
   def tracks(self):
     return(self._model)
+  # map between track indices and a y coordinate on the view
+  #  at the top of the track
+  def y_of_track_index(self, track_index):
+    return(self.track_layout.y_of_track_index(track_index))
+  def track_index_of_y(self, y):
+    return(self.track_layout.track_index_of_y(y))
+  # place tracks in the view
+  def layout(self, width, height):
+    views = self.allocate_views_for_models(
+      self.tracks, 
+      lambda t: TrackHeaderView(t, None))
+    i = 0
+    for view in views:
+      view.track_view = ViewManager.view_for_model(view.track, TrackView)
+      view.size_allocate(geom.Rectangle(
+        0, self.track_layout.y_of_track_index(i),
+        width, self.track_layout.get_track_height(view.track)))
+      i += 1
   

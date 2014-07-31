@@ -1,5 +1,5 @@
-- bug with undo stack and drag and drop
-- track headers, dragging a pitch moves all notes at that pitch to a different pitch
+- dragging a pitch moves all notes at that pitch to a different pitch
+- renamable pitch classes
 
 - midi serialization
 - make filters that can alter the characteristics of underlying notes at play-time (e.g. quantize, timewarp)
