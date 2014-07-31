@@ -932,18 +932,25 @@ class TrackView(LayoutView):
     return(None)
   # update from a change to the track
   def on_track_change(self):
-    # change the background to indicate track state
+    # change the background to indicate track state   
+    style = self.get_style_context() 
+    default_bg = style.get_background_color(self.get_state())
+    normal_fg = style.get_color(Gtk.StateType.NORMAL)
     bg = Gdk.RGBA()
-    bg.red = 0.0
-    bg.green = 0.0
-    bg.blue = 0.0
+    bg.red = default_bg.red
+    bg.green = default_bg.green
+    bg.blue = default_bg.blue
     bg.alpha = 0.0
-    if (self.track.armed):
+    if (self.track.arm):
       bg.red = 1.0
+      bg.green = 0.0
+      bg.blue = 0.0
       bg.alpha = 0.25
     elif (not self.track.enabled):
+      bg.red = normal_fg.red
+      bg.green = normal_fg.green
+      bg.blue = normal_fg.blue
       bg.alpha = 0.25
-      self.override_background_color(Gtk.StateFlags.NORMAL, bg)
     self.override_background_color(Gtk.StateFlags.NORMAL, bg)
   # place blocks in the track
   def layout(self, width, height):
@@ -1098,11 +1105,13 @@ class TrackListBackgroundView(DrawableView):
     self.x_of_time = lambda self, x: x
   # draw guide markers in the background
   def redraw(self, cr, width, height):
+    style = self.get_style_context()
+    fg = style.get_color(Gtk.StateType.NORMAL)
     if (self.transport):
       # draw the transport's current time point with a fill on the left
       #  so we can easily see whether we're before or after it
       x = round(self.x_of_time(self.transport.time))
-      cr.set_source_rgba(0.0, 0.0, 0.0, 0.1)
+      cr.set_source_rgba(fg.red, fg.green, fg.blue, 0.1)
       cr.rectangle(0, 0, x, height)
       cr.fill()
       cr.set_source_rgba(1.0, 0.0, 0.0, 0.75)
@@ -1113,7 +1122,7 @@ class TrackListBackgroundView(DrawableView):
       # draw all the marks on the transport
       for t in self.transport.marks:
         x = round(self.x_of_time(t))
-        cr.set_source_rgba(0.0, 0.0, 0.0, 0.75)
+        cr.set_source_rgba(fg.red, fg.green, fg.blue, 0.75)
         cr.set_dash((2, 2))
         cr.set_line_width(2)
         cr.move_to(x, 0)
@@ -1124,7 +1133,7 @@ class TrackListBackgroundView(DrawableView):
       snapped_time = ViewManager.snapped_time
       if (snapped_time is not None):
         x = round(self.x_of_time(snapped_time)) + 0.5
-        cr.set_source_rgba(0.0, 0.0, 0.0, 0.75)
+        cr.set_source_rgba(fg.red, fg.green, fg.blue, 0.75)
         cr.set_line_width(1)
         cr.set_dash((2, 3))
         cr.move_to(x, 0)

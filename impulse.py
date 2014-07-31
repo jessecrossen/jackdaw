@@ -36,7 +36,7 @@ class DocumentWindow(Gtk.Window):
     # set default size
     self.set_default_size(800, 600)
     # make a menu and bind to it
-    self._bind_menu()
+    self._make_menu()
     # make some widgets for the main content
     self.outer_box = Gtk.Box.new(Gtk.Orientation.VERTICAL, 0)
     self.outer_box.homogenous = False
@@ -66,6 +66,7 @@ class DocumentWindow(Gtk.Window):
       self.attach()
   # detach from the current document
   def detach(self):
+    self._unbind_menu()
     # detach from the old document
     self.transport = None
     self.mixer = None
@@ -75,6 +76,8 @@ class DocumentWindow(Gtk.Window):
     if (self.tracks_view):
       self.tracks_view.destroy()
       self.tracks_view = None
+    # dump the undo stack and clear the selection
+    views.ViewManager = views.ViewManagerSingleton()
   # attach to a new document
   def attach(self):
     # make a mixer and transport
@@ -87,21 +90,42 @@ class DocumentWindow(Gtk.Window):
                                            transport=self.transport,
                                            mixer=self.mixer)
     self.doc_box.pack_end(self.tracks_view, True, True, 0)
+    # bind the menu to the new items
+    self._bind_menu()
     # show any new views
     self.show_all()
   
-  # make a menu and bind to its actions
-  def _bind_menu(self):
+  # make a menu
+  def _make_menu(self):
     self.menu = menu.Menu(self)
-    # add bindings
+    # keep a list of menu bindings
+    self._menu_bindings = [ ]
+  # bind menu actions
+  def _bind_menu(self):
+    # transport
+    t = self.transport
+    self._bind_action(self.menu.back_action, t.skip_back)
+    self._bind_action(self.menu.forward_action, t.skip_forward)
+    self._bind_action(self.menu.stop_action, t.stop)
+    self._bind_action(self.menu.play_action, t.play)
+    self._bind_action(self.menu.record_action, t.record)
+    # undo/redo
     vm = views.ViewManager
-    self.menu.undo_action.connect('activate', vm.undo)
-    self.menu.redo_action.connect('activate', vm.redo)
-    # listen to global state changes so we can activate/deactivate 
-    #  menu actions
+    self._bind_action(self.menu.undo_action, vm.undo)
+    self._bind_action(self.menu.redo_action, vm.redo)
     vm.add_listener(self.update_menu_state)
+    # initial menu state
     self.update_menu_state()
-  # handle changes to the selection, undo stack, etc
+  # unbind all menu actions
+  def _unbind_menu(self):
+    for (action, handler) in self._menu_bindings:
+      action.disconnect(handler)
+    views.ViewManager.remove_listener(self.update_menu_state)
+  # bind to an action and remember the binding
+  def _bind_action(self, action, callback):
+    handler = action.connect('activate', callback)
+    self._menu_bindings.append((action, handler))
+  # reflect changes to models in the menu
   def update_menu_state(self):
     vm = views.ViewManager
     self.menu.undo_action.set_sensitive(vm.can_undo)

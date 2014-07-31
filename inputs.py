@@ -138,8 +138,8 @@ class NanoKONTROL2(Device):
       self.update_led(self.CYCLE_BUTTON, self.transport.cycling)
     if (self.mixer):
       for track_index in range(0, 8):
-        if (track_index < len(self.mixer)):
-          track = self.mixer[track_index]
+        if (track_index < len(self.mixer.tracks)):
+          track = self.mixer.tracks[track_index]
           self.update_led(self.SOLO | track_index, track.solo)
           self.update_led(self.MUTE | track_index, track.mute)
           self.update_led(self.ARM | track_index, track.arm)
@@ -170,10 +170,10 @@ class NanoKONTROL2(Device):
     # handle mode buttons
     if (controller == self.PLAY_BUTTON):
       if ((value > 64) and (self.transport)):
-        self.transport.playing = True
+        self.transport.play()
     elif (controller == self.RECORD_BUTTON):
       if ((value > 64) and (self.transport)):
-        self.transport.recording = True
+        self.transport.record()
     elif (controller == self.CYCLE_BUTTON):
       if ((value > 64) and (self.transport)):
         self.transport.cycling = not self.transport.cycling
@@ -182,8 +182,7 @@ class NanoKONTROL2(Device):
       if (value > 64):
         if (self.transport):
           if (controller == self.STOP_BUTTON):
-              self.transport.playing = False
-              self.transport.recording = False
+            self.transport.stop()
           elif (controller == self.BACK_BUTTON):
             self.transport.skip_back()
             self.set_holding(controller)
@@ -209,8 +208,8 @@ class NanoKONTROL2(Device):
       self.update_led(controller, value > 64)
     elif (kind in self.PER_TRACK):
       track_index = controller & 0x07
-      if ((self.mixer) and (track_index < len(self.mixer))):
-        track = self.mixer[track_index]
+      if ((self.mixer) and (track_index < len(self.mixer.tracks))):
+        track = self.mixer.tracks[track_index]
         if (kind == self.LEVEL):
           track.level = float(value) / 127
         elif (kind == self.PAN):

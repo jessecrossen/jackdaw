@@ -18,8 +18,8 @@ class Model(observable.Object):
 
 # make a base class to implement common functions for lists of Model instances
 class ModelList(observable.List):
-  def __init__ (self, value=None):
-    observable.List.__init__(self)
+  def __init__ (self, value=()):
+    observable.List.__init__(self, value)
     # initialize cached data attributes  
     self.invalidate()
   # invalidate cached data when the model changes
@@ -82,8 +82,8 @@ class Note(Model):
 
 # represents a series of events grouped into a logical block with a duration
 class EventList(ModelList):
-  def __init__(self, duration=60, divisions=1):
-    ModelList.__init__(self)
+  def __init__(self, events=(), duration=60, divisions=1):
+    ModelList.__init__(self, events)
     self._duration = duration
     self._divisions = divisions
   
@@ -193,16 +193,22 @@ class Block(Model):
   
 # represent a track, which can contain multiple blocks
 class Track(ModelList):
-  def __init__(self, duration=60):
-    ModelList.__init__(self)
+  def __init__(self, blocks=(), duration=60):
+    ModelList.__init__(self, blocks)
     self._duration = duration
-    self._enabled = True
-    self._armed = False
+    self._solo = False
+    self._mute = False
+    self._arm = False
+    self._level = 1.0
+    self._pan = 0.0
     
   # invalidate cached data
   def invalidate(self):
     self._pitches = None
     self._times = None
+    # whether the track is enabled for playback 
+    # (this will be controlled by the track list)
+    self.enabled = True
     
   # the total length of time of the track content (in seconds)
   @property
@@ -213,25 +219,57 @@ class Track(ModelList):
     if (self._duration != value):
       self._duration = value
       self.on_change()
-  # whether the track is enabled for playback
+  
+  # whether the track should play by itself or as part of a solo group
   @property
-  def enabled(self):
-    return(self._enabled)
-  @enabled.setter
-  def enabled(self, value):
+  def solo(self):
+    return(self._solo)
+  @solo.setter
+  def solo(self, value):
     value = (value == True)
-    if (self._enabled != value):
-      self._enabled = value
+    if (self._solo != value):
+      self._solo = value
+      self.on_change()
+  # whether the track should be excluded from playback
+  @property
+  def mute(self):
+    return(self._mute)
+  @mute.setter
+  def mute(self, value):
+    value = (value == True)
+    if (self._mute != value):
+      self._mute = value
       self.on_change()
   # whether the track is armed for recording
   @property
-  def armed(self):
-    return(self._armed)
-  @armed.setter
-  def armed(self, value):
+  def arm(self):
+    return(self._arm)
+  @arm.setter
+  def arm(self, value):
     value = (value == True)
-    if (self._armed != value):
-      self._armed = value
+    if (self._arm != value):
+      self._arm = value
+      self.on_change()
+  # the mix level of the track from 0.0 (silent) to 1.0 (loudest)
+  @property
+  def level(self):
+    return(self._level)
+  @level.setter
+  def level(self, value):
+    value = min(max(0.0, value), 1.0)
+    if (self._level != value):
+      self._level = value
+      self.on_change()
+  # the stereo pan of the track from -1.0 (hard left) 
+  #  to 0.0 (center) to 1.0 (hard right)
+  @property
+  def pan(self):
+    return(self._pan)
+  @pan.setter
+  def pan(self, value):
+    value = min(max(-1.0, value), 1.0)
+    if (self._pan != value):
+      self._pan = value
       self.on_change()
   
   # get a list of unique times for all the notes in the track
@@ -263,8 +301,22 @@ class Track(ModelList):
 
 # represent a list of tracks
 class TrackList(ModelList):
-  def __init__(self):
-    ModelList.__init__(self)
+  def __init__(self, tracks=()):
+    ModelList.__init__(self, tracks)
+  
+  def on_change(self):
+    # transfer global track state to the tracks
+    solos = set()
+    for track in self:
+      if (track.solo):
+        solos.add(track)
+    if (len(solos) > 0):
+      for track in self:
+        track.enabled = (track in solos)
+    else:
+      for track in self:
+        track.enabled = not track.mute
+    ModelList.on_change(self)
   
   # invalidate cached data
   def invalidate(self):
@@ -279,7 +331,6 @@ class TrackList(ModelList):
       for track in self:
         self._max_duration = max(self._max_duration, track.duration)
     return(self._max_duration)
-    
   # get a list of unique times for all tracks in the list
   @property
   def times(self):
