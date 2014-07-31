@@ -850,6 +850,17 @@ class BlockView(DrawableView):
     # don't respond if nothing is selected
     if (len(ViewManager.selection) == 0):
       return(False)
+    # delete things
+    if ((keyval == Gdk.KEY_Delete) or (keyval == Gdk.KEY_BackSpace)):
+      self.begin_action()
+      for target in ViewManager.selection:
+        context = ViewManager.get_selected_context(target)
+        if (hasattr(context, 'events')):
+          context.events.remove(target)
+        else:
+          context.remove(target)
+      self.end_action()
+      return(True)
     # move objects in time
     time_step = self.time_of_x(1)
     if (state == Gdk.ModifierType.SHIFT_MASK):

@@ -97,7 +97,7 @@ class UndoStack(object):
             if (type(value) is types.DictType):
               value = dict(value)
             elif (type(value) is types.ListType):
-              value = list(value)
+              value = tuple(value)
             state[(thing, key)] = value
         except KeyError: pass
         except AttributeError: pass
