@@ -291,7 +291,7 @@ class DrawableView(View, Gtk.DrawingArea):
     self._model = model
     if (model):
       try:
-        self._model.add_listener(self.on_change)
+        self._model.add_observer(self.on_change)
       except AttributeError: pass
     # do base class configuration
     Gtk.DrawingArea.__init__(self)
@@ -333,7 +333,7 @@ class LayoutView(View, Gtk.Layout):
     ViewManager.register_view(model, self)
     self._model = model
     try:
-      self._model.add_listener(self.on_change)
+      self._model.add_observer(self.on_change)
     except AttributeError: pass
     # do base class configuration
     Gtk.Layout.__init__(self)
@@ -1095,10 +1095,10 @@ class TrackListBackgroundView(DrawableView):
     DrawableView.__init__(self, tracks)
     self.transport = transport
     if (transport):
-      self.transport.add_listener(self.on_change)
+      self.transport.add_observer(self.on_change)
     self.manager = manager
     if (manager):
-      self.manager.add_listener(self.on_change)
+      self.manager.add_observer(self.on_change)
     self.x_of_time = lambda self, x: x
   # expose 'tracks' as an alternate name for 'model'
   @property

@@ -3,12 +3,12 @@ import unittest
 # a mixin to provide basic observer functionality
 class Observable():
   # add/remove a callback to be called when the object changes
-  def add_listener(self, callback):
+  def add_observer(self, callback):
     try:
       self._listeners.add(callback)
     except AttributeError:
       self._listeners = set((callback,))
-  def remove_listener(self, callback):
+  def remove_observer(self, callback):
     try:
       self._listeners.remove(callback)
     except AttributeError:
@@ -98,11 +98,11 @@ class List(Observable, list):
   # handle models being added and removed from the list
   def _add_item(self, item):
     try:
-      item.add_listener(self.on_change)
+      item.add_observer(self.on_change)
     except AttributeError: pass
   def _remove_item(self, item):
     try:
-      item.remove_listener(self.on_change)
+      item.remove_observer(self.on_change)
     except AttributeError: pass
 
 # make an observable list that exposes the members of another list 
@@ -112,7 +112,7 @@ class FilteredList(Observable, list):
   def __init__(self, source, filters=()):
     list.__init__(self)
     self._source = source
-    self._source.add_listener(self.update)
+    self._source.add_observer(self.update)
     self._filters = filters
   # make this hashable so it can receive callbacks
   def __hash__(self):
@@ -156,18 +156,18 @@ class TestObject(unittest.TestCase):
     self.obj.on_change()
     self.assertEqual(self.changes, 0)
   def test_listener(self):
-    self.obj.add_listener(self.on_change)
+    self.obj.add_observer(self.on_change)
     self.obj.on_change()
     self.assertEqual(self.changes, 1)
-    self.obj.remove_listener(self.on_change)
+    self.obj.remove_observer(self.on_change)
     self.obj.on_change()
     self.assertEqual(self.changes, 1)
   def test_double_listener(self):
-    self.obj.add_listener(self.on_change)
-    self.obj.add_listener(self.on_change)
+    self.obj.add_observer(self.on_change)
+    self.obj.add_observer(self.on_change)
     self.obj.on_change()
     self.assertEqual(self.changes, 1)
-    self.obj.remove_listener(self.on_change)
+    self.obj.remove_observer(self.on_change)
     self.obj.on_change()
     self.assertEqual(self.changes, 1)
     
@@ -187,24 +187,24 @@ class TestList(unittest.TestCase):
     self.list.on_change()
     self.assertEqual(self.changes, 0)
   def test_listener(self):
-    self.list.add_listener(self.on_change)
+    self.list.add_observer(self.on_change)
     self.list.on_change()
     self.assertEqual(self.changes, 1)
-    self.list.remove_listener(self.on_change)
+    self.list.remove_observer(self.on_change)
     self.list.on_change()
     self.assertEqual(self.changes, 1)
   def test_double_listener(self):
-    self.list.add_listener(self.on_change)
-    self.list.add_listener(self.on_change)
+    self.list.add_observer(self.on_change)
+    self.list.add_observer(self.on_change)
     self.list.on_change()
     self.assertEqual(self.changes, 1)
-    self.list.remove_listener(self.on_change)
+    self.list.remove_observer(self.on_change)
     self.list.on_change()
     self.assertEqual(self.changes, 1)
   # test list operations
   def test_replace(self):
     self.list.append(self.itemA)
-    self.list.add_listener(self.on_change)
+    self.list.add_observer(self.on_change)
     self.list[0] = self.itemB
     self.assertNotIn(self.itemA, self.list)
     self.assertIn(self.itemB, self.list)
@@ -217,7 +217,7 @@ class TestList(unittest.TestCase):
     self.list.append(self.itemA)
     self.list.append(self.itemB)
     self.list.append(self.itemC)
-    self.list.add_listener(self.on_change)
+    self.list.add_observer(self.on_change)
     self.list[0:2] = [self.itemD]
     self.assertNotIn(self.itemA, self.list)
     self.assertNotIn(self.itemB, self.list)
@@ -232,7 +232,7 @@ class TestList(unittest.TestCase):
     self.assertEqual(self.changes, 3)
   def test_delete(self):
     self.list.append(self.itemA)
-    self.list.add_listener(self.on_change)
+    self.list.add_observer(self.on_change)
     del self.list[0]
     self.assertNotIn(self.itemA, self.list)
     self.assertEqual(self.changes, 1)
@@ -242,7 +242,7 @@ class TestList(unittest.TestCase):
     self.list.append(self.itemA)
     self.list.append(self.itemB)
     self.list.append(self.itemC)
-    self.list.add_listener(self.on_change)
+    self.list.add_observer(self.on_change)
     del self.list[0:2]
     self.assertNotIn(self.itemA, self.list)
     self.assertNotIn(self.itemB, self.list)
@@ -254,21 +254,21 @@ class TestList(unittest.TestCase):
     self.itemC.on_change()
     self.assertEqual(self.changes, 2)
   def test_append(self):
-    self.list.add_listener(self.on_change)
+    self.list.add_observer(self.on_change)
     self.list.append(self.itemA)
     self.assertEqual(self.changes, 1)
     self.itemA.on_change()
     self.assertEqual(self.changes, 2)
   def test_pop(self):
     self.list.append(self.itemA)
-    self.list.add_listener(self.on_change)
+    self.list.add_observer(self.on_change)
     item = self.list.pop()
     self.assertIs(item, self.itemA)
     self.assertEqual(self.changes, 1)
     self.itemA.on_change()
     self.assertEqual(self.changes, 1)
   def test_extend(self):
-    self.list.add_listener(self.on_change)
+    self.list.add_observer(self.on_change)
     self.list.extend((self.itemA, self.itemB))
     self.assertEqual(self.changes, 1)
     self.assertIn(self.itemA, self.list)
@@ -278,7 +278,7 @@ class TestList(unittest.TestCase):
     self.assertEqual(self.changes, 3)
   def test_insert(self):
     self.list.extend((self.itemA, self.itemC))
-    self.list.add_listener(self.on_change)
+    self.list.add_observer(self.on_change)
     self.list.insert(1, self.itemB)
     self.assertEqual(self.changes, 1)
     self.assertIn(self.itemA, self.list)
@@ -290,7 +290,7 @@ class TestList(unittest.TestCase):
     self.assertEqual(self.changes, 4)
   def test_remove(self):
     self.list.extend((self.itemA, self.itemB))
-    self.list.add_listener(self.on_change)
+    self.list.add_observer(self.on_change)
     self.list.remove(self.itemB)
     self.assertEqual(self.changes, 1)
     self.assertIn(self.itemA, self.list)
@@ -301,7 +301,7 @@ class TestList(unittest.TestCase):
     self.assertEqual(self.changes, 2)
   def test_reverse(self):
     self.list.extend((self.itemA, self.itemB))
-    self.list.add_listener(self.on_change)
+    self.list.add_observer(self.on_change)
     self.list.reverse()
     self.assertEqual(self.changes, 1)
     self.assertIn(self.itemA, self.list)
@@ -313,7 +313,7 @@ class TestList(unittest.TestCase):
     self.itemB.order = 1
     self.itemA.order = 2
     self.list.extend((self.itemA, self.itemB))
-    self.list.add_listener(self.on_change)
+    self.list.add_observer(self.on_change)
     self.list.sort(cmp=lambda a, b: a.order - b.order)
     self.assertEqual(self.changes, 1)
     self.assertIs(self.list[0], self.itemB)
@@ -332,14 +332,14 @@ class TestFilteredList(unittest.TestCase):
   def on_change(self):
     self.changes += 1
   def test_unfiltered(self):
-    self.flist.add_listener(self.on_change)
+    self.flist.add_observer(self.on_change)
     self.list.append(self.itemA)
     self.assertEqual(self.changes, 1)
     self.assertIn(self.itemA, self.flist)
     self.itemA.on_change()
     self.assertEqual(self.changes, 2)
   def test_filtered(self):
-    self.flist.add_listener(self.on_change)
+    self.flist.add_observer(self.on_change)
     self.flist.filters = [ lambda s: (s[:-1]) ]
     self.assertEqual(self.changes, 1)
     self.list.extend((self.itemA, self.itemB))

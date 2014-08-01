@@ -99,10 +99,10 @@ class NanoKONTROL2(Device):
     # store the controlled objects
     self.transport = transport
     if (self.transport):
-      self.transport.add_listener(self.on_change)
+      self.transport.add_observer(self.on_change)
     self.mixer = mixer
     if (self.mixer):
-      self.mixer.add_listener(self.on_change)
+      self.mixer.add_observer(self.on_change)
     # set up timers for detecting button holds
     self._hold_timer = None
     self._repeat_timer = None

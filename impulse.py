@@ -125,15 +125,15 @@ class DocumentWindow(Gtk.Window):
     self._bind_action(self.menu.undo_action, vm.undo)
     self._bind_action(self.menu.redo_action, vm.redo)
     # update menu state
-    self.document.tracks.add_listener(self.update_menu_state)
-    vm.add_listener(self.update_menu_state)
+    self.document.tracks.add_observer(self.update_menu_state)
+    vm.add_observer(self.update_menu_state)
     self.update_menu_state()
   # unbind all menu actions
   def _unbind_menu(self):
     for (action, handler) in self._menu_bindings:
       action.disconnect(handler)
-    views.ViewManager.remove_listener(self.update_menu_state)
-    self.document.tracks.remove_listener(self.update_menu_state)
+    views.ViewManager.remove_observer(self.update_menu_state)
+    self.document.tracks.remove_observer(self.update_menu_state)
   # bind to an action and remember the binding
   def _bind_action(self, action, callback):
     handler = action.connect('activate', callback)

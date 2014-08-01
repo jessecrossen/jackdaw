@@ -141,7 +141,7 @@ class Block(Model):
   def __init__(self, events, time=0, duration=0):
     Model.__init__(self)
     self.events = events
-    self.events.add_listener(self.on_change)
+    self.events.add_observer(self.on_change)
     self._time = time
     self._duration = duration
   
@@ -360,5 +360,5 @@ class Document(Model):
   def __init__(self):
     Model.__init__(self)
     self.tracks = TrackList()
-    self.tracks.add_listener(self.on_change)
+    self.tracks.add_observer(self.on_change)
     

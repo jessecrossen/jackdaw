@@ -201,7 +201,7 @@ class Mixer(observable.Object):
     self.active_track = None
     # store the track list to control
     self.tracks = tracks
-    self.tracks.add_listener(self.on_list_change)
+    self.tracks.add_observer(self.on_list_change)
     # assign mixer tracks for the given tracks
     self._pool = dict()
     self.on_list_change()
