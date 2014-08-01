@@ -1213,11 +1213,11 @@ class TrackHeaderView(DrawableView):
     self.arm_rect.x = x
     self.arm_rect.y = y
     y -= button_size + button_spacing
-    self.solo_rect.x = x
-    self.solo_rect.y = y
-    y -= button_size + button_spacing
     self.mute_rect.x = x
     self.mute_rect.y = y
+    y -= button_size + button_spacing
+    self.solo_rect.x = x
+    self.solo_rect.y = y
     x += button_width + spacing
     # place the pitch labels as a group
     self.pitches_area.x = x

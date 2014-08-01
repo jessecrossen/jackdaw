@@ -33,6 +33,7 @@ def dummy_document():
 class DocumentWindow(Gtk.Window):
   def __init__(self):
     Gtk.Window.__init__(self)
+    self._document = None
     # set default size
     self.set_default_size(800, 600)
     # make a menu and bind to it
@@ -59,8 +60,9 @@ class DocumentWindow(Gtk.Window):
   @document.setter
   def document(self, value):
     # detach from the old document
-    self.detach()
-    self._document = None
+    if (self._document is not None):
+      self.detach()
+      self._document = None
     # attach to the new document
     if (value is not None):
       self._document = value
@@ -122,14 +124,16 @@ class DocumentWindow(Gtk.Window):
     vm = views.ViewManager
     self._bind_action(self.menu.undo_action, vm.undo)
     self._bind_action(self.menu.redo_action, vm.redo)
+    # update menu state
+    self.document.tracks.add_listener(self.update_menu_state)
     vm.add_listener(self.update_menu_state)
-    # initial menu state
     self.update_menu_state()
   # unbind all menu actions
   def _unbind_menu(self):
     for (action, handler) in self._menu_bindings:
       action.disconnect(handler)
     views.ViewManager.remove_listener(self.update_menu_state)
+    self.document.tracks.remove_listener(self.update_menu_state)
   # bind to an action and remember the binding
   def _bind_action(self, action, callback):
     handler = action.connect('activate', callback)
@@ -139,7 +143,13 @@ class DocumentWindow(Gtk.Window):
     vm = views.ViewManager
     self.menu.undo_action.set_sensitive(vm.can_undo)
     self.menu.redo_action.set_sensitive(vm.can_redo)
-    
+    # only allow recording if a track is armed
+    track_armed = False
+    for track in self.document.tracks:
+      if (track.arm):
+        track_armed = True
+        break
+    self.menu.record_action.set_sensitive(track_armed)
   
 class App:
   def __init__(self):

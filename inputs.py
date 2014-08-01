@@ -172,8 +172,12 @@ class NanoKONTROL2(Device):
       if ((value > 64) and (self.transport)):
         self.transport.play()
     elif (controller == self.RECORD_BUTTON):
-      if ((value > 64) and (self.transport)):
-        self.transport.record()
+      if ((value > 64) and (self.transport) and (self.mixer)):
+        track_armed = False
+        for track in self.mixer.tracks:
+          if (track.arm):
+            self.transport.record()
+            break
     elif (controller == self.CYCLE_BUTTON):
       if ((value > 64) and (self.transport)):
         self.transport.cycling = not self.transport.cycling
