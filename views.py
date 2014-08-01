@@ -737,13 +737,16 @@ class BlockView(DrawableView):
           target_time = self._dragging_target.time
         except AttributeError: pass
         else:
-          snap_delta = self.get_time_snap_delta(target_time)
-          if ((snap_delta != 0) and (abs(snap_delta) < ViewManager.snap_window)):
-            time_delta = snap_delta
-            ViewManager.snapped_time = target_time + snap_delta
+          self._snap_delta = self.get_time_snap_delta(target_time)
+          if ((self._snap_delta != 0) and 
+              (abs(self._snap_delta) < ViewManager.snap_window)):
+            time_delta = self._snap_delta
+            ViewManager.snapped_time = target_time + self._snap_delta
       else:
         if (abs(time_delta) > ViewManager.snap_window):
           ViewManager.snapped_time = None
+          time_delta -= self._snap_delta
+          self._snap_delta = 0
         else:
           time_delta = 0
     # apply all deltas to the selection

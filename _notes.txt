@@ -1,7 +1,6 @@
 - note input
 - instrument selection
 - midi serialization
-- objects are sliding when dragged
 - pan should be a spinning arrow indicating apparent direction
 - make filters that can alter the characteristics of underlying notes at play-time (e.g. quantize, timewarp)
 - block resizing handles
