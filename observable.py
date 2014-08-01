@@ -142,6 +142,36 @@ class FilteredList(Observable, list):
     self[0:] = contents
     self.on_change()
 
+# make an object that exposes observable attributes for another object
+class AttributeProxy(Observable, object):
+  def __init__(self, target, from_name=None, to_name=None):
+    self._target = target
+    self._attribute_map = dict()
+    self.proxy_attribute(from_name, to_name)
+  # proxy an attribute, optionally using a different name for the target
+  def proxy_attribute(self, from_name, to_name=None):
+    if (from_name is None): return
+    if (to_name is None):
+      to_name = from_name
+    self._attribute_map[from_name] = to_name
+  # proxy attributes
+  def __getattr__(self, name):
+    if (name in self._attribute_map):
+      name = self._attribute_map[name]
+    return(getattr(self._target, name))
+  def __setattr__(self, name, value):
+    if ((hasattr(self, '_attribute_map')) and 
+        (name in self._attribute_map)):
+      name = self._attribute_map[name]
+      old_value = getattr(self._target, name)
+      if (value != old_value):
+        setattr(self._target, name, value)
+        self.on_change()
+    elif ((hasattr(self, '_target')) and 
+          (hasattr(self._target, name))):
+      setattr(self._target, name, value)
+    object.__setattr__(self, name, value)
+
 # TESTS #######################################################################
 
 class TestObject(unittest.TestCase):

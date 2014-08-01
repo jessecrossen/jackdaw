@@ -425,6 +425,10 @@ class BlockView(DrawableView):
   def __init__(self, block):
     DrawableView.__init__(self, block)
     self._pitches = None
+    self.ending = observable.AttributeProxy(
+      self.block, 'time', 'duration')
+    self.repeat = observable.AttributeProxy(
+      self.block.events, 'time', 'duration')
     self.make_transparent()
     self.make_interactive()
   # expose 'block' as an alternate name for 'model' for readability
@@ -475,12 +479,12 @@ class BlockView(DrawableView):
   # map between time and an x coordinate on the view
   def x_of_time(self, time):
     try:
-      return(time * (self._width / self.block.duration))
+      return(1 + (time * (float(self._width - 2) / self.block.duration)))
     except ZeroDivisionError:
       return(0)
   def time_of_x(self, x):
     try:
-      return(float(x) * (self.block.duration / float(self._width)))
+      return(float(x - 1) * (self.block.duration / float(self._width - 2)))
     except ZeroDivisionError:
       return(0)
   # get the time in seconds at which the contents would repeat
@@ -490,7 +494,7 @@ class BlockView(DrawableView):
   # get the width in pixels at which the contents would repeat
   @property
   def repeat_width(self):
-    return(self.x_of_time(self.repeat_time))
+    return(self.x_of_time(self.repeat_time) - self.x_of_time(0))
   
   def redraw(self, cr, width, height):
     # get the colors to draw with
@@ -505,6 +509,13 @@ class BlockView(DrawableView):
       cr.set_source_rgba(bg.red, bg.green, bg.blue, 0.75)
       cr.rectangle(0, 0, width, height)
       cr.fill()
+    # set up cairo to paint the given object
+    def set_color_for(obj, alpha=1.0):
+      if ((obj in selection) and (not selected) and (not backdrop)):
+        c = style.get_background_color(Gtk.StateFlags.SELECTED)
+        cr.set_source_rgba(c.red, c.green, c.blue, alpha)
+      else:
+        cr.set_source_rgba(fg.red, fg.green, fg.blue, alpha)
     # cache the pitch list for speed
     pitches = self.pitches
     # get the pitches that are being used in the block
@@ -522,7 +533,7 @@ class BlockView(DrawableView):
     # draw lines for all divisions, if there are any
     divisions = self.block.events.divisions
     if (divisions > 0):
-      x_step = self.x_of_time(self.repeat_time) / divisions
+      x_step = self.repeat_width / divisions
       x = 0
       while ((x_step > 0) and (x <= width)):
         px = round(x) + 0.5
@@ -536,6 +547,24 @@ class BlockView(DrawableView):
     selection = ViewManager.selection
     # get the distance after which notes start being repeated
     repeat_width = self.repeat_width
+    # draw the repeat sign
+    if (repeat_width <= width):
+      x = self.x_of_time(self.repeat_time)
+      set_color_for(self.repeat, 0.75)
+      cr.set_line_width(2)
+      cr.move_to(x, 0)
+      cr.line_to(x, height)
+      cr.stroke()
+      cr.set_line_width(1)
+      x -= 3.5
+      cr.move_to(x, 0)
+      cr.line_to(x, height)
+      cr.stroke()
+      x -= 4.5
+      y = round(height / 2)
+      cr.arc(x, y - 5, 1.5, 0, 2 * math.pi)
+      cr.arc(x, y + 5, 1.5, 0, 2 * math.pi)
+      cr.fill()
     # draw boxes for all events with pitch
     for event in self.block.events:
       # skip events without pitch and time
@@ -571,11 +600,7 @@ class BlockView(DrawableView):
       w = round(self.x_of_time(time + duration)) - x
       w = max(w, h)
       # set the color depending on whether the note is selected
-      if ((event in selection) and (not selected) and (not backdrop)):
-        c = style.get_background_color(Gtk.StateFlags.SELECTED)
-        cr.set_source_rgba(c.red, c.green, c.blue, 0.9)
-      else:
-        cr.set_source_rgba(fg.red, fg.green, fg.blue, 0.9)
+      set_color_for(event, 0.9)
       # draw the note, repeating it as many times as needed
       while ((x < width) and (repeat_width > 0)):
         self.draw_round_rect(cr, x, y, w, h, 3)
@@ -612,8 +637,11 @@ class BlockView(DrawableView):
     notes = self.notes_at_pos(x, y)
     if (len(notes) > 0):
       return(notes)
-    else:
-      return((self.block,))
+    rx = self.x_of_time(self.repeat_time)
+    if ((x >= rx - 6) and (x <= rx + 1)):
+      return((self.repeat,))
+    # if nothing else is under the selection, select the block itself
+    return((self.block,))
   
   # manage an undoable action for the selected items
   def get_toplevel_model(self):
@@ -708,10 +736,11 @@ class BlockView(DrawableView):
         try:
           target_time = self._dragging_target.time
         except AttributeError: pass
-        snap_delta = self.get_time_snap_delta(target_time)
-        if ((snap_delta != 0) and (abs(snap_delta) < ViewManager.snap_window)):
-          time_delta = snap_delta
-          ViewManager.snapped_time = target_time + snap_delta
+        else:
+          snap_delta = self.get_time_snap_delta(target_time)
+          if ((snap_delta != 0) and (abs(snap_delta) < ViewManager.snap_window)):
+            time_delta = snap_delta
+            ViewManager.snapped_time = target_time + snap_delta
       else:
         if (abs(time_delta) > ViewManager.snap_window):
           ViewManager.snapped_time = None
@@ -745,21 +774,22 @@ class BlockView(DrawableView):
   # get the amount of time to move for the given x offset
   def get_time_delta(self, dx):
     if (abs(dx) >= 1.0):
-      return(self.time_of_x(dx))
+      return(self.time_of_x(self.x_of_time(0.0) + dx))
     else:
       return(0)
   # alter an object's time by the given number of steps
   def apply_time_delta(self, context, target, time_delta):
     if ((time_delta == 0) or (not hasattr(target, 'time'))):
       return
-    one_pixel_time = self.time_of_x(1)
     time = max(0, target.time + time_delta)
-    try:
-      time = min(time, context.duration - one_pixel_time)
-    except AttributeError: pass
-    try:
-      time = min(time, context.repeat_time - one_pixel_time)
-    except AttributeError: pass
+    if ((target is not self.repeat) and (target is not self.ending)):
+      one_pixel_time = self.time_of_x(1) - self.time_of_x(0)
+      try:
+        time = min(time, context.duration - one_pixel_time)
+      except AttributeError: pass
+      try:
+        time = min(time, context.repeat_time - one_pixel_time)
+      except AttributeError: pass
     if (time != target.time):
       target.time = time
       return(True)
@@ -917,12 +947,12 @@ class TrackView(LayoutView):
   # map between time and an x coordinate on the view
   def x_of_time(self, time):
     try:
-      return(time * (self._width / self.track.duration))
+      return(1 + (time * ((self._width - 2) / self.track.duration)))
     except ZeroDivisionError:
       return(0)
   def time_of_x(self, x):
     try:
-      return(float(x) * (self.track.duration / float(self._width)))
+      return(float(x - 1) * (self.track.duration / float(self._width - 2)))
     except ZeroDivisionError:
       return(0)
   # get the height of a pitch
@@ -956,9 +986,8 @@ class TrackView(LayoutView):
     for view in views:
       if (view is None): continue
       x = self.x_of_time(view.block.time)
-      r = geom.Rectangle(
-        x, 0,
-        self.x_of_time(view.block.time + view.block.duration) - x, height)
+      w = self.x_of_time(view.block.time + view.block.duration) - x
+      r = geom.Rectangle(x - 1, 0, w + 2, height)
       view.size_allocate(r)
     # transfer track-wide pitch list to all views, 
     #  unless one of the views is being dragged 
@@ -1028,12 +1057,12 @@ class TrackListView(LayoutView):
   # map between time and an x coordinate on the view
   def x_of_time(self, time):
     try:
-      return(time * (self._width / self.tracks.duration))
+      return(1 + (time * ((self._width - 2) / self.tracks.duration)))
     except ZeroDivisionError:
       return(0)
   def time_of_x(self, x):
     try:
-      return(float(x) * (self.tracks.duration / float(self._width)))
+      return(float(x - 1) * (self.tracks.duration / float(self._width - 2)))
     except ZeroDivisionError:
       return(0)
   # map between track indices and a y coordinate on the view
@@ -1048,10 +1077,11 @@ class TrackListView(LayoutView):
     i = 0
     for view in views:
       track_height = self.track_layout.get_track_height(view.track)
+      x = self.x_of_time(0)
+      w = self.x_of_time(view.track.duration) - x
       r = geom.Rectangle(
-        0, self.track_layout.y_of_track_index(i),
-        self.x_of_time(view.track.duration), 
-        self.track_layout.get_track_view_height(view.track))
+        x - 1, self.track_layout.y_of_track_index(i),
+        w + 2, self.track_layout.get_track_view_height(view.track))
       r.y += round((track_height - r.height) / 2)
       view.size_allocate(r)
       i += 1
@@ -1133,7 +1163,7 @@ class TrackListBackgroundView(DrawableView):
     if (self.transport):
       # draw the transport's current time point with a fill on the left
       #  so we can easily see whether we're before or after it
-      x = max(1, round(self.x_of_time(self.transport.time)))
+      x = round(self.x_of_time(self.transport.time))
       cr.set_source_rgba(fg.red, fg.green, fg.blue, 0.1 * fade)
       cr.rectangle(0, 0, x, height)
       cr.fill()

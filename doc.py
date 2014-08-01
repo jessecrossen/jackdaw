@@ -185,6 +185,10 @@ class Block(Model):
           while (time < self.duration):
             times.add(time)
             time += repeat_time
+      time = 0.0
+      while (time < self.duration):
+        times.add(time)
+        time += repeat_time
       self._times = list(times)
       self._times.sort()
     return(self._times)
