@@ -1,3 +1,5 @@
+# coding=utf-8
+
 import sys
 
 import observable
@@ -196,7 +198,7 @@ class Track(ModelList):
 
   # names of the cyclical pitch classes starting at MIDI note 0
   PITCH_CLASS_NAMES = ( 
-    'A', 'Bb', 'B', 'C', 'Db', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'Ab' )
+    'C', 'D♭', 'D', 'E♭', 'E', 'F', 'F♯', 'G', 'A♭', 'A', 'B♭', 'B' )
 
   def __init__(self, blocks=(), duration=60):
     ModelList.__init__(self, blocks)
@@ -206,6 +208,7 @@ class Track(ModelList):
     self._arm = False
     self._level = 1.0
     self._pan = 0.0
+    self._pitch_names = dict()
     
   # invalidate cached data
   def invalidate(self):
@@ -214,12 +217,24 @@ class Track(ModelList):
     # whether the track is enabled for playback 
     # (this will be controlled by the track list)
     self.enabled = True
-    
+  
+  # get and set user-defined names for pitches
+  @property
+  def pitch_names(self):
+    return(self._pitch_names)
+  @pitch_names.setter
+  def pitch_names(self, value):
+    self._pitch_names = value
+    self.on_change()
+  
   # get a name for a MIDI note number
   def name_of_pitch(self, pitch):
     # snap to the closest whole number
     pitch = int(round(pitch))
-    # look it up in the list of pitch classes
+    # see if there's a user-defined mapping for it
+    if (pitch in self._pitch_names):
+      return(self._pitch_names[pitch])
+    # otherwise look it up in the list of pitch classes
     return(self.PITCH_CLASS_NAMES[pitch % 12])
     
   # the total length of time of the track content (in seconds)

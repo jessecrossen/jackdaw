@@ -43,9 +43,14 @@ class DocumentWindow(Gtk.Window):
     self.outer_box.homogenous = False
     self.add(self.outer_box)
     self.outer_box.pack_start(self.menu.toolbar, False, False, 0)
-    self.doc_box = Gtk.Box.new(Gtk.Orientation.HORIZONTAL, 0)
-    self.doc_box.homogenous = False
-    self.outer_box.pack_end(self.doc_box, True, True, 0)
+    self.panes = Gtk.Paned.new(Gtk.Orientation.HORIZONTAL)
+    self.outer_box.pack_end(self.panes, True, True, 0)
+    self.header_frame = Gtk.Frame.new('')
+    self.header_frame.set_border_width(2)
+    self.panes.pack1(self.header_frame, False, False)
+    self.tracks_frame = Gtk.Frame.new('')
+    self.tracks_frame.set_border_width(2)
+    self.panes.pack2(self.tracks_frame, True, True)
     # initialize state
     self.control_surface = None
     self.transport = None
@@ -94,13 +99,13 @@ class DocumentWindow(Gtk.Window):
     # add a view for track headers
     self.track_headers_view = views.TrackListHeaderView(
       tracks=self.document.tracks)
-    self.doc_box.pack_start(self.track_headers_view, False, False, 0)
-    self.track_headers_view.set_size_request(100, 100)
+    self.header_frame.add(self.track_headers_view)
+    self.track_headers_view.set_size_request(90, 80)
     # add a view for the document's tracks
     self.tracks_view = views.TrackListView(
       tracks=self.document.tracks, 
       transport=self.transport)
-    self.doc_box.pack_end(self.tracks_view, True, True, 0)
+    self.tracks_frame.add(self.tracks_view)
     # bind the menu to the new items
     self._bind_menu()
     # show any new views
