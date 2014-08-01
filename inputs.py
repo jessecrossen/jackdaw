@@ -223,7 +223,7 @@ class NanoKONTROL2(Device):
             if (track.arm):
               track.arm = False
             else:
-              for arm_track in self.mixer:
+              for arm_track in self.mixer.tracks:
                 arm_track.arm = (arm_track is track)
     else:
       print('NanoKONTROL2: Unhandled message type %02X' % (controller))

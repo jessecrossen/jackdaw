@@ -1,17 +1,19 @@
 from gi.repository import Gdk
 
 class Rectangle(Gdk.Rectangle):
-  def __init__(self, x=0, y=0, width=0, height=0):
-    Gdk.Rectangle.__init__(self)
-    self.x = x
-    self.y = y
-    self.width = width
-    self.height = height
+  def __new__(cls, x=0, y=0, width=0, height=0):
+    r = Gdk.Rectangle.__new__(cls)
+    r.x = x
+    r.y = y
+    r.width = width
+    r.height = height
+    return(r)
   # make a friendlier display of the rectangle
-  def __str__(self):
-    return('Rectangle(%.1f, %.1f, %.1f, %.1f)' % 
+  def __repr__(self):
+    return('Rectangle(%d, %d, %d, %d)' % 
             (self.x, self.y, self.width, self.height))
   # return whether the rectangle contains the given point
   def contains(self, x, y):
     return((x >= self.x) and (x <= self.x + self.width) and
            (y >= self.y) and (y <= self.y + self.height))
+
