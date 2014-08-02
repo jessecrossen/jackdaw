@@ -504,11 +504,7 @@ class BlockView(DrawableView):
     fg = style.get_color(state)
     selected = ((state & Gtk.StateFlags.SELECTED) != 0)
     backdrop = ((state & Gtk.StateFlags.BACKDROP) != 0)
-    # fill the background when selected
-    if ((selected) and (not backdrop)):
-      cr.set_source_rgba(bg.red, bg.green, bg.blue, 0.75)
-      cr.rectangle(0, 0, width, height)
-      cr.fill()
+    selection = ViewManager.selection
     # set up cairo to paint the given object
     def set_color_for(obj, alpha=1.0):
       if ((obj in selection) and (not selected) and (not backdrop)):
@@ -516,6 +512,13 @@ class BlockView(DrawableView):
         cr.set_source_rgba(c.red, c.green, c.blue, alpha)
       else:
         cr.set_source_rgba(fg.red, fg.green, fg.blue, alpha)
+    # fill the background when selected
+    if (selected):
+      cr.set_source_rgba(bg.red, bg.green, bg.blue, 0.75)
+    else:
+      set_color_for(None, 0.05)
+    cr.rectangle(0, 0, width, height)
+    cr.fill()
     # cache the pitch list for speed
     pitches = self.pitches
     # get the pitches that are being used in the block
@@ -543,28 +546,17 @@ class BlockView(DrawableView):
         cr.line_to(px, height)
         cr.stroke()
         x += x_step
-    # get the set of selected elements
-    selection = ViewManager.selection
     # get the distance after which notes start being repeated
     repeat_width = self.repeat_width
     # draw the repeat sign
-    if (repeat_width <= width):
-      x = self.x_of_time(self.repeat_time)
+    if (self.repeat.time < self.ending.time):
       set_color_for(self.repeat, 0.75)
-      cr.set_line_width(2)
-      cr.move_to(x, 0)
-      cr.line_to(x, height)
-      cr.stroke()
-      cr.set_line_width(1)
-      x -= 3.5
-      cr.move_to(x, 0)
-      cr.line_to(x, height)
-      cr.stroke()
-      x -= 4.5
-      y = round(height / 2)
-      cr.arc(x, y - 5, 1.5, 0, 2 * math.pi)
-      cr.arc(x, y + 5, 1.5, 0, 2 * math.pi)
-      cr.fill()
+      self.draw_repeat(cr)
+    # draw end caps
+    set_color_for(None, 0.75)
+    self.draw_cap(cr, self.x_of_time(0), 6)
+    set_color_for(self.ending, 0.75)
+    self.draw_cap(cr, self.x_of_time(self.ending.time), -6)
     # draw boxes for all events with pitch
     for event in self.block.events:
       # skip events without pitch and time
@@ -607,6 +599,38 @@ class BlockView(DrawableView):
         cr.fill()
         x += repeat_width
   
+  # draw the repeat sign
+  def draw_repeat(self, cr):
+    x = self.x_of_time(self.repeat_time)
+    cr.set_line_width(2)
+    cr.move_to(x, 0)
+    cr.line_to(x, self._height)
+    cr.stroke()
+    cr.set_line_width(1)
+    x -= 3.5
+    cr.move_to(x, 0)
+    cr.line_to(x, self._height)
+    cr.stroke()
+    x -= 4.5
+    y = round(self._height / 2)
+    cr.arc(x, y - 5, 1.5, 0, 2 * math.pi)
+    cr.arc(x, y + 5, 1.5, 0, 2 * math.pi)
+    cr.fill()
+  # draw the left and right caps
+  def draw_cap(self, cr, x, w):
+    sign = (w / abs(w))
+    inner = w - (2 * sign)
+    cr.move_to(x - sign, 0)
+    cr.rel_line_to(w, 0)
+    cr.rel_line_to(0, 1)
+    cr.rel_line_to(- inner, 1)
+    cr.rel_line_to(0, self._height - 4)
+    cr.rel_line_to(inner, 1)
+    cr.rel_line_to(0, 1)
+    cr.rel_line_to(- w, 0)
+    cr.close_path()
+    cr.fill()
+    
   # return the note(s) under the given position, if any
   def notes_at_pos(self, x, y):
     # convert the position to pitch and time
@@ -637,7 +661,10 @@ class BlockView(DrawableView):
     notes = self.notes_at_pos(x, y)
     if (len(notes) > 0):
       return(notes)
-    rx = self.x_of_time(self.repeat_time)
+    ex = self.x_of_time(self.ending.time)
+    if (x >= ex - 8):
+      return((self.ending,))
+    rx = self.x_of_time(self.repeat.time)
     if ((x >= rx - 6) and (x <= rx + 1)):
       return((self.repeat,))
     # if nothing else is under the selection, select the block itself
@@ -896,15 +923,22 @@ class BlockView(DrawableView):
       return(True)
     # move objects in time
     time_step = self.time_of_x(1)
+    alter_divisions = False
     if (state == Gdk.ModifierType.SHIFT_MASK):
       time_step = float(self.repeat_time)
       if (self.block.events.divisions > 0):
-        time_step /= self.block.events.divisions    
+        time_step /= self.block.events.divisions
+        if (self.repeat in ViewManager.selection):
+          alter_divisions = True
     time_delta = 0
     if (keyval == Gdk.KEY_Left):
       time_delta = - time_step
+      if ((alter_divisions) and (self.block.events.divisions > 1)):
+        self.block.events.divisions -= 1
     elif (keyval == Gdk.KEY_Right):
       time_delta = time_step
+      if (alter_divisions):
+        self.block.events.divisions += 1
     # move blocks in track space and notes in pitch space
     blocks_only = True
     notes_only = True

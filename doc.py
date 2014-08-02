@@ -186,7 +186,7 @@ class Block(Model):
             times.add(time)
             time += repeat_time
       time = 0.0
-      while (time < self.duration):
+      while ((time < self.duration) and (repeat_time > 0)):
         times.add(time)
         time += repeat_time
       self._times = list(times)
