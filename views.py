@@ -204,6 +204,8 @@ class Interactive(object):
     # initialize state
     self._down = None
     self.dragging = None
+    # keep a dictionary of cursor areas
+    self.cursor_areas = dict()
     # allow the control to receive focus
     self.set_can_focus(True)
     # hook to events
@@ -235,6 +237,13 @@ class Interactive(object):
     self.dragging = None
   def on_pointer_motion(self, target, event):
     if (self._down is None):
+      # update the cursor
+      for (area, cursor) in self.cursor_areas.iteritems():
+        if ((event.x >= area.x) and (event.x <= area.x + area.width) and
+            (event.y >= area.y) and (event.y <= area.y + area.height)):
+          self.get_window().set_cursor(cursor)
+          return
+      self.get_window().set_cursor(None)
       return
     if (self.dragging is None):
       dx = abs(event.x - self._down['x'])
@@ -424,13 +433,18 @@ class LayoutView(View, Gtk.Layout):
 class BlockView(DrawableView):
   def __init__(self, block):
     DrawableView.__init__(self, block)
+    self.make_transparent()
+    self.make_interactive()
     self._pitches = None
     self.ending = observable.AttributeProxy(
       self.block, 'time', 'duration')
+    self.ending_area = geom.Rectangle(x=-100, width=6)
+    self.cursor_areas[self.ending_area] = Gdk.Cursor.new(
+      Gdk.CursorType.RIGHT_SIDE)
     self.repeat = observable.AttributeProxy(
       self.block.events, 'time', 'duration')
-    self.make_transparent()
-    self.make_interactive()
+    self.repeat_area = geom.Rectangle(x=-100, width=6)
+    
   # expose 'block' as an alternate name for 'model' for readability
   @property
   def block(self):
@@ -556,7 +570,10 @@ class BlockView(DrawableView):
     set_color_for(None, 0.75)
     self.draw_cap(cr, self.x_of_time(0), 6)
     set_color_for(self.ending, 0.75)
-    self.draw_cap(cr, self.x_of_time(self.ending.time), -6)
+    x = self.x_of_time(self.ending.time)
+    self.draw_cap(cr, x, -6)
+    self.ending_area.x = x - self.ending_area.width
+    self.ending_area.height = height
     # draw boxes for all events with pitch
     for event in self.block.events:
       # skip events without pitch and time
@@ -602,6 +619,8 @@ class BlockView(DrawableView):
   # draw the repeat sign
   def draw_repeat(self, cr):
     x = self.x_of_time(self.repeat_time)
+    self.repeat_area.x = x - self.repeat_area.width
+    self.repeat_area.height = self._height
     cr.set_line_width(2)
     cr.move_to(x, 0)
     cr.line_to(x, self._height)
@@ -661,8 +680,7 @@ class BlockView(DrawableView):
     notes = self.notes_at_pos(x, y)
     if (len(notes) > 0):
       return(notes)
-    ex = self.x_of_time(self.ending.time)
-    if (x >= ex - 8):
+    if (self.ending_area.contains(x, y)):
       return((self.ending,))
     rx = self.x_of_time(self.repeat.time)
     if ((x >= rx - 6) and (x <= rx + 1)):
@@ -1238,6 +1256,7 @@ class TrackListBackgroundView(DrawableView):
 class PitchKeyView(LayoutView):
   def __init__(self, track, track_view):
     LayoutView.__init__(self, track)
+    self.make_interactive()
     self._labels = dict()
     self._in_layout = False
     self.set_size_request(30, 80)
@@ -1246,7 +1265,9 @@ class PitchKeyView(LayoutView):
     self.entry.connect('changed', self.on_edit)
     self.entry.connect('focus-out-event', self.on_end_edit)
     self._editing_pitch = None
-    self.make_interactive()
+    self.editable_area = geom.Rectangle()
+    self.cursor_areas[self.editable_area] = Gdk.Cursor.new(
+      Gdk.CursorType.XTERM)
   # expose 'track' as an alternate name for 'model' for readability
   @property
   def track(self):
@@ -1284,6 +1305,10 @@ class PitchKeyView(LayoutView):
       for (pitch, label) in old_labels.iteritems():
         label.destroy()
         del self._labels[pitch]
+      # update the editable area
+      self.editable_area.width = width
+      self.editable_area.y = ty
+      self.editable_area.height = self.track_view._height
     self._in_layout = False
   # activate the entry when a pitch is clicked
   def on_click(self, x, y, state):
@@ -1320,20 +1345,27 @@ class PitchKeyView(LayoutView):
 class TrackMixerView(DrawableView):
   def __init__(self, track):
     DrawableView.__init__(self, track)
+    self.make_interactive()
     self.level_rect = geom.Rectangle()
     self.pan_rect = geom.Rectangle()
     self.mute_rect = geom.Rectangle()
     self.solo_rect = geom.Rectangle()
     self.arm_rect = geom.Rectangle()
+    self.handle_rect = geom.Rectangle()
+    self.cursor_areas[self.pan_rect] = Gdk.Cursor.new(
+      Gdk.CursorType.SB_H_DOUBLE_ARROW)
+    self.cursor_areas[self.level_rect] = Gdk.Cursor.new(
+      Gdk.CursorType.SB_V_DOUBLE_ARROW)
+    self.cursor_areas[self.handle_rect] = Gdk.Cursor.new(
+      Gdk.CursorType.SB_V_DOUBLE_ARROW)
     self._draggable_areas = ( self.level_rect, self.pan_rect )
     self._dragging_target = None
-    self.make_interactive()
     self.set_size_request(60, 80)
   # expose 'track' as an alternate name for 'model' for readability
   @property
   def track(self):
     return(self._model)
-  # draw the header
+  # draw the mixer controls
   def redraw(self, cr, width, height):
     # get style
     style = self.get_style_context()
@@ -1347,6 +1379,8 @@ class TrackMixerView(DrawableView):
       (width - handle_width - (3 * spacing)) / 2)
     button_spacing = 4
     # draw the drag handle
+    self.handle_rect.width = 8
+    self.handle_rect.height = height
     x = 2
     w = handle_width - 4
     cr.set_source_rgba(fg.red, fg.green, fg.blue, 0.2)
@@ -1365,7 +1399,8 @@ class TrackMixerView(DrawableView):
     x = handle_width + spacing
     self.pan_rect.x = x
     self.pan_rect.y = 0
-    self.pan_rect.width = self.pan_rect.height = level_width
+    self.pan_rect.width = level_width
+    self.pan_rect.height = math.ceil(level_width / 2) + spacing
     self.level_rect.x = x
     self.level_rect.y = self.pan_rect.y + self.pan_rect.height
     self.level_rect.width = level_width
@@ -1391,15 +1426,27 @@ class TrackMixerView(DrawableView):
     # draw the pan control
     cr.set_source_rgba(fg.red, fg.green, fg.blue, 1.0)
     cr.set_line_width(2)
-    x = self.pan_rect.x + (self.pan_rect.width / 2)
-    x += self.track.pan * ((self.pan_rect.width / 2) - 1)
-    x = round(x)
-    cr.move_to(x, self.pan_rect.y)
-    cr.line_to(x, self.pan_rect.y + self.pan_rect.height)
+    radius = (self.pan_rect.width / 2)
+    cr.save()
+    cr.translate(self.pan_rect.x + (self.pan_rect.width / 2),
+                 self.pan_rect.y + self.pan_rect.height - spacing)
+    cr.rotate(self.track.pan * (math.pi / 2))
+    cr.move_to(0, - radius)
+    cr.line_to(0, -1)
     cr.stroke()
+    cr.move_to(0, 0)
+    cr.line_to(-3, -4)
+    cr.line_to(3, -4)
+    cr.close_path()
+    cr.fill()
+    cr.restore()
     # draw the mixer bar
+    cr.set_source_rgba(fg.red, fg.green, fg.blue, 0.1)
+    cr.rectangle(self.level_rect.x, self.level_rect.y, 
+                 self.level_rect.width, self.level_rect.height)
+    cr.fill()
     h = max(2, round(self.level_rect.height * self.track.level))
-    cr.set_source_rgba(fg.red, fg.green, fg.blue, 0.25)
+    cr.set_source_rgba(fg.red, fg.green, fg.blue, 0.15)
     y = self.level_rect.y + self.level_rect.height - h
     cr.rectangle(self.level_rect.x, y, self.level_rect.width, h)
     cr.fill()
