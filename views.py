@@ -770,7 +770,7 @@ class BlockView(DrawableView):
             time_delta = self._snap_delta
             ViewManager.snapped_time = target_time + self._snap_delta
       else:
-        if (abs(time_delta) > ViewManager.snap_window):
+        if (abs(time_delta - self._snap_delta) > ViewManager.snap_window):
           ViewManager.snapped_time = None
           time_delta -= self._snap_delta
           self._snap_delta = 0
