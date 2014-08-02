@@ -686,6 +686,7 @@ class BlockView(DrawableView):
   def on_click(self, x, y, state):
     self.begin_action()
     self.select_at(x, y, state)
+    ViewManager.focused = self.block
     self.end_action()
     return(True)
   def select_at(self, x, y, state):
@@ -714,6 +715,7 @@ class BlockView(DrawableView):
     # store state before dragging starts
     self.begin_action()
     # update the selection based on the current click
+    ViewManager.focused = self.block
     selection = ViewManager.selection
     dragging_selected = False
     events = self.notes_at_pos(x, y)
@@ -922,7 +924,7 @@ class BlockView(DrawableView):
       self.end_action()
       return(True)
     # move objects in time
-    time_step = self.time_of_x(1)
+    time_step = self.time_of_x(1) - self.time_of_x(0)
     alter_divisions = False
     if (state == Gdk.ModifierType.SHIFT_MASK):
       time_step = float(self.repeat_time)
@@ -1126,6 +1128,8 @@ class TrackListView(LayoutView):
   # deselect when the user clicks
   def on_click(self, x, y, state):
     ViewManager.clear_selection()
+    ViewManager.focused = None
+    self.grab_focus()
     return(True)
   # move a block from one track to another
   def move_block(self, block, from_index, to_index):
@@ -1234,9 +1238,15 @@ class TrackListBackgroundView(DrawableView):
 class PitchKeyView(LayoutView):
   def __init__(self, track, track_view):
     LayoutView.__init__(self, track)
-    self._entries = dict()
+    self._labels = dict()
     self._in_layout = False
     self.set_size_request(30, 80)
+    self.entry = Gtk.Entry()
+    self.entry.set_alignment(1.0)
+    self.entry.connect('changed', self.on_edit)
+    self.entry.connect('focus-out-event', self.on_end_edit)
+    self._editing_pitch = None
+    self.make_interactive()
   # expose 'track' as an alternate name for 'model' for readability
   @property
   def track(self):
@@ -1245,7 +1255,7 @@ class PitchKeyView(LayoutView):
   def layout(self, width, height):
     self._in_layout = True
     # save old entries
-    old_entries = dict(self._entries)
+    old_labels = dict(self._labels)
     # draw the pitch labels
     ty = 0
     if (self.track_view):
@@ -1254,46 +1264,57 @@ class PitchKeyView(LayoutView):
       for pitch in self.track.pitches:
         y = self.track_view.y_of_pitch(pitch)
         # make an entry widget for the pitch
-        if (pitch in self._entries):
-          entry = self._entries[pitch]
-          del old_entries[pitch]
+        if (pitch in self._labels):
+          label = self._labels[pitch]
+          del old_labels[pitch]
         else:
-          entry = Gtk.Entry()
-          entry.set_alignment(1.0)
-          entry.set_has_frame(False)
-          entry.connect('changed', self.on_edit)
-          self._entries[pitch] = entry
-          self.add(entry)
+          label = Gtk.Label()
+          label.set_alignment(1.0, 0.5)
+          self._labels[pitch] = label
+          self.add(label)
         if (y is None): continue
         y = y + ty - math.floor(h / 2)
         name = self.track.name_of_pitch(pitch)
-        if (not entry.has_focus()):
-          entry.set_text(name)
-        entry.size_allocate(geom.Rectangle(0, y, width, h))
+        label.set_text(name)
+        r = geom.Rectangle(0, y, width, h)
+        label.size_allocate(r)
+        if (pitch == self._editing_pitch):
+          self.entry.size_allocate(r)
       # remove unused entry widgets
-      for (pitch, entry) in old_entries.iteritems():
-        entry.destroy()
-        del self._entries[pitch]
+      for (pitch, label) in old_labels.iteritems():
+        label.destroy()
+        del self._labels[pitch]
     self._in_layout = False
+  # activate the entry when a pitch is clicked
+  def on_click(self, x, y, state):
+    for (pitch, label) in self._labels.iteritems():
+      r = label.get_allocation()
+      if ((y >= r.y) and (y <= r.y + r.height)):
+        if (self._editing_pitch is not None):
+          self.on_end_edit()
+        self.add(self.entry)
+        self.entry.size_allocate(r)
+        self.entry.set_text(self.track.name_of_pitch(pitch))
+        self.entry.grab_focus()
+        self._editing_pitch = pitch
   # respond to a text entry being edited
-  def on_edit(self, entry):
-    if (not self._in_layout):
-      # find which pitch this entry is for
-      pitch = None
-      for (pitch, stored_entry) in self._entries.iteritems():
-        if (stored_entry is entry):
-          pitch = pitch
-          break
-      # update the track's pitch-to-name map
-      if (pitch is not None):
-        ViewManager.begin_action(self.track, 1000)
-        name = entry.get_text()
-        if (len(name) > 0):
-          self.track.pitch_names[pitch] = name
-        # if the user erases the pitch name, 
-        #  revert to the default one
-        elif (pitch in self.track.pitch_names):
-          del self.track.pitch_names[pitch]
+  def on_edit(self, *args):
+    # update the track's pitch-to-name map
+    if (self._editing_pitch is not None):
+      ViewManager.begin_action(self.track, 1000)
+      name = self.entry.get_text()
+      if (len(name) > 0):
+        self.track.pitch_names[self._editing_pitch] = name
+      # if the user erases the pitch name, 
+      #  revert to the default one
+      elif (self._editing_pitch in self.track.pitch_names):
+        del self.track.pitch_names[self._editing_pitch]
+        self.track.on_change()
+  # stop editing when the entry loses focus
+  def on_end_edit(self, *args):
+    if (self._editing_pitch is not None):
+      self._editing_pitch = None
+      self.remove(self.entry)
 
 # display mixer controls for a track
 class TrackMixerView(DrawableView):

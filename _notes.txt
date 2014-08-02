@@ -1,7 +1,6 @@
 - note input
 - instrument selection
 - midi serialization
-- arrow keys are getting captured by accessibility navigation
 - accelerators are not working right
 - pan should be a spinning arrow indicating apparent direction
 - make filters that can alter the characteristics of underlying notes at play-time (e.g. quantize, timewarp)
