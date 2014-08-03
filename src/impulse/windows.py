@@ -1,34 +1,11 @@
-#!/usr/bin/env python
-
 import os, sys
 
 from gi.repository import Gtk, Gdk
 
-import doc
-import views
-import inputs
-import controllers
 import menu
-
-def dummy_document():
-  d = doc.Document()
-  e = doc.EventList(duration=4, divisions=8)
-  e.append(doc.Note(time=0, duration=0.5, pitch=32))
-  e.append(doc.Note(time=0.5, duration=1, pitch=33, velocity=0.75))
-  e.append(doc.Note(time=1.5, duration=0, pitch=32, velocity=0.25))
-  e.append(doc.Note(time=2, duration=2, pitch=31, velocity=0.5))
-  b1 = doc.Block(e, duration=8)
-  e2 = doc.EventList(duration=4)
-  e2.append(doc.Note(time=0, duration=1, pitch=30))
-  b2 = doc.Block(e2, time=10, duration=4)
-  t = doc.Track(duration=20)
-  t.append(b1)
-  t.append(b2)
-  d.tracks.append(t)
-  t2 = doc.Track(duration=20)
-  t2.append(doc.Block(e, time=3, duration=4))
-  d.tracks.append(t2)
-  return(d)
+from models import doc, controllers
+import views.track
+from midi import inputs
 
 class DocumentWindow(Gtk.Window):
   def __init__(self):
@@ -88,7 +65,7 @@ class DocumentWindow(Gtk.Window):
       self.track_headers_view.destroy()
       self.track_headers_view = None
     # dump the undo stack and clear the selection
-    views.ViewManager = views.ViewManagerSingleton()
+    views.core.ViewManager = views.core.ViewManagerSingleton()
   # attach to a new document
   def attach(self):
     # make a mixer and transport
@@ -97,12 +74,12 @@ class DocumentWindow(Gtk.Window):
     self.control_surface = inputs.NanoKONTROL2(
       transport=self.transport, mixer=self.mixer)
     # add a view for track headers
-    self.track_headers_view = views.TrackListHeaderView(
+    self.track_headers_view = views.track.TrackListHeaderView(
       tracks=self.document.tracks)
     self.header_frame.add(self.track_headers_view)
     self.track_headers_view.set_size_request(90, 80)
     # add a view for the document's tracks
-    self.tracks_view = views.TrackListView(
+    self.tracks_view = views.track.TrackListView(
       tracks=self.document.tracks, 
       transport=self.transport)
     self.tracks_frame.add(self.tracks_view)
@@ -126,7 +103,7 @@ class DocumentWindow(Gtk.Window):
     self._bind_action(self.menu.play_action, t.play)
     self._bind_action(self.menu.record_action, t.record)
     # undo/redo
-    vm = views.ViewManager
+    vm = views.core.ViewManager
     self._bind_action(self.menu.undo_action, vm.undo)
     self._bind_action(self.menu.redo_action, vm.redo)
     # update menu state
@@ -137,7 +114,7 @@ class DocumentWindow(Gtk.Window):
   def _unbind_menu(self):
     for (action, handler) in self._menu_bindings:
       action.disconnect(handler)
-    views.ViewManager.remove_observer(self.update_menu_state)
+    views.core.ViewManager.remove_observer(self.update_menu_state)
     self.document.tracks.remove_observer(self.update_menu_state)
   # bind to an action and remember the binding
   def _bind_action(self, action, callback):
@@ -145,7 +122,7 @@ class DocumentWindow(Gtk.Window):
     self._menu_bindings.append((action, handler))
   # reflect changes to models in the menu
   def update_menu_state(self):
-    vm = views.ViewManager
+    vm = views.core.ViewManager
     self.menu.undo_action.set_sensitive(vm.can_undo)
     self.menu.redo_action.set_sensitive(vm.can_redo)
     # only allow recording if a track is armed
@@ -155,17 +132,4 @@ class DocumentWindow(Gtk.Window):
         track_armed = True
         break
     self.menu.record_action.set_sensitive(track_armed)
-  
-class App:
-  def __init__(self):
-    self.win = DocumentWindow()
-    self.win.document = dummy_document()
-    self.win.connect("delete-event", Gtk.main_quit)
-    self.win.show_all()
-  
-  def run(self):
-    Gtk.main()
-
-app = App()
-app.run()
 

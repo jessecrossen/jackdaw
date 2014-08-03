@@ -3,7 +3,7 @@ import rtmidi
 
 from gi.repository import GLib, GObject
 
-import observable
+from ..common import observable
 
 # handle MIDI input events when the UI is idling
 _devices = set()

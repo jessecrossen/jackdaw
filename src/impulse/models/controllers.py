@@ -2,7 +2,7 @@ import time
 
 from gi.repository import GLib
 
-import observable
+from ..common import observable
 
 # a transport controller to keep track of timepoints, playback, and recording
 class Transport(observable.Object):
