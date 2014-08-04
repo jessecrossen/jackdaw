@@ -1,6 +1,7 @@
 # coding=utf-8
 
 import sys
+import copy
 
 from ..common import observable
 
@@ -81,6 +82,12 @@ class Note(Model):
     if (self._velocity != value):
       self._velocity = value
       self.on_change()
+  # define a copy operation for notes
+  def __copy__(self):
+    return(Note(time=self.time, 
+                pitch=self.pitch,
+                velocity=self.velocity,
+                duration=self.duration))
 
 # represents a series of events grouped into a logical block with a duration
 class EventList(ModelList):
@@ -142,11 +149,21 @@ class EventList(ModelList):
 class Block(Model):
   def __init__(self, events, time=0, duration=0):
     Model.__init__(self)
-    self.events = events
-    self.events.add_observer(self.on_change)
+    self._events = events
+    self._events.add_observer(self.on_change)
     self._time = time
     self._duration = duration
   
+  # the events in the block
+  @property
+  def events(self):
+    return(self._events)
+  @events.setter
+  def events(self, value):
+    self._events.remove_observer(self.on_change)
+    self._events = value
+    self._events.add_observer(self.on_change)
+    self.on_change()
   # the time relative to the beginning of its container when the block 
   #  begins playing (in seconds)
   @property
@@ -177,9 +194,9 @@ class Block(Model):
   def times(self):
     if (self._times == None):
       times = set()
+      repeat_time = self.events.duration
       for time in self.events.times:
         times.add(time)
-        repeat_time = self.events.duration
         if (repeat_time > 0):
           time += repeat_time
           while (time < self.duration):
@@ -196,6 +213,111 @@ class Block(Model):
   @property
   def pitches(self):
     return(self.events.pitches)
+  
+  # join repeats into one event list
+  def join_repeats(self):
+    repeat_time = self.events.duration
+    if (repeat_time >= self.duration): return
+    new_events = EventList(duration=self.duration)
+    time = 0
+    while ((time < self.duration) and (repeat_time > 0)):
+      for event in self.events:
+        if (time + event.time < self.duration):
+          new_event = copy.copy(event)
+          new_event.time += time
+          new_events.append(new_event)
+      time += repeat_time
+    self.events = new_events
+  
+  # join multiple blocks into this block
+  def join(self, blocks, tracks=None):
+    # make sure the list of blocks includes this one
+    blocks = set(blocks)
+    blocks.add(self)
+    # get the timespan of the blocks
+    mintime = self.time
+    maxtime = self.time + self.events.duration
+    for block in blocks:
+      mintime = min(block.time, mintime)
+      maxtime = max(block.time + block.events.duration, maxtime)
+      # join repeated sections in the source blocks
+      block.join_repeats()
+    # make a new event list for the joined events
+    new_events = EventList(duration=(maxtime - mintime))
+    # copy events into the joined list
+    for block in blocks:
+      for event in block.events:
+        event_copy = copy.copy(event)
+        event_copy.time += (block.time - mintime)
+        new_events.append(event_copy)
+    # sort events by time
+    new_events.sort(key=lambda e: e.time)
+    # update the extents of this block
+    self._time = mintime
+    self._duration = (maxtime - mintime)
+    # swap in the new event list for this block
+    self.events = new_events
+    # remove all other blocks if possible
+    blocks.remove(self)
+    if (tracks is not None):
+      for track in tracks:
+        track_blocks = list(track)
+        for block in track_blocks:
+          if (block in blocks):
+            track.remove(block)
+  
+  # break apart repeats of the block's events into new blocks
+  def split_repeats(self, track):
+    repeat_time = self.events.duration
+    if (repeat_time >= self.duration): return
+    time = repeat_time
+    while ((time < self.duration) and (repeat_time > 0)):
+      event_list = EventList(duration=repeat_time)
+      for event in self.events:
+        new_event = copy.copy(event)
+        event_list.append(new_event)
+      start_time = self.time + time
+      end_time = min(start_time + repeat_time, self.time + self.duration)
+      block = Block(event_list, 
+                    time=start_time,
+                    duration=(end_time - start_time))
+      track.append(block)
+      time += repeat_time
+    self.duration = repeat_time
+  
+  # split the block on the given time boundaries
+  def split(self, times, track):
+    event_lists = [ ]
+    times = list(times)
+    times.sort()
+    if (times[0] != 0.0):
+      times.insert(0, 0.0)
+    if (times[-1] != self.duration):
+      times.append(self.duration)
+    # move existing events into time ranges
+    unsorted_events = set(self.events)
+    for i in range(1, len(times)):
+      still_unsorted_events = set()
+      start_time = times[i - 1]
+      end_time = times[i]
+      event_list = EventList(duration=(end_time - start_time))
+      for event in unsorted_events:
+        if (event.time < end_time):
+          new_event = copy.copy(event)
+          new_event.time -= start_time
+          event_list.append(new_event)
+        else:
+          still_unsorted_events.add(event)
+      event_lists.append(event_list)
+      unsorted_events = still_unsorted_events
+    # make this block contain the first set of events
+    self._duration = event_lists[0].duration
+    self.events = event_lists[0]
+    for i in range(1, len(event_lists)):
+      block = Block(event_lists[i], 
+        time=self.time + times[i],
+        duration=event_lists[i].duration)
+      track.append(block)
   
 # represent a track, which can contain multiple blocks
 class Track(ModelList):

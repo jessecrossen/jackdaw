@@ -4,7 +4,7 @@ from gi.repository import Gtk, Gdk
 
 from ..common import observable
 import geom
-from core import DrawableView, ViewManager
+from core import DrawableView, ContextMenu, ViewManager
 
 # make a view that shows the events in a block
 class BlockView(DrawableView):
@@ -12,14 +12,14 @@ class BlockView(DrawableView):
     DrawableView.__init__(self, block)
     self.make_transparent()
     self.make_interactive()
+    self._menu = None
     self._pitches = None
     self.ending = observable.AttributeProxy(
       self.block, 'time', 'duration')
     self.ending_area = geom.Rectangle(x=-100, width=6)
     self.cursor_areas[self.ending_area] = Gdk.Cursor.new(
       Gdk.CursorType.RIGHT_SIDE)
-    self.repeat = observable.AttributeProxy(
-      self.block.events, 'time', 'duration')
+    self.repeat = None
     self.repeat_area = geom.Rectangle(x=-100, width=6)
     
   # expose 'block' as an alternate name for 'model' for readability
@@ -140,7 +140,7 @@ class BlockView(DrawableView):
     # get the distance after which notes start being repeated
     repeat_width = self.repeat_width
     # draw the repeat sign
-    if (self.repeat.time < self.ending.time):
+    if (self.repeat_time < self.ending.time):
       set_color_for(self.repeat, 0.75)
       self.draw_repeat(cr)
     # draw end caps
@@ -259,8 +259,11 @@ class BlockView(DrawableView):
       return(notes)
     if (self.ending_area.contains(x, y)):
       return((self.ending,))
-    rx = self.x_of_time(self.repeat.time)
-    if ((x >= rx - 6) and (x <= rx + 1)):
+    if (self.repeat_area.contains(x, y)):
+      if ((self.repeat is None) or 
+          (self.repeat.target is not self.block.events)):
+        self.repeat = observable.AttributeProxy(
+          self.block.events, 'time', 'duration')
       return((self.repeat,))
     # if nothing else is under the selection, select the block itself
     return((self.block,))
@@ -570,3 +573,101 @@ class BlockView(DrawableView):
       return(True)
     return(False)
 
+  # show a context menu for the block
+  def on_context(self, event):
+    if (self._menu is None):
+      tracks = None
+      tracks_view = self.get_parent_with_attribute('tracks')
+      if (tracks_view):
+        tracks = tracks_view.tracks
+      self._menu = BlockMenu(self.block, tracks=tracks)
+    self._menu.on_change()
+    self._menu.popup(None, None, None, None, 
+                     event.button, event.time)
+
+# make a context menu for blocks
+class BlockMenu(ContextMenu):
+  def __init__(self, block, tracks=None):
+    ContextMenu.__init__(self, block)
+    self.tracks = tracks
+    # add menu items
+    self.join_item = self.make_item('Join', self.on_join)
+    self.split_item = self.make_item('Split', self.on_split)
+    self.show_all()
+  @property
+  def block(self):
+    return(self._model)
+  def on_change(self):
+    # get all the selected blocks
+    selected = self.get_selected_blocks()
+    # if the block is the only one selected it can be split
+    self.split_item.set_sensitive((len(selected) == 0) or 
+      ((len(selected) == 1) and (self.block in selected)))
+    # if more than one block is selected, they can be joined
+    self.join_item.set_sensitive(
+      (len(selected) == 0) or (self.block in selected))
+  # get all blocks in the selection
+  def get_selected_blocks(self):
+    blocks = set()
+    for item in ViewManager.selection:
+      if (hasattr(item, 'events')):
+        blocks.add(item)
+    return(blocks)
+  # get selected events within the current block
+  def get_selected_notes(self):
+    block_events = set(self.block.events)
+    selected_events = set()
+    for item in ViewManager.selection:
+      if ((item in block_events) and (hasattr(item, 'pitch'))):
+        selected_events.add(item)
+    return(selected_events)
+  # join multiple blocks
+  def on_join(self, *args):
+    blocks = self.get_selected_blocks()
+    blocks.add(self.block)
+    ViewManager.begin_action((blocks, self.tracks))
+    if (len(blocks) > 1):
+      self.block.join(blocks, tracks=self.tracks)
+    else:
+      self.block.join_repeats()
+    ViewManager.end_action()
+  # split a block at selected note boundaries
+  def on_split(self, *args):
+    # find the track this block is in so we can place 
+    #  the new split-off blocks somewhere
+    track = None
+    if (self.tracks):
+      for search_track in self.tracks:
+        if (self.block in search_track):
+          track = search_track
+          break
+    if (track is None): return
+    # if the block has multiple repeats, split the repeats
+    if (self.block.events.duration < self.block.duration):
+      ViewManager.begin_action(track)
+      self.block.split_repeats(track=track)
+      ViewManager.end_action()
+    else:
+      times = [ ]
+      # get selected events in the block
+      selected_events = self.get_selected_notes()
+      # if events are selected in the block, find boundaries 
+      #  between selected and deselected events
+      if (len(selected_events) > 0):
+        # sort all block events by time
+        events = list(self.block.events)
+        events.sort(key=lambda e: e.time)
+        # find boundaries
+        was_selected = (events[0] in selected_events)
+        for event in events:
+          # count notes only
+          if (not hasattr(event, 'pitch')): continue
+          is_selected = (event in selected_events)
+          if (is_selected != was_selected):
+            times.append(event.time)
+            was_selected = is_selected
+      # if there are times to split on, we can split
+      if (len(times) > 0):
+        ViewManager.begin_action((self.block, track))
+        self.block.split(times, track=track)
+        ViewManager.end_action()

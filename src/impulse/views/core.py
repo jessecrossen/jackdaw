@@ -230,8 +230,11 @@ class Interactive(object):
     
   # handle mouse events
   def on_button_press(self, target, event):
-    # only register the primary button
-    if (event.button != 1): return
+    # expose the context menu
+    if (event.button == 3):
+      return(self.on_context(event))
+    # otherwise only register the primary button
+    if (event.button != 1): return(False)
     self._down = {
       'x': event.x,
       'y': event.y,
@@ -280,6 +283,9 @@ class Interactive(object):
       self._down = None
       return(result)
 
+  # override this and return True to pop up a context menu
+  def on_context(self, event):
+    return(False)
   # override this and return True to handle clicks
   def on_click(self, x, y, state):
     return(False)
@@ -433,3 +439,26 @@ class LayoutView(View, Gtk.Layout):
       return(pool[model])
     except KeyError:
       return(None)
+
+# make a base class for model-backed context menus
+class ContextMenu(Gtk.Menu):
+  def __init__(self, model):
+    Gtk.Menu.__init__(self)
+    self._model = model
+    try:
+      self._model.add_observer(self.on_change)
+    except AttributeError: pass
+  # expose the model the menu is presenting options for as a read-only property
+  @property
+  def model(self):
+    return(self._model)
+  # add a menu item and return it
+  def make_item(self, label, callback):
+    item = Gtk.MenuItem(label)
+    item.connect('activate', callback)
+    self.add(item)
+    return(item)
+    
+  # override to update which menu actions are available based on model state
+  def on_change(self):
+    pass

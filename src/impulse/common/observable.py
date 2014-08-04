@@ -91,11 +91,8 @@ class List(Observable, list):
   def reverse(self):
     list.reverse(self)
     self.on_change()
-  def sort(self, cmp=None):
-    if (cmp == None):
-      list.sort(self)
-    else:
-      list.sort(self, cmp=cmp)
+  def sort(self, **kwargs):
+    list.sort(self, **kwargs)
     self.on_change()
   # handle models being added and removed from the list
   def _add_item(self, item):
@@ -150,6 +147,9 @@ class AttributeProxy(Observable, object):
     self._target = target
     self._attribute_map = dict()
     self.proxy_attribute(from_name, to_name)
+  @property
+  def target(self):
+    return(self._target)
   # proxy an attribute, optionally using a different name for the target
   def proxy_attribute(self, from_name, to_name=None):
     if (from_name is None): return
