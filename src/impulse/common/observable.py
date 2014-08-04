@@ -5,20 +5,22 @@ class Observable():
   # add/remove a callback to be called when the object changes
   def add_observer(self, callback):
     try:
-      self._listeners.add(callback)
+      self._observers.add(callback)
     except AttributeError:
-      self._listeners = set((callback,))
+      self._observers = set((callback,))
   def remove_observer(self, callback):
     try:
-      self._listeners.remove(callback)
+      self._observers.remove(callback)
     except AttributeError:
-      self._listeners = set()
+      self._observers = set()
+    except KeyError:
+      pass
   # call this to notify all listeners that the object changed
   def on_change(self):
     try:
-      listeners = self._listeners
+      listeners = self._observers
     except AttributeError:
-      listeners = self._listeners = set()
+      listeners = self._observers = set()
     for callback in listeners:
       callback()
 

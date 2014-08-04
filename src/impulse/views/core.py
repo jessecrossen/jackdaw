@@ -10,6 +10,10 @@ import state
 class ViewManagerSingleton(observable.Object):
   def __init__(self):
     observable.Object.__init__(self)
+    self.reset()
+    
+  # reset the state of the manager
+  def reset(self):
     # a mapping from models to the views that represent them
     self._views = weakref.WeakValueDictionary()
     # the selected models
@@ -30,6 +34,7 @@ class ViewManagerSingleton(observable.Object):
     self._undo_stack = state.UndoStack()
     self._action_things = None
     self._end_action_timer = None
+    
   # keep track of the views representing each model, keeping one entry
   #  for each view of a particular class representing a particular model
   def register_view(self, model, view):
@@ -217,13 +222,16 @@ class Interactive(object):
   
   # handle keyboard events
   def on_key_press(self, widget, event):
-    return(self.on_key(event.keyval, event.state))
+    result = self.on_key(event.keyval, event.state)
+    return(result)
   # override this and return True to handle keyboard input
   def on_key(self, keyval, state):
     return(False)
     
   # handle mouse events
   def on_button_press(self, target, event):
+    # only register the primary button
+    if (event.button != 1): return
     self._down = {
       'x': event.x,
       'y': event.y,

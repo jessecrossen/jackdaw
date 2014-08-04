@@ -568,4 +568,5 @@ class BlockView(DrawableView):
                                existing_only=False)
         self.apply_track_delta(context, target, track_delta)
       return(True)
+    return(False)
 

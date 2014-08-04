@@ -1,25 +1,29 @@
 import os, sys
 
-from gi.repository import Gtk, Gdk
+from gi.repository import Gtk, Gdk, Gio
 
-import menu
 from models import doc, controllers
 import views.track
+from views.core import ViewManager
 from midi import inputs
 
-class DocumentWindow(Gtk.Window):
-  def __init__(self):
-    Gtk.Window.__init__(self)
+class DocumentWindow(Gtk.ApplicationWindow):
+  def __init__(self, app):
+    Gtk.ApplicationWindow.__init__(self, application=app,
+                                         title="Impulse")
     self._document = None
+    # bind to the application
+    self.app = app
     # set default size
     self.set_default_size(800, 600)
-    # make a menu and bind to it
-    self._make_menu()
+    # make a toolbar
+    self._make_actions()
+    self._make_toolbar()
     # make some widgets for the main content
     self.outer_box = Gtk.Box.new(Gtk.Orientation.VERTICAL, 0)
     self.outer_box.homogenous = False
     self.add(self.outer_box)
-    self.outer_box.pack_start(self.menu.toolbar, False, False, 0)
+    self.outer_box.pack_start(self.toolbar, False, False, 0)
     self.panes = Gtk.Paned.new(Gtk.Orientation.HORIZONTAL)
     self.outer_box.pack_end(self.panes, True, True, 0)
     self.header_frame = Gtk.Frame.new('')
@@ -51,7 +55,7 @@ class DocumentWindow(Gtk.Window):
       self.attach()
   # detach from the current document
   def detach(self):
-    self._unbind_menu()
+    self._unbind_actions()
     # detach from the old document
     self.transport = None
     self.mixer = None
@@ -65,7 +69,7 @@ class DocumentWindow(Gtk.Window):
       self.track_headers_view.destroy()
       self.track_headers_view = None
     # dump the undo stack and clear the selection
-    views.core.ViewManager = views.core.ViewManagerSingleton()
+    ViewManager.reset()
   # attach to a new document
   def attach(self):
     # make a mixer and transport
@@ -83,53 +87,86 @@ class DocumentWindow(Gtk.Window):
       tracks=self.document.tracks, 
       transport=self.transport)
     self.tracks_frame.add(self.tracks_view)
-    # bind the menu to the new items
-    self._bind_menu()
-    # show any new views
+    # bind actions for the new document
+    self._bind_actions()
+    # show the new controls
     self.show_all()
   
-  # make a menu
-  def _make_menu(self):
-    self.menu = menu.Menu(self)
-    # keep a list of menu bindings
-    self._menu_bindings = [ ]
-  # bind menu actions
-  def _bind_menu(self):
+  # make actions on the document
+  def _make_actions(self):
+    # undo/redo actions
+    self.undo_action = self.make_action('undo', '<Control>z')
+    self.redo_action = self.make_action('redo', '<Control><Shift>z')
+    # transport actions
+    self.back_action = self.make_action('transportBack')
+    self.forward_action = self.make_action('transportForward')
+    self.stop_action = self.make_action('transportStop')
+    self.play_action = self.make_action('transportPlay')
+    self.record_action = self.make_action('transportRecord')
+    # keep a list of action bindings so we can unbind them later
+    self._action_bindings = [ ]
+  # make an action with an optional accelerator
+  def make_action(self, name, accel=None):
+    action = Gio.SimpleAction.new(name, None)
+    if (accel):
+      self.app.add_accelerator(accel, 'win.'+name, None)
+    self.add_action(action)
+    return(action)
+  # bind document actions
+  def _bind_actions(self):
+    # undo/redo
+    self._bind_action(self.undo_action, ViewManager.undo)
+    self._bind_action(self.redo_action, ViewManager.redo)
     # transport
     t = self.transport
-    self._bind_action(self.menu.back_action, t.skip_back)
-    self._bind_action(self.menu.forward_action, t.skip_forward)
-    self._bind_action(self.menu.stop_action, t.stop)
-    self._bind_action(self.menu.play_action, t.play)
-    self._bind_action(self.menu.record_action, t.record)
-    # undo/redo
-    vm = views.core.ViewManager
-    self._bind_action(self.menu.undo_action, vm.undo)
-    self._bind_action(self.menu.redo_action, vm.redo)
-    # update menu state
-    self.document.tracks.add_observer(self.update_menu_state)
-    vm.add_observer(self.update_menu_state)
-    self.update_menu_state()
-  # unbind all menu actions
-  def _unbind_menu(self):
-    for (action, handler) in self._menu_bindings:
+    self._bind_action(self.back_action, t.skip_back)
+    self._bind_action(self.forward_action, t.skip_forward)
+    self._bind_action(self.stop_action, t.stop)
+    self._bind_action(self.play_action, t.play)
+    self._bind_action(self.record_action, t.record)
+    # update action state
+    self.document.tracks.add_observer(self.update_actions)
+    ViewManager.add_observer(self.update_actions)
+    self.update_actions()
+  # unbind all actions
+  def _unbind_actions(self):
+    for (action, handler) in self._action_bindings:
       action.disconnect(handler)
-    views.core.ViewManager.remove_observer(self.update_menu_state)
-    self.document.tracks.remove_observer(self.update_menu_state)
+    ViewManager.remove_observer(self.update_actions)
+    self.document.tracks.remove_observer(self.update_actions)
   # bind to an action and remember the binding
   def _bind_action(self, action, callback):
     handler = action.connect('activate', callback)
-    self._menu_bindings.append((action, handler))
-  # reflect changes to models in the menu
-  def update_menu_state(self):
-    vm = views.core.ViewManager
-    self.menu.undo_action.set_sensitive(vm.can_undo)
-    self.menu.redo_action.set_sensitive(vm.can_redo)
+    self._action_bindings.append((action, handler))
+  # reflect changes to models in the action buttons
+  def update_actions(self):
+    self.undo_action.set_enabled(ViewManager.can_undo)
+    self.redo_action.set_enabled(ViewManager.can_redo)
     # only allow recording if a track is armed
     track_armed = False
     for track in self.document.tracks:
       if (track.arm):
         track_armed = True
         break
-    self.menu.record_action.set_sensitive(track_armed)
+    self.record_action.set_enabled(track_armed)
+  # make a toolbar with document actions
+  def _make_toolbar(self):
+    # make a toolbar
+    t = Gtk.Toolbar.new()
+    self.toolbar = t
+    # transport actions
+    t.add(Gtk.ToolButton(Gtk.STOCK_MEDIA_REWIND, 
+                         action_name='win.transportBack'))
+    t.add(Gtk.ToolButton(Gtk.STOCK_MEDIA_FORWARD, 
+                         action_name='win.transportForward'))
+    t.add(Gtk.ToolButton(Gtk.STOCK_MEDIA_STOP, 
+                         action_name='win.transportStop'))
+    t.add(Gtk.ToolButton(Gtk.STOCK_MEDIA_PLAY, 
+                         action_name='win.transportPlay'))
+    t.add(Gtk.ToolButton(Gtk.STOCK_MEDIA_RECORD, 
+                         action_name='win.transportRecord'))
+    t.add(Gtk.SeparatorToolItem())
+    # undo/redo
+    t.add(Gtk.ToolButton(Gtk.STOCK_UNDO, action_name='win.undo'))
+    t.add(Gtk.ToolButton(Gtk.STOCK_REDO, action_name='win.redo'))
 

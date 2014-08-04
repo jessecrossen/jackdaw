@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 
-from gi.repository import Gtk, Gdk
+import sys
+
+from gi.repository import Gtk, Gdk, Gio
 
 from impulse import windows
 from impulse.models import doc
@@ -25,15 +27,21 @@ def dummy_document():
   d.tracks.append(t2)
   return(d)
 
-class App:
+class App(Gtk.Application):
   def __init__(self):
-    self.win = windows.DocumentWindow()
-    self.win.document = dummy_document()
-    self.win.connect("delete-event", Gtk.main_quit)
-    self.win.show_all()
+    Gtk.Application.__init__(self)
+    self._window = None
   
-  def run(self):
-    Gtk.main()
+  def do_startup(self):
+    Gtk.Application.do_startup(self)
+  
+  def do_activate(self):
+    Gtk.Application.do_activate(self)
+    if not self._window:
+      self._window = windows.DocumentWindow(self)
+      self._window.document = dummy_document()
+      self.add_window(self._window)
+    self._window.present()
 
 app = App()
-app.run()
+app.run(sys.argv)
