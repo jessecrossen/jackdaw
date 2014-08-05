@@ -4,6 +4,7 @@ from gi.repository import Gtk, Gdk, Gio
 
 from models import doc, controllers
 import views.track
+import views.doc
 from views.core import ViewManager
 from midi import inputs
 
@@ -20,24 +21,15 @@ class DocumentWindow(Gtk.ApplicationWindow):
     self._make_actions()
     self._make_toolbar()
     # make some widgets for the main content
-    self.outer_box = Gtk.Box.new(Gtk.Orientation.VERTICAL, 0)
-    self.outer_box.homogenous = False
-    self.add(self.outer_box)
-    self.outer_box.pack_start(self.toolbar, False, False, 0)
-    self.panes = Gtk.Paned.new(Gtk.Orientation.HORIZONTAL)
-    self.outer_box.pack_end(self.panes, True, True, 0)
-    self.header_frame = Gtk.Frame.new('')
-    self.header_frame.set_border_width(2)
-    self.panes.pack1(self.header_frame, False, False)
-    self.tracks_frame = Gtk.Frame.new('')
-    self.tracks_frame.set_border_width(2)
-    self.panes.pack2(self.tracks_frame, True, True)
+    self.box = Gtk.Box.new(Gtk.Orientation.VERTICAL, 0)
+    self.add(self.box)
+    self.box.pack_start(self.toolbar, False, False, 0)
     # initialize state
     self.control_surface = None
     self.transport = None
     self.mixer = None
-    self.tracks_view = None
-    self.track_headers_view = None
+    # start with an empty document
+    self.document_view = None
     self.document = doc.Document()
     
   @property
@@ -62,12 +54,10 @@ class DocumentWindow(Gtk.ApplicationWindow):
     if (self.control_surface):
       self.control_surface.disconnect()
     self.control_surface = None
-    if (self.tracks_view):
-      self.tracks_view.destroy()
-      self.tracks_view = None
-    if (self.track_headers_view):
-      self.track_headers_view.destroy()
-      self.track_headers_view = None
+    # kill the document view
+    if (self.document_view is not None):
+      self.document_view.destroy()
+      self.document_view = None
     # dump the undo stack and clear the selection
     ViewManager.reset()
   # attach to a new document
@@ -77,19 +67,15 @@ class DocumentWindow(Gtk.ApplicationWindow):
     self.transport = controllers.Transport()
     self.control_surface = inputs.NanoKONTROL2(
       transport=self.transport, mixer=self.mixer)
-    # add a view for track headers
-    self.track_headers_view = views.track.TrackListHeaderView(
-      tracks=self.document.tracks)
-    self.header_frame.add(self.track_headers_view)
-    self.track_headers_view.set_size_request(90, 80)
-    # add a view for the document's tracks
-    self.tracks_view = views.track.TrackListView(
-      tracks=self.document.tracks, 
+    self.control_surface.connect()
+    # make a view for the document
+    self.document_view = views.doc.DocumentView(
+      document=self._document,
       transport=self.transport)
-    self.tracks_frame.add(self.tracks_view)
+    self.box.pack_end(self.document_view, True, True, 0)
     # bind actions for the new document
     self._bind_actions()
-    # show the new controls
+    # show the document view
     self.show_all()
   
   # make actions on the document

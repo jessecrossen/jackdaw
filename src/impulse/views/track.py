@@ -121,7 +121,8 @@ class TrackListView(LayoutView):
       return(0)
   # place tracks in the view
   def layout(self, width, height):
-    views = self.allocate_views_for_models(self.tracks, lambda t: TrackView(t))
+    views = self.allocate_views_for_models(
+      self.tracks, lambda t: TrackView(t))
     for view in views:
       track_height = self.track_layout.size_of_item(view.track)
       x = self.x_of_time(0)

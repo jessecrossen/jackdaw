@@ -1,57 +1,35 @@
 import time
 import rtmidi
+import re
 
 from gi.repository import GLib, GObject
 
 from ..common import observable
+import core
 
 # handle MIDI input events when the UI is idling
-_devices = set()
-def _service_devices():
-  for device in _devices:
+_input_devices = set()
+def _service_input_devices():
+  for device in _input_devices:
     while(True):
       result = device._in.get_message()
       if (result is None): break
       device.receive_message(result[0], result[1])
   return(True)
-GObject.idle_add(_service_devices)
+GObject.idle_add(_service_input_devices)
 
 # acts as a base class for MIDI input device adapters
-class Device(object):
-  def __init__(self):
-    self._in = rtmidi.MidiIn()
-    self._out = rtmidi.MidiOut()
+class InputDevice(core.Device):
+  def __init__(self, name):
+    core.Device.__init__(self, name)
     self._last_message_time = None
     self._abs_time = time.time()
-  # connect to the first device with the given name or name fragment
-  def connect_by_name(self, name):
-    in_port = self.get_port_by_name(self._in, name)
-    out_port = self.get_port_by_name(self._out, name)
-    if (in_port is not None):
-      self._in.open_port(in_port)
-      _devices.add(self)
-    else:
-      print('Failed to connect input for the device named %s.' % (name))
-    if (out_port is not None):
-      self._out.open_port(out_port)
-    else:
-      print('Failed to connect output for the device named %s.' % (name))
-  # disconnect from inputs and outputs
-  def disconnect(self):
-    if (self in _devices):
-      _devices.remove(self)
-    del self._in
-    del self._out
-    self._in = rtmidi.MidiIn()
-    self._out = rtmidi.MidiOut()
-  # get the port on the given input/output with the given name
-  def get_port_by_name(self, connection, name):
-    port_count = connection.get_port_count()
-    for port in range(0, port_count):
-      device_name = connection.get_port_name(port).lower()
-      if (name in device_name):
-        return(port)
-    return(None)
+  # register/unregister the input for polling
+  def on_connect(self):
+    _input_devices.add(self)
+  def on_disconnect(self):
+    if (self in _input_devices):
+      _input_devices.remove(self)
   # handle messages from the device
   def receive_message(self, message, delta_time):
     # accumulate time deltas to provide total time
@@ -82,20 +60,35 @@ class Device(object):
     self._last_message_time = None
     self._abs_time = time.time() - value
 
+# a list of all available input devices
+class InputDeviceList(observable.List):
+  def __init__(self):
+    observable.List.__init__(self)
+    self._names_in_list = set()
+    self.update()
+    GLib.timeout_add(5000, self.update)
+  # update the list from available ports
+  def update(self):
+    connection = rtmidi.MidiIn()
+    port_count = connection.get_port_count()
+    for port in range(0, port_count):
+      name = connection.get_port_name(port)
+      # ignore RtMidi devices, which are likely ours
+      if (name.startswith('RtMidi')): continue
+      m = re.search(r'^(.*?)(\s[0-9:]+)?$', name)
+      name = m.group(1)
+      # strip off the numbers
+      if (name not in self._names_in_list):
+        self._names_in_list.add(name)
+        self.append(InputDevice(name))
+    return(True)
+
 # handles input/output for a Korg NanoKONTROL2
-class NanoKONTROL2(Device):
+class NanoKONTROL2(InputDevice):
   def __init__(self, transport=None, mixer=None):
-    Device.__init__(self)
-    self.connect_by_name('nanokontrol2')
+    InputDevice.__init__(self, 'nanoKONTROL2')
     # cache state for all the leds to reduce update message overhead
     self._leds = dict()
-    # send a sysex message to let the controller know we'll be
-    #  managing the state of its LEDs
-    self.send_message([ 0xF0, 0x42, 0x40, 0x00, 0x01, 0x13,
-                        0x00, 0x00, 0x00, 0x01, 0xF7 ])
-    # turn off all LEDs initially
-    for i in range(0, 128):
-      self.update_led(i, False)
     # store the controlled objects
     self.transport = transport
     if (self.transport):
@@ -107,6 +100,15 @@ class NanoKONTROL2(Device):
     self._hold_timer = None
     self._repeat_timer = None
     self._hold_button = None
+  def on_connect(self):
+    InputDevice.on_connect(self)
+    # send a sysex message to let the controller know we'll be
+    #  managing the state of its LEDs
+    self.send_message([ 0xF0, 0x42, 0x40, 0x00, 0x01, 0x13,
+                        0x00, 0x00, 0x00, 0x01, 0xF7 ])
+    # turn off all LEDs initially
+    for i in range(0, 128):
+      self.update_led(i, False)
   
   # controller button values
   PLAY_BUTTON = 0x29
@@ -224,11 +226,7 @@ class NanoKONTROL2(Device):
           elif (kind == self.MUTE):
             track.mute = not track.mute
           elif (kind == self.ARM):
-            if (track.arm):
-              track.arm = False
-            else:
-              for arm_track in self.mixer.tracks:
-                arm_track.arm = (arm_track is track)
+            track.arm = not track.arm
     else:
       print('NanoKONTROL2: Unhandled message type %02X' % (controller))
   # handle a button being held down

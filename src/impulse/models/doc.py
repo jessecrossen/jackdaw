@@ -495,6 +495,24 @@ class TrackList(ModelList):
       self._times = list(times)
       self._times.sort()
     return(self._times)
+    
+# represent a patch bay that routes between two lists
+class PatchBay(observable.Object):
+  def __init__(self):
+    observable.Object.__init__(self)
+    self._connections = set()
+  # make a connection between two objects
+  def connect(self, from_what, to_what):
+    connection = (from_what, to_what)
+    if (connection not in self._connections):
+      self._connections.add()
+      self.on_change()
+  # break a connection between two objects
+  def disconnect(self, from_what, to_what):
+    connection = (from_what, to_what)
+    if (connection in self._connections):
+      self._connections.remove(connection)
+      self.on_change()
 
 # represent a document, which can contain multiple tracks
 class Document(Model):
@@ -502,4 +520,5 @@ class Document(Model):
     Model.__init__(self)
     self.tracks = TrackList()
     self.tracks.add_observer(self.on_change)
+    self.input_patch_bay = PatchBay()
     
