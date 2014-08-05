@@ -4,7 +4,7 @@ import cairo
 from gi.repository import Gtk, Gdk
 
 import geom
-from core import DrawableView, LayoutView, ViewManager
+from core import DrawableView, LayoutView, ViewManager, ListLayout
 import block
 
 class TrackView(LayoutView):
@@ -75,37 +75,19 @@ class TrackView(LayoutView):
 
 # manage the layout of a set of tracks so that it can be 
 #  coordinated between the list and header views
-class TrackLayout(object):
+class TrackLayout(ListLayout):
   def __init__(self, tracks):
+    ListLayout.__init__(self, tracks)
     self.tracks = tracks
-    # the spacing between tracks
+    # add spacing between tracks
     self.spacing = 4
   # get the total number of vertical pixels to allocate for the track
-  def get_track_height(self, track):
+  def size_of_item(self, track):
     # always allocate a minimal amount of space for the header
-    return(max(80, self.get_track_view_height(track)))
+    return(max(80, self.size_of_track_view(track)))
   # get the height to allocate for the track view itself
-  def get_track_view_height(self, track):
+  def size_of_track_view(self, track):
     return(len(track.pitches) * 20)
-  # convert between track indices and positions
-  def y_of_track_index(self, track_index):
-    y = None
-    if ((track_index >= 0) and (track_index < len(self.tracks))):
-      y = 0
-      for i in range(0, track_index):
-        y += self.spacing + self.get_track_height(self.tracks[i])
-    return(y)
-  def track_index_of_y(self, y):
-    next_y = 0
-    i = 0
-    for track in self.tracks:
-      if (i > 0):
-        next_y += self.spacing
-      next_y += self.get_track_height(track)
-      if (y < next_y):
-        return(i)
-      i += 1
-    return(None)
 
 # display a list of tracks stacked vertically
 class TrackListView(LayoutView):
@@ -137,26 +119,18 @@ class TrackListView(LayoutView):
       return(float(x - 1) * (self.tracks.duration / float(self._width - 2)))
     except ZeroDivisionError:
       return(0)
-  # map between track indices and a y coordinate on the view
-  #  at the top of the track
-  def y_of_track_index(self, track_index):
-    return(self.track_layout.y_of_track_index(track_index))
-  def track_index_of_y(self, y):
-    return(self.track_layout.track_index_of_y(y))
   # place tracks in the view
   def layout(self, width, height):
     views = self.allocate_views_for_models(self.tracks, lambda t: TrackView(t))
-    i = 0
     for view in views:
-      track_height = self.track_layout.get_track_height(view.track)
+      track_height = self.track_layout.size_of_item(view.track)
       x = self.x_of_time(0)
       w = self.x_of_time(view.track.duration) - x
       r = geom.Rectangle(
-        x - 1, self.track_layout.y_of_track_index(i),
-        w + 2, self.track_layout.get_track_view_height(view.track))
+        x - 1, self.track_layout.position_of_item(view.track),
+        w + 2, self.track_layout.size_of_track_view(view.track))
       r.y += round((track_height - r.height) / 2)
       view.size_allocate(r)
-      i += 1
     self.back.size_allocate(geom.Rectangle(0, 0, width, height))
   # deselect when the user clicks
   def on_click(self, x, y, state):
@@ -220,10 +194,10 @@ class TrackListBackgroundView(DrawableView):
     # draw backgrounds behind the tracks to show their states
     track_list_view = self.get_parent_with_attribute('tracks')
     if (track_list_view is not None):
-      i = 0
       for track in self.tracks:
-        r = geom.Rectangle(0, track_list_view.y_of_track_index(i), 
-              width, track_list_view.track_layout.get_track_height(track))
+        r = geom.Rectangle(
+          0, track_list_view.track_layout.position_of_item(track), 
+          width, track_list_view.track_layout.size_of_item(track))
         if (track.arm):
           cr.set_source_rgba(1.0, 0.0, 0.0, 0.25 * fade)
           cr.rectangle(r.x, r.y, r.width, r.height)
@@ -232,7 +206,6 @@ class TrackListBackgroundView(DrawableView):
           cr.set_source_rgba(fg.red, fg.green, fg.blue, 0.25 * fade)
           cr.rectangle(r.x, r.y, r.width, r.height)
           cr.fill()
-        i += 1
     # draw transport state
     if (self.transport):
       # draw the transport's current time point with a fill on the left
@@ -603,22 +576,14 @@ class TrackListHeaderView(LayoutView):
   @property
   def tracks(self):
     return(self._model)
-  # map between track indices and a y coordinate on the view
-  #  at the top of the track
-  def y_of_track_index(self, track_index):
-    return(self.track_layout.y_of_track_index(track_index))
-  def track_index_of_y(self, y):
-    return(self.track_layout.track_index_of_y(y))
   # place tracks in the view
   def layout(self, width, height):
     views = self.allocate_views_for_models(
       self.tracks, 
       lambda t: TrackHeaderView(t, None))
-    i = 0
     for view in views:
       view.track_view = ViewManager.view_for_model(view.track, TrackView)
       view.size_allocate(geom.Rectangle(
-        0, self.track_layout.y_of_track_index(i),
-        width, self.track_layout.get_track_height(view.track)))
+        0, self.track_layout.position_of_item(view.track),
+        width, self.track_layout.size_of_item(view.track)))
       size = view.get_size_request()
-      i += 1

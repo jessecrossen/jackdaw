@@ -462,3 +462,33 @@ class ContextMenu(Gtk.Menu):
   # override to update which menu actions are available based on model state
   def on_change(self):
     pass
+    
+    
+# manage the layout of a list of items in one dimension
+class ListLayout(object):
+  def __init__(self, items):
+    self._items = items
+    # the default spacing in pixels between items
+    self.spacing = 0
+  # get the total number of pixels to allocate for am item
+  def size_of_item(self, item):
+    return(100)
+  # convert between items and positions
+  def position_of_item(self, item):
+    p = 0
+    for test_item in self._items:
+      if (test_item is item):
+        return(p)
+      if (p > 0):
+        p += self.spacing
+      p += self.size_of_item(test_item)
+    return(None)
+  def item_at_position(self, p):
+    next_p = 0
+    for item in self._items:
+      if (p > 0):
+        next_p += self.spacing
+      next_p += self.size_of_item(item)
+      if (p < next_p):
+        return(item)
+    return(None)
