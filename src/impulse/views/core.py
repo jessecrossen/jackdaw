@@ -245,13 +245,7 @@ class Interactive(object):
     self.dragging = None
   def on_pointer_motion(self, target, event):
     if (self._down is None):
-      # update the cursor
-      for (area, cursor) in self.cursor_areas.iteritems():
-        if ((event.x >= area.x) and (event.x <= area.x + area.width) and
-            (event.y >= area.y) and (event.y <= area.y + area.height)):
-          self.get_window().set_cursor(cursor)
-          return
-      self.get_window().set_cursor(None)
+      self.update_cursor(event.x, event.y, event.state)
       return
     if (self.dragging is None):
       dx = abs(event.x - self._down['x'])
@@ -283,6 +277,14 @@ class Interactive(object):
       self._down = None
       return(result)
 
+  # override this to customize cursor behavior
+  def update_cursor(self, x, y, state):
+    for (area, cursor) in self.cursor_areas.iteritems():
+      if ((x >= area.x) and (x <= area.x + area.width) and
+          (y >= area.y) and (y <= area.y + area.height)):
+        self.get_window().set_cursor(cursor)
+        return
+    self.get_window().set_cursor(None)
   # override this and return True to pop up a context menu
   def on_context(self, event):
     return(False)
@@ -483,6 +485,9 @@ class ListLayout(object):
         p += self.spacing
       p += self.size_of_item(test_item)
     return(None)
+  def center_of_item(self, item):
+    return(self.position_of_item(item) +
+            (self.size_of_item(item) / 2.0))
   def item_at_position(self, p):
     next_p = 0
     for item in self._items:

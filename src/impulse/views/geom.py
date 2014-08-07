@@ -17,3 +17,12 @@ class Rectangle(Gdk.Rectangle):
     return((x >= self.x) and (x <= self.x + self.width) and
            (y >= self.y) and (y <= self.y + self.height))
 
+class Point(Gdk.Point):
+  def __new__(cls, x=0, y=0):
+    p = Gdk.Point.__new__(cls)
+    p.x = x
+    p.y = y
+    return(p)
+  # make a friendlier display of the point
+  def __repr__(self):
+    return('Point(%d, %d)' % (self.x, self.y))

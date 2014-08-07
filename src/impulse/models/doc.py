@@ -496,16 +496,19 @@ class TrackList(ModelList):
       self._times.sort()
     return(self._times)
     
-# represent a patch bay that routes between two lists
+# represent a directed patch bay that routes between two lists
 class PatchBay(observable.Object):
   def __init__(self):
     observable.Object.__init__(self)
     self._connections = set()
+  @property
+  def connections(self):
+    return(set(self._connections))
   # make a connection between two objects
   def connect(self, from_what, to_what):
     connection = (from_what, to_what)
     if (connection not in self._connections):
-      self._connections.add()
+      self._connections.add((from_what, to_what))
       self.on_change()
   # break a connection between two objects
   def disconnect(self, from_what, to_what):
