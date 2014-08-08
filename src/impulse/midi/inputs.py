@@ -6,6 +6,7 @@ from gi.repository import GLib, GObject
 
 from ..common import observable
 import core
+from ..models import doc
 
 # handle MIDI input events when the UI is idling
 _input_devices = set()
@@ -24,12 +25,25 @@ class InputDevice(core.Device):
     core.Device.__init__(self, name)
     self._last_message_time = None
     self._abs_time = time.time()
+    # keep a list of methods to call when events become available
+    self._listeners = set()
   # register/unregister the input for polling
   def on_connect(self):
     _input_devices.add(self)
   def on_disconnect(self):
     if (self in _input_devices):
       _input_devices.remove(self)
+  # add and remove listeners to receive generated doc.Event instances
+  def add_listener(self, listener):
+    self._listeners.add(listener)
+  def remove_listener(self, listener):
+    try:
+      self._listeners.remove(listener)
+    except KeyError: pass
+  # send a new doc.Event to all listeners
+  def send_event(self, event):
+    for listener in self._listeners:
+      listener(self, event)
   # handle messages from the device
   def receive_message(self, message, delta_time):
     # accumulate time deltas to provide total time
@@ -80,8 +94,43 @@ class InputDeviceList(observable.List):
       # strip off the numbers
       if (name not in self._names_in_list):
         self._names_in_list.add(name)
-        self.append(InputDevice(name))
+        self.append(NoteInput(name))
     return(True)
+    
+# interprets note and control channel messages
+class NoteInput(InputDevice):
+  def __init__(self, name):
+    InputDevice.__init__(self, name)
+    # hold a set of notes for all "voices" currently playing, keyed by pitch
+    self._playing_notes = dict()
+  @property
+  def playing_notes(self):
+    return(self._playing_notes.values())
+  # interpret messages
+  def on_message(self, time, message):
+    (status, data1, data2) = message
+    kind = (status & 0xF0) >> 4
+    channel = (status & 0x0F)
+    # get note on/off messages
+    if ((kind == 0x08) or (kind == 0x09)):
+      pitch = data1
+      velocity = data2 / 127.0
+      # note on
+      if (kind == 0x09):
+        note = doc.Note(time=time, pitch=pitch, velocity=velocity, duration=0)
+        self._playing_notes[pitch] = note
+        self.send_event(note)
+      # note off
+      elif (kind == 0x08):
+        try:
+          note = self._playing_notes[pitch]
+        # this indicates a note-off with no prior note-on, not a big deal
+        except KeyError: return
+        note.duration = time - note.time
+        del self._playing_notes[pitch]
+    # report unexpected messages
+    else:
+      print('%s: Unhandled message type %02X' % (self.name, status))
 
 # handles input/output for a Korg NanoKONTROL2
 class NanoKONTROL2(InputDevice):

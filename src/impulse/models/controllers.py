@@ -3,6 +3,7 @@ import time
 from gi.repository import GLib
 
 from ..common import observable
+from ..models import doc
 
 # a transport controller to keep track of timepoints, playback, and recording
 class Transport(observable.Object):
@@ -192,7 +193,96 @@ class Transport(observable.Object):
     t = self.get_next_mark(self.time)
     if (t is not None):
       self.time = t
-      
+
+# manages the manipulation of tracks and routing of events for recording
+#  by coordinating a transport, input patch bay, and tracks
+class Recorder(observable.Object):
+  def __init__(self, transport, patch_bay):
+    observable.Object.__init__(self)
+    self.transport = transport
+    self.transport.add_observer(self.on_transport_change)
+    self.patch_bay = patch_bay
+    self.patch_bay.add_observer(self.on_patch_bay_change)
+    # track whether we've registered the start of recording
+    self._recording = False
+    # hold a list of tracks mapped to the block on that track that's 
+    #  receiving input
+    self._active_inputs = set()
+    self._active_tracks = set()
+    self._active_blocks = dict()
+  # handle changes to the state of the transport so we can start and stop 
+  #  recording
+  def on_transport_change(self):
+    if (self.transport.recording != self._recording):
+      self._recording = self.transport.recording
+      if (self._recording):
+        self.start()
+      else:
+        self.stop()
+    # when recording, extend the durations of active blocks and playing notes
+    if (self._recording):
+      time = self.transport.time
+      for block in self._active_blocks.itervalues():
+        block.events.duration = time - block.time 
+        block.duration = block.events.duration
+      for active_input in self._active_inputs:
+        try:
+          notes = active_input.playing_notes
+        except AttributeError: continue
+        for note in notes:
+          note.duration = active_input.time - note.time
+  # handle changes to the patch bay so we can respect plugging and unplugging 
+  #  during recording
+  def on_patch_bay_change(self):
+    pass
+  # start recording
+  def start(self):
+    # get the current transport time so it's the same across tracks
+    time = self.transport.time
+    # find all armed tracks with input connections
+    tracks = self.patch_bay.to_items
+    for track in tracks:
+      if (track.arm):
+        self._active_tracks.add(track)
+        incoming_inputs = self.patch_bay.items_connected_to(track)
+        self._active_inputs.update(incoming_inputs)
+    # add a block with an event list to each one, starting at 
+    #  the transport's current time
+    for track in self._active_tracks:
+      self.add_block_to_track(track, time)
+    # connect to inputs
+    for active_input in self._active_inputs:
+      # reset all inputs to zero time
+      active_input.time = 0.0
+      # make sure all active inputs are connected
+      if (not active_input.is_connected):
+        active_input.connect()
+      # listen for events from all active inputs
+      active_input.add_listener(self.on_event)
+  # activate a new block on a track to receive recorded events
+  def add_block_to_track(self, track, time):
+    block = doc.Block(doc.EventList(), time=time, duration=0.5)
+    track.append(block)
+    self._active_blocks[track] = block
+  # receive events
+  def on_event(self, from_input, event):
+    # get all tracks the input routes to
+    to_tracks = self.patch_bay.items_connected_from(from_input)
+    for track in to_tracks:
+      if (track in self._active_blocks):
+        # add the event
+        block = self._active_blocks[track]
+        block.events.append(event)
+  # stop recording
+  def stop(self):
+    # stop listening to inputs
+    for active_input in self._active_inputs:
+      active_input.remove_listener(self.on_event)
+    # reset all connections
+    self._active_inputs = set()
+    self._active_tracks = set()
+    self._active_blocks = dict()
+
 # a mixer that tracks various properties for a set of tracks
 class Mixer(observable.Object):
   def __init__(self, tracks):

@@ -501,6 +501,7 @@ class PatchBay(observable.Object):
   def __init__(self):
     observable.Object.__init__(self)
     self._connections = set()
+    self._update_maps()
   @property
   def connections(self):
     return(set(self._connections))
@@ -509,13 +510,44 @@ class PatchBay(observable.Object):
     connection = (from_what, to_what)
     if (connection not in self._connections):
       self._connections.add((from_what, to_what))
+      self._update_maps()
       self.on_change()
   # break a connection between two objects
   def disconnect(self, from_what, to_what):
     connection = (from_what, to_what)
     if (connection in self._connections):
       self._connections.remove(connection)
+      self._update_maps()
       self.on_change()
+  # get the items that are connected on either side
+  @property
+  def from_items(self):
+    return(self._from_items.keys())
+  @property
+  def to_items(self):
+    return(self._to_items.keys())
+  # get the items something is connected to/from
+  def items_connected_from(self, from_what):
+    try:
+      return(set(self._from_items[from_what]))
+    except KeyError:
+      return(())
+  def items_connected_to(self, to_what):
+    try:
+      return(set(self._to_items[to_what]))
+    except KeyError:
+      return(())
+  # update the maps from items to what they're connected to
+  def _update_maps(self):
+    self._from_items = dict()
+    self._to_items = dict()
+    for (from_what, to_what) in self._connections:
+      if (from_what not in self._from_items):
+        self._from_items[from_what] = set()
+      self._from_items[from_what].add(to_what)
+      if (to_what not in self._to_items):
+        self._to_items[to_what] = set()
+      self._to_items[to_what].add(from_what)
 
 # represent a document, which can contain multiple tracks
 class Document(Model):
@@ -524,4 +556,11 @@ class Document(Model):
     self.tracks = TrackList()
     self.tracks.add_observer(self.on_change)
     self.input_patch_bay = PatchBay()
+    self.input_patch_bay.add_observer(self.on_input_change)
+  
+  # connect input devices when they're routed to something in the patch bay
+  def on_input_change(self):
+    for device in self.input_patch_bay.from_items:
+      if (not device.is_connected):
+        device.connect()
     

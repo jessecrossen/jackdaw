@@ -11,8 +11,14 @@ class Device(object):
     self.name = name
     self._in = rtmidi.MidiIn()
     self._out = rtmidi.MidiOut()
+    self._is_connected = False
+  # return whether the device is connected
+  @property
+  def is_connected(self):
+    return(self._is_connected)
   # connect the device automatically based on its name
   def connect(self):
+    if (self.is_connected): return
     self.connect_by_name(self.name)
   # connect to the first device with the given name or name fragment
   def connect_by_name(self, name):
@@ -27,6 +33,7 @@ class Device(object):
     else:
       print('Failed to connect output for the device named %s.' % (name))
     if ((in_port is not None) or (out_port is not None)):
+      self._is_connected = True
       self.on_connect()
   # disconnect from inputs and outputs
   def disconnect(self):

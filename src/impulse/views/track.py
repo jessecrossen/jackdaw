@@ -119,6 +119,12 @@ class TrackListView(LayoutView):
       return(float(x - 1) * (self.tracks.duration / float(self._width - 2)))
     except ZeroDivisionError:
       return(0)
+  # map between track index and position
+  def y_of_track_index(self, index):
+    try:
+      return(self.track_layout.position_of_item(self.tracks[index]))
+    except IndexError:
+      return(None)
   # place tracks in the view
   def layout(self, width, height):
     views = self.allocate_views_for_models(
