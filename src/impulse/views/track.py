@@ -374,13 +374,17 @@ class TransitionView(DrawableView):
       p1.x += (symbols.BRACKET_WIDTH + 2)
     elif (self.style[-1] in '{[('):
       p2.x -= (symbols.BRACKET_WIDTH + 2)
+    elif (self.style[0] in 'o*x<'):
+      p1.x += (symbols.RADIUS * 2)
+    elif (self.style[-1] in 'o*x>'):
+      p2.x -= (symbols.RADIUS * 2)
     symbols.draw_path(cr, (p1, p2), self.style)
 class FromSignalTransitionView(TransitionView):
   def __init__(self, model):
-    TransitionView.__init__(self, model, '-{')
+    TransitionView.__init__(self, model, '->')
 class ToSignalTransitionView(TransitionView):
   def __init__(self, model):
-    TransitionView.__init__(self, model, '}-')
+    TransitionView.__init__(self, model, '>-')
 
 # display mixer controls for a track
 class TrackMixerView(DrawableView):

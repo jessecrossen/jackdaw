@@ -550,35 +550,3 @@ class ListView(LayoutView):
     self._dragging_item = None
     self._last_dy = 0
 
-# display a series of list views that can be switched on and off
-class SwitchableColumnView(Gtk.Box):
-  def __init__(self, column_views, toggle_icons, expandable=None, spacing=0):
-    Gtk.Box.__init__(self)
-    self.set_orientation(Gtk.Orientation.VERTICAL)
-    self.columns = Gtk.Box.new(Gtk.Orientation.HORIZONTAL, spacing)
-    self.toolbar = Gtk.Toolbar()
-    self.toggle_icons = toggle_icons
-    self.pack_start(self.toolbar, False, False, 0)
-    self.column_views = column_views
-    self.pack_end(self.columns, True, True, 0)
-    self.toggle_buttons = list()
-    for i in range(0, len(self.column_views)):
-      view = self.column_views[i]
-      expand = view is expandable
-      self.columns.pack_start(view, expand, expand, 0)
-      if ((i < len(toggle_icons)) and (toggle_icons[i] is not None)):
-        button = Gtk.ToggleToolButton(toggle_icons[i])
-        button.set_active(True)
-        self.toolbar.add(button)
-        button.connect('toggled', self.on_toggled)
-  def on_toggled(self, item):
-    i = self.toolbar.get_item_index(item)
-    if (i < len(self.column_views)):
-      self.column_views[i].set_visible(item.get_active())
-    # allocate width for all visible views
-    width = self.toolbar.get_icon_size()
-    for view in self.column_views:
-      if (view.get_visible()):
-        (minimum_size, preferred_size) = view.get_preferred_size()
-        width += preferred_size.width
-    self.set_size_request(width, -1)

@@ -11,3 +11,6 @@
 - level/pan accept automation inputs
 - drag-and-drop editing of level/pan
 - draw_path draws all nodes last
+- scrollability and zoom for tracks view
+- color tracks view white like a document
+- more spacing between tracks

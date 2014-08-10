@@ -45,13 +45,10 @@ class DocumentView(Gtk.Frame):
       view_class=track.FromSignalTransitionView,
       list_layout=self.track_layout)
     transition.set_size_request(12, -1)
-    self.left_panel = core.SwitchableColumnView((
-        self.inputs_column, 
-        self.track_arms,
-        transition),
-      toggle_icons=( 
-        Gtk.STOCK_CONNECT,
-        Gtk.STOCK_DISCONNECT))
+    self.left_panel = Gtk.Box.new(Gtk.Orientation.HORIZONTAL, 0)
+    self.left_panel.pack_start(self.inputs_column, True, True, 0) 
+    self.left_panel.pack_start(self.track_arms, False, False, 0)
+    self.left_panel.pack_start(transition, False, False, 0)
     # set up the center panel
     self.pitch_keys = core.ListView(
       self.document.tracks, view_class=track.PitchKeyView, 
@@ -61,16 +58,9 @@ class DocumentView(Gtk.Frame):
       tracks=self.document.tracks, 
       track_layout=self.track_layout,
       transport=self.transport)
-    self.center_panel = core.SwitchableColumnView((
-        self.pitch_keys, 
-        self.tracks_view), 
-      expandable=self.tracks_view,
-      toggle_icons=(
-        Gtk.STOCK_ITALIC,
-        Gtk.STOCK_JUSTIFY_FILL),
-      spacing=4)
-    self.center_panel.toolbar.add(Gtk.SeparatorToolItem())
-    self.add_toolbar_items(self.center_panel.toolbar)
+    self.center_panel = Gtk.Box.new(Gtk.Orientation.HORIZONTAL, 4)
+    self.center_panel.pack_start(self.pitch_keys, False, False, 0)
+    self.center_panel.pack_start(self.tracks_view, True, True, 0)
     # set up the right panel
     self.mixer_view = core.ListView(
       self.document.tracks, view_class=track.TrackMixerView,
@@ -99,34 +89,16 @@ class DocumentView(Gtk.Frame):
       view_class=track.ToSignalTransitionView,
       list_layout=self.track_layout)
     transition.set_size_request(12, -1)
-    self.right_panel = core.SwitchableColumnView((
-        transition,
-        self.mixer_view,
-        self.outputs_column),
-      toggle_icons=(None, Gtk.STOCK_BOLD, Gtk.STOCK_GO_FORWARD))
+    self.right_panel = Gtk.Box.new(Gtk.Orientation.HORIZONTAL, 0)
+    self.right_panel.pack_start(transition, False, False, 0)
+    self.right_panel.pack_start(self.mixer_view, False, False, 0)
+    self.right_panel.pack_start(self.outputs_column, True, True, 0)
     # set up the main layout structure
     self.root = Gtk.Box.new(Gtk.Orientation.HORIZONTAL, 4)
     self.root.pack_start(self.left_panel, False, False, 0)
     self.root.pack_start(self.center_panel, True, True, 0)
     self.root.pack_start(self.right_panel, False, False, 0)
     self.add(self.root)
-  # build the toolbar
-  def add_toolbar_items(self, toolbar):
-    # transport actions
-    toolbar.add(Gtk.ToolButton(Gtk.STOCK_MEDIA_REWIND, 
-                         action_name='win.transportBack'))
-    toolbar.add(Gtk.ToolButton(Gtk.STOCK_MEDIA_FORWARD, 
-                         action_name='win.transportForward'))
-    toolbar.add(Gtk.ToolButton(Gtk.STOCK_MEDIA_STOP, 
-                         action_name='win.transportStop'))
-    toolbar.add(Gtk.ToolButton(Gtk.STOCK_MEDIA_PLAY, 
-                         action_name='win.transportPlay'))
-    toolbar.add(Gtk.ToolButton(Gtk.STOCK_MEDIA_RECORD, 
-                         action_name='win.transportRecord'))
-    toolbar.add(Gtk.SeparatorToolItem())
-    # undo/redo
-    toolbar.add(Gtk.ToolButton(Gtk.STOCK_UNDO, action_name='win.undo'))
-    toolbar.add(Gtk.ToolButton(Gtk.STOCK_REDO, action_name='win.redo'))
   
   @property
   def document(self):
