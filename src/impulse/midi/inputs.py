@@ -33,6 +33,10 @@ class InputDevice(core.Device):
   def on_disconnect(self):
     if (self in _input_devices):
       _input_devices.remove(self)
+  # determine whether input is available from the named device
+  def is_available(self):
+    return((self.is_connected) or 
+           (self.is_input_available))
   # add and remove listeners to receive generated doc.Event instances
   def add_listener(self, listener):
     self._listeners.add(listener)

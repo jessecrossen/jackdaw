@@ -1,3 +1,5 @@
+# coding=utf-8
+
 import math
 import cairo
 
@@ -7,28 +9,48 @@ import geom
 import symbols
 from core import DrawableView, LayoutView, ViewManager, ListLayout
 
+# the font size for device names
+DEVICE_NAME_SIZE = 12.0
+
 # lay out a list of devices
 class DeviceLayout(ListLayout):
   def __init__(self, devices):
     ListLayout.__init__(self, devices)
     self.spacing = 4
+    self.dummy_context = cairo.Context(cairo.ImageSurface(
+      cairo.FORMAT_A8, 1, 1))
+    self.dummy_context.select_font_face('sans-serif', cairo.FONT_SLANT_NORMAL, 
+                      cairo.FONT_WEIGHT_BOLD)
+    self.dummy_context.set_font_size(DEVICE_NAME_SIZE)
   def size_of_item(self, device):
-    return(len(device.name) * 10)
+    (xb, yb, w, h, xa, ya) = self.dummy_context.text_extents(device.name)
+    return(w + 8)
 
 # show a single device
-class DeviceView(LayoutView):
+class DeviceView(DrawableView):
   def __init__(self, device):
-    LayoutView.__init__(self, device)
-    self.label = Gtk.Label()
-    self.label.set_angle(90)
-    self.label.set_alignment(0.5, 0.5)
-    self.add(self.label)
+    DrawableView.__init__(self, device)
   @property
   def device(self):
     return(self._model)
-  def layout(self, width, height):
-    self.label.size_allocate(geom.Rectangle(0, 0, width, height))
-    self.label.set_text(self.device.name)
+  def redraw(self, cr, width, height):
+    cr.save()
+    cr.select_font_face('sans-serif', cairo.FONT_SLANT_NORMAL, 
+                      cairo.FONT_WEIGHT_BOLD)
+    cr.set_font_size(DEVICE_NAME_SIZE)
+    name = self.device.name
+    while (len(name) > 1):
+      (xb, yb, w, h, xa, ya) = cr.text_extents(name)
+      if (w < (height - 4)): break
+      if (name[-1] != u'…'):
+        name += u'…'
+      name = name[0:-2]+u'…'
+    cr.translate(round((width / 2) - (h / 2) - yb), 
+                 (height / 2) + (w / 2) + xb)
+    cr.move_to(0, 0)
+    cr.rotate(- math.pi / 2)
+    cr.show_text(name)
+    cr.restore()
       
 # show an interface to route between two lists
 class PatchBayView(DrawableView):
