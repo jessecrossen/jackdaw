@@ -278,6 +278,7 @@ class PitchKeyView(LayoutView):
     if (track_view):
       ty = (height - track_view._height) / 2
       h = track_view.pitch_height
+      max_width = 0
       for pitch in self.track.pitches:
         y = track_view.y_of_pitch(pitch)
         # make an entry widget for the pitch
@@ -294,6 +295,8 @@ class PitchKeyView(LayoutView):
         name = self.track.name_of_pitch(pitch)
         label.set_text(name)
         r = geom.Rectangle(0, y, width, h)
+        (minimum_size, preferred_size) = label.get_preferred_size()
+        max_width = max(max_width, preferred_size.width)
         label.size_allocate(r)
         if (pitch == self._editing_pitch):
           self.entry.size_allocate(r)
@@ -305,6 +308,8 @@ class PitchKeyView(LayoutView):
       self.editable_area.width = width
       self.editable_area.y = ty
       self.editable_area.height = track_view._height
+      # request the size of the widest label
+      self.set_size_request(max_width + 12, -1)
   # activate the entry when a pitch is clicked
   def on_click(self, x, y, state):
     for (pitch, label) in self._labels.iteritems():
@@ -329,7 +334,7 @@ class PitchKeyView(LayoutView):
       #  revert to the default one
       elif (self._editing_pitch in self.track.pitch_names):
         del self.track.pitch_names[self._editing_pitch]
-        self.track.on_change()
+      self.track.on_change()
   # stop editing when the entry loses focus
   def on_end_edit(self, *args):
     if (self._editing_pitch is not None):
@@ -347,195 +352,107 @@ class TrackArmView(DrawableView):
   def redraw(self, cr, width, height):
     y = round(height / 2.0)
     p1 = geom.Point(0, y)
-    p2 = geom.Point(width - symbols.BRACKET_WIDTH, y)
+    p2 = geom.Point(width, y)
     if (self.track.arm):
-      s = '1{'
+      s = '1'
     else:
-      s = '0{' 
+      s = '0' 
     symbols.draw_path(cr, (p1, p2), s)
   def on_click(self, x, y, state):
     self.track.arm = not self.track.arm
+    
+# a view that makes a transition between tracks or inputs and the signal path
+class TransitionView(DrawableView):
+  def __init__(self, model, style):
+    DrawableView.__init__(self, model)
+    self.style = style
+  def redraw(self, cr, width, height):
+    y = round(height / 2)
+    p1 = geom.Point(0, y)
+    p2 = geom.Point(width, y)
+    if (self.style[0] in '}])'):
+      p1.x += (symbols.BRACKET_WIDTH + 2)
+    elif (self.style[-1] in '{[('):
+      p2.x -= (symbols.BRACKET_WIDTH + 2)
+    symbols.draw_path(cr, (p1, p2), self.style)
+class FromSignalTransitionView(TransitionView):
+  def __init__(self, model):
+    TransitionView.__init__(self, model, '-{')
+class ToSignalTransitionView(TransitionView):
+  def __init__(self, model):
+    TransitionView.__init__(self, model, '}-')
 
 # display mixer controls for a track
 class TrackMixerView(DrawableView):
   def __init__(self, track):
     DrawableView.__init__(self, track)
     self.make_interactive()
-    self.level_rect = geom.Rectangle()
-    self.pan_rect = geom.Rectangle()
-    self.mute_rect = geom.Rectangle()
-    self.solo_rect = geom.Rectangle()
-    self.arm_rect = geom.Rectangle()
-    self.handle_rect = geom.Rectangle()
-    self.cursor_areas[self.pan_rect] = Gdk.Cursor.new(
-      Gdk.CursorType.SB_H_DOUBLE_ARROW)
-    self.cursor_areas[self.level_rect] = Gdk.Cursor.new(
-      Gdk.CursorType.SB_V_DOUBLE_ARROW)
-    self.cursor_areas[self.handle_rect] = Gdk.Cursor.new(
-      Gdk.CursorType.SB_V_DOUBLE_ARROW)
-    self._draggable_areas = ( self.level_rect, self.pan_rect )
-    self._dragging_target = None
-    self.set_size_request(60, 80)
   # expose 'track' as an alternate name for 'model' for readability
   @property
   def track(self):
     return(self._model)
   # draw the mixer controls
   def redraw(self, cr, width, height):
-    # get style
-    style = self.get_style_context()
-    fg = style.get_color(self.get_state())
-    # allocate horizontal space
-    handle_width = 8
-    level_width = 20
-    button_width = 20
-    spacing = 4
-    level_width = button_width = math.floor(
-      (width - handle_width - (3 * spacing)) / 2)
-    button_spacing = 4
-    # draw the drag handle
-    self.handle_rect.width = 8
-    self.handle_rect.height = height
-    x = 2
-    w = handle_width - 4
-    cr.set_source_rgba(fg.red, fg.green, fg.blue, 0.2)
-    cr.set_line_width(2)
-    cr.set_line_cap(cairo.LINE_CAP_ROUND)
-    s = 5
-    n = 5
-    y = round((height / 2) - ((n / 2) * s))
-    for i in range(0, n):
-      cr.move_to(x, y)
-      cr.line_to(x + w, y)
-      cr.stroke()
-      y += s
-    cr.set_line_cap(cairo.LINE_CAP_BUTT)
-    # place the pan/level bar
-    x = handle_width + spacing
-    self.pan_rect.x = x
-    self.pan_rect.y = 0
-    self.pan_rect.width = level_width
-    self.pan_rect.height = math.ceil(level_width / 2) + spacing
-    self.level_rect.x = x
-    self.level_rect.y = self.pan_rect.y + self.pan_rect.height
-    self.level_rect.width = level_width
-    self.level_rect.height = height - self.pan_rect.height
-    x += level_width + spacing
-    # place the track mode buttons
-    button_size = min(button_width, 
-      math.floor((height - (2 * button_spacing)) / 3))
-    self.mute_rect.width = self.mute_rect.height = button_size
-    self.solo_rect.width = self.solo_rect.height = button_size
-    self.arm_rect.width = self.arm_rect.height = button_size
-    y = height - 1
-    y -= button_size
-    self.arm_rect.x = x
-    self.arm_rect.y = y
-    y -= button_size + button_spacing
-    self.mute_rect.x = x
-    self.mute_rect.y = y
-    y -= button_size + button_spacing
-    self.solo_rect.x = x
-    self.solo_rect.y = y
-    x += button_width + spacing
-    # draw the pan control
-    cr.set_source_rgba(fg.red, fg.green, fg.blue, 1.0)
-    cr.set_line_width(2)
-    radius = (self.pan_rect.width / 2)
+    left = self.track.level
+    right = self.track.level
+    if (self.track.pan < 0.0):
+      right *= (1.0 - abs(self.track.pan))
+    elif (self.track.pan > 0.0):
+      left *= (1.0 - abs(self.track.pan))
+    # inset on the left and bottom so we can show connections
+    inset = symbols.RADIUS * 4
+    bars = geom.Rectangle(inset, 1, width - inset - 1, height - inset)
+    lb = geom.Rectangle(bars.x, bars.y, 
+      round(bars.width / 2), bars.height)
+    rb = geom.Rectangle(lb.x + lb.width, bars.y,
+      bars.width - lb.width, bars.height)
+    lh = round(lb.height * left)
+    rh = round(rb.height * right)
+    lb.y += lb.height - lh
+    lb.height = lh
+    rb.y += rb.height - rh
+    rb.height = rh
+    # draw the inner level bars
     cr.save()
-    cr.translate(self.pan_rect.x + (self.pan_rect.width / 2),
-                 self.pan_rect.y + self.pan_rect.height - spacing)
+    (r, g, b, a) = cr.get_source().get_rgba()
+    cr.set_source_rgba(r, g, b, 0.25)
+    cr.rectangle(lb.x, lb.y, lb.width, lb.height)
+    cr.rectangle(rb.x, rb.y, rb.width, rb.height)
+    cr.fill()
+    cr.restore()
+    # draw an outline around them
+    cr.set_line_width(2)
+    symbols.draw_round_rect(cr, bars.x, bars.y, bars.width, bars.height, 2)
+    cr.stroke()
+    # draw the pan direction indicator
+    rad = round(bars.width / 2.0)
+    cr.save()
+    cr.set_source_rgba(r, g, b, 0.5)
+    cr.translate(bars.x + rad, bars.y + bars.height - 4)
     cr.rotate(self.track.pan * (math.pi / 2))
-    cr.move_to(0, - radius)
-    cr.line_to(0, -1)
+    cr.move_to(0, -rad)
+    cr.line_to(0, -6)
     cr.stroke()
     cr.move_to(0, 0)
-    cr.line_to(-3, -4)
-    cr.line_to(3, -4)
+    cr.line_to(-3, -6)
+    cr.line_to(3, -6)
     cr.close_path()
     cr.fill()
     cr.restore()
-    # draw the mixer bar
-    cr.set_source_rgba(fg.red, fg.green, fg.blue, 0.1)
-    cr.rectangle(self.level_rect.x, self.level_rect.y, 
-                 self.level_rect.width, self.level_rect.height)
-    cr.fill()
-    h = max(2, round(self.level_rect.height * self.track.level))
-    cr.set_source_rgba(fg.red, fg.green, fg.blue, 0.15)
-    y = self.level_rect.y + self.level_rect.height - h
-    cr.rectangle(self.level_rect.x, y, self.level_rect.width, h)
-    cr.fill()
-    cr.set_source_rgba(fg.red, fg.green, fg.blue, 1.0)
-    y += 1
-    cr.set_line_width(2)
-    cr.move_to(self.level_rect.x, y)
-    cr.line_to(self.level_rect.x + self.level_rect.width, y)
-    cr.stroke()
-    # draw the buttons
-    symbols.draw_button(cr, self.solo_rect, 'S', fg, self.track.solo)
-    symbols.draw_button(cr, self.mute_rect, 'M', fg, self.track.mute)
-    symbols.draw_button(cr, self.arm_rect, 'R', fg, self.track.arm)
-  
-  # edit track properties by clicking
-  def on_click(self, x, y, state):
-    if (self.mute_rect.contains(x, y)):
-      self.track.mute = not self.track.mute
-      return(True)
-    elif (self.solo_rect.contains(x, y)):
-      self.track.solo = not self.track.solo
-      return(True)
-    elif (self.arm_rect.contains(x, y)):
-      self.track.arm = not self.track.arm
-      return(True)
-  
-  # edit track properties by dragging
-  def start_drag(self, x, y, state):
-    self._last_dx = 0
-    self._last_dy = 0
-    for area in self._draggable_areas:
-      if (area.contains(x, y)):
-        self._dragging_target = area
-        self._original_level = self.track.level
-        self._original_pan = self.track.pan
-        return(True)
-    self._dragging_target = self
-    return(True)
-  def on_drag(self, dx, dy, state):
-    if (self._dragging_target is self):
-      ddy = dy - self._last_dy
-      track_delta = 0
-      if (ddy < - (self._height / 2)):
-        track_delta = -1
-      elif (ddy > (self._height / 2)):
-        track_delta = 1
-      if (self.apply_track_delta(track_delta)):
-        self._last_dy = dy
-    else:
-      area = self._dragging_target
-      # holding down control moves in finer increments
-      if ((state & Gdk.ModifierType.CONTROL_MASK) != 0):
-        dx *= 0.5
-        dy *= 0.5
-      if (area is self.level_rect):
-        self.track.level = min(max(
-          0, self._original_level - (dy / area.height)), 1)
-      elif (area is self.pan_rect):
-        self.track.pan = min(max(
-          -1, self._original_pan + (dx / area.width)), 1)
-  # move the track up and down in the list
-  def apply_track_delta(self, track_delta):
-    if (track_delta == 0):
-      return(False)
-    track_list_view = self.get_parent_with_attribute('tracks')
-    if (track_list_view is None):
-      return(False)
-    tracks = track_list_view.tracks
-    index = tracks.index(self.track)
-    new_index = min(max(0, index + track_delta), len(tracks) - 1)
-    if (new_index != index):
-      new_tracks = list(tracks)
-      del new_tracks[index]
-      new_tracks.insert(new_index, self.track)
-      tracks[0:] = new_tracks
-      return(True)
-    return(False)
+    # draw connections for the level and pan
+    rad = symbols.RADIUS
+    y = bars.y + bars.height - (rad * 2)
+    symbols.draw_path(cr, 
+      (geom.Point(rad, y), geom.Point(bars.x, y)), 
+      'o-')
+    x = bars.x + round(bars.width / 2.0)
+    y = bars.y + bars.height + (rad * 2) 
+    symbols.draw_path(cr, 
+      (geom.Point(rad, y), geom.Point(x, y), 
+       geom.Point(x, bars.y + bars.height)), 
+      'o-.-')
+    # draw a connection showing the incoming track signal
+    y = round(height / 2.0)
+    symbols.draw_path(cr, 
+      (geom.Point(0, y), geom.Point(bars.x, y)), 
+      '-')

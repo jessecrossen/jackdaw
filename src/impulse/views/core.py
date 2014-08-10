@@ -518,10 +518,14 @@ class ListView(LayoutView):
     views = self.allocate_views_for_models(
       self._model, 
       lambda t: self.view_class(t))
+    max_width = 0
     for view in views:
       view.size_allocate(geom.Rectangle(
         0, self.list_layout.position_of_item(view.model),
         width, self.list_layout.size_of_item(view.model)))
+      (minimum_size, preferred_size) = view.get_preferred_size()
+      max_width = max(max_width, preferred_size.width)
+    self.set_size_request(max_width, -1)
   def start_drag(self, x, y, state):
     item = self.list_layout.item_at_position(y)
     if (item is None): return(False)
@@ -562,7 +566,7 @@ class SwitchableColumnView(Gtk.Box):
       view = self.column_views[i]
       expand = view is expandable
       self.columns.pack_start(view, expand, expand, 0)
-      if (i < len(toggle_icons)):
+      if ((i < len(toggle_icons)) and (toggle_icons[i] is not None)):
         button = Gtk.ToggleToolButton(toggle_icons[i])
         button.set_active(True)
         self.toolbar.add(button)
@@ -571,3 +575,10 @@ class SwitchableColumnView(Gtk.Box):
     i = self.toolbar.get_item_index(item)
     if (i < len(self.column_views)):
       self.column_views[i].set_visible(item.get_active())
+    # allocate width for all visible views
+    width = self.toolbar.get_icon_size()
+    for view in self.column_views:
+      if (view.get_visible()):
+        (minimum_size, preferred_size) = view.get_preferred_size()
+        width += preferred_size.width
+    self.set_size_request(width, -1)

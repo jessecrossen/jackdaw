@@ -25,7 +25,7 @@ class DeviceLayout(ListLayout):
     set_name_font(self.dummy_context)
   def size_of_item(self, device):
     (xb, yb, w, h, xa, ya) = self.dummy_context.text_extents(device.name)
-    return(max(symbols.BRACKET_HEIGHT, w + 8))
+    return(max(symbols.BRACKET_HEIGHT, w + 12))
 
 # show a single device
 class DeviceView(DrawableView):
@@ -93,8 +93,9 @@ class PatchBayView(DrawableView):
     elif (self._drag_source_list is self.right_list):
       connections.add((self._drag_target, self._drag_source))
     # size the active areas for starting a drag
-    self._left_x = 2 * symbols.BRACKET_WIDTH
-    self._right_x = width - symbols.RADIUS - 1
+    inset = (symbols.RADIUS * 2)
+    self._left_x = inset
+    self._right_x = width - inset
     self.left_area.width = self._left_x + (4 * symbols.RADIUS)
     if (len(self.left_list) > 0):
       self.left_area.height = (
@@ -229,7 +230,7 @@ class PatchBayView(DrawableView):
     for item in self.left_list:
       y = y_of_item(item, self.left_layout)
       symbols.draw_path(cr, 
-        (geom.Point(symbols.BRACKET_WIDTH, y), geom.Point(self._left_x, y)), '}-')
+        (geom.Point(0, y), geom.Point(self._left_x, y)), '-')
     for item in self.right_list:
       y = y_of_item(item, self.right_layout)
       symbols.draw_line(cr, 

@@ -38,6 +38,8 @@ class Device(object):
     if (out_port is not None):
       self._out.open_port(out_port)
       self._output_connected = True
+    if (self.is_connected):
+      self.on_connect()
   # disconnect from inputs and outputs
   def disconnect(self):
     self.on_disconnect()

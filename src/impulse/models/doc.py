@@ -557,10 +557,17 @@ class Document(Model):
     self.tracks.add_observer(self.on_change)
     self.input_patch_bay = PatchBay()
     self.input_patch_bay.add_observer(self.on_input_change)
+    self.output_patch_bay = PatchBay()
+    self.output_patch_bay.add_observer(self.on_output_change)
   
   # connect input devices when they're routed to something in the patch bay
   def on_input_change(self):
     for device in self.input_patch_bay.from_items:
       if (not device.is_connected):
         device.connect()
-    
+  # connect output devices when there's something routed to them
+  def on_output_change(self):
+    for device in self.output_patch_bay.to_items:
+      if (not device.is_connected):
+        device.connect()
+
