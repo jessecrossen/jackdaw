@@ -4,6 +4,7 @@ import weakref
 from gi.repository import Gtk, Gdk, GLib
 
 from ..common import observable
+import geom
 import state
 
 # make a singleton for handling things like selection state
@@ -213,10 +214,12 @@ class Interactive(object):
     # hook to events
     self.add_events(Gdk.EventMask.BUTTON_PRESS_MASK |
                     Gdk.EventMask.POINTER_MOTION_MASK |
+                    Gdk.EventMask.LEAVE_NOTIFY_MASK |
                     Gdk.EventMask.BUTTON_RELEASE_MASK |
                     Gdk.EventMask.KEY_PRESS_MASK)
     self.connect('button-press-event', self.on_button_press)
     self.connect('motion-notify-event', self.on_pointer_motion)
+    self.connect('leave-notify-event', self.on_leave)
     self.connect('button-release-event', self.on_button_release)
     self.connect('key-press-event', self.on_key_press)
   
@@ -261,6 +264,8 @@ class Interactive(object):
                    event.y_root - self._down['y_root'], 
                    event.state)
       return(True)
+  def on_leave(self, target, event):
+    self.update_cursor(-1000, -1000, 0)
   def on_button_release(self, target, event):
     if (self.dragging):
       self.grab_remove()
@@ -338,15 +343,6 @@ class DrawableView(View, Gtk.DrawingArea):
   # draw the view's contents into the given graphics context
   def redraw(self, cr, width, height):
     pass
-  # draw a rounded rectangle
-  def draw_round_rect(self, cr, x, y, w, h, r):
-    degrees = math.pi / 180.0
-    cr.new_sub_path()
-    cr.arc(x + w - r, y + r, r, -90 * degrees, 0 * degrees)
-    cr.arc(x + w - r, y + h - r, r, 0 * degrees, 90 * degrees)
-    cr.arc(x + r, y + h - r, r, 90 * degrees, 180 * degrees)
-    cr.arc(x + r, y + r, r, 180 * degrees, 270 * degrees)
-    cr.close_path()
 
 # make a base class for views that just does layout for other views
 class LayoutView(View, Gtk.Layout):
@@ -497,3 +493,19 @@ class ListLayout(object):
       if (p < next_p):
         return(item)
     return(None)
+    
+# show views from a list using a ListLayout
+class ListView(LayoutView):
+  def __init__(self, models, view_class, list_layout):
+    LayoutView.__init__(self, models)
+    self.list_layout = list_layout
+    self.view_class = view_class
+  def layout(self, width, height):
+    views = self.allocate_views_for_models(
+      self._model, 
+      lambda t: self.view_class(t))
+    for view in views:
+      view.size_allocate(geom.Rectangle(
+        0, self.list_layout.position_of_item(view.model),
+        width, self.list_layout.size_of_item(view.model)))
+

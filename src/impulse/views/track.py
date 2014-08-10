@@ -4,6 +4,7 @@ import cairo
 from gi.repository import Gtk, Gdk
 
 import geom
+import symbols
 from core import DrawableView, LayoutView, ViewManager, ListLayout
 import block
 
@@ -69,7 +70,7 @@ class TrackView(LayoutView):
       for view in views:
         view.pitches = pitches
     # update the header to show the new pitches
-    header_view = ViewManager.view_for_model(self.track, TrackHeaderView)
+    header_view = ViewManager.view_for_model(self.track, PitchKeyView)
     if (header_view is not None):
       header_view.on_change()
 
@@ -249,11 +250,10 @@ class TrackListBackgroundView(DrawableView):
 
 # display pitch names for a track
 class PitchKeyView(LayoutView):
-  def __init__(self, track, track_view):
+  def __init__(self, track):
     LayoutView.__init__(self, track)
     self.make_interactive()
     self._labels = dict()
-    self._in_layout = False
     self.set_size_request(30, 80)
     self.entry = Gtk.Entry()
     self.entry.set_alignment(1.0)
@@ -269,16 +269,17 @@ class PitchKeyView(LayoutView):
     return(self._model)
   # lay out the pitch labels
   def layout(self, width, height):
-    self._in_layout = True
+    # get a view for the track that has pitches
+    track_view = ViewManager.view_for_model(self._model, TrackView)
     # save old entries
     old_labels = dict(self._labels)
     # draw the pitch labels
     ty = 0
-    if (self.track_view):
-      ty = (height - self.track_view._height) / 2
-      h = self.track_view.pitch_height
+    if (track_view):
+      ty = (height - track_view._height) / 2
+      h = track_view.pitch_height
       for pitch in self.track.pitches:
-        y = self.track_view.y_of_pitch(pitch)
+        y = track_view.y_of_pitch(pitch)
         # make an entry widget for the pitch
         if (pitch in self._labels):
           label = self._labels[pitch]
@@ -303,8 +304,7 @@ class PitchKeyView(LayoutView):
       # update the editable area
       self.editable_area.width = width
       self.editable_area.y = ty
-      self.editable_area.height = self.track_view._height
-    self._in_layout = False
+      self.editable_area.height = track_view._height
   # activate the entry when a pitch is clicked
   def on_click(self, x, y, state):
     for (pitch, label) in self._labels.iteritems():
@@ -335,6 +335,26 @@ class PitchKeyView(LayoutView):
     if (self._editing_pitch is not None):
       self._editing_pitch = None
       self.remove(self.entry)
+
+# display a view to indicate and control whether a track is armed
+class TrackArmView(DrawableView):
+  def __init__(self, track):
+    DrawableView.__init__(self, track)
+    self.make_interactive()
+  @property
+  def track(self):
+    return(self._model)
+  def redraw(self, cr, width, height):
+    y = round(height / 2.0)
+    p1 = geom.Point(0, y)
+    p2 = geom.Point(width - symbols.BRACKET_WIDTH, y)
+    if (self.track.arm):
+      s = '1{'
+    else:
+      s = '0{' 
+    symbols.draw_path(cr, (p1, p2), s)
+  def on_click(self, x, y, state):
+    self.track.arm = not self.track.arm
 
 # display mixer controls for a track
 class TrackMixerView(DrawableView):
@@ -452,30 +472,9 @@ class TrackMixerView(DrawableView):
     cr.line_to(self.level_rect.x + self.level_rect.width, y)
     cr.stroke()
     # draw the buttons
-    self.draw_button(cr, self.solo_rect, 'S', fg, self.track.solo)
-    self.draw_button(cr, self.mute_rect, 'M', fg, self.track.mute)
-    self.draw_button(cr, self.arm_rect, 'R', fg, self.track.arm)
-  # draw one of the track mode buttons
-  def draw_button(self, cr, area, label, color, toggled):
-    radius = 3
-    cr.set_source_rgba(color.red, color.green, color.blue, 0.1)
-    self.draw_round_rect(cr, area.x, area.y, area.width, area.height, radius)
-    cr.fill()
-    if (toggled):
-      cr.set_source_rgba(color.red, color.green, color.blue, 1.0)
-      cr.set_line_width(2)
-      self.draw_round_rect(cr, area.x, area.y, area.width, area.height, radius)
-      cr.stroke()
-    if (len(label) > 0):
-      if (toggled):
-        cr.set_source_rgba(color.red, color.green, color.blue, 1.0)
-      else:
-        cr.set_source_rgba(color.red, color.green, color.blue, 0.5)
-      cr.set_font_size(round(min(area.width, area.height) / 2))
-      (bx, by, tw, th, nx, ny) = cr.text_extents(label)
-      cr.move_to(area.x + (area.width / 2) - (tw / 2) - bx, 
-                 area.y + (area.height / 2) - (th / 2) - by)
-      cr.show_text(label)
+    symbols.draw_button(cr, self.solo_rect, 'S', fg, self.track.solo)
+    symbols.draw_button(cr, self.mute_rect, 'M', fg, self.track.mute)
+    symbols.draw_button(cr, self.arm_rect, 'R', fg, self.track.arm)
   
   # edit track properties by clicking
   def on_click(self, x, y, state):
@@ -540,57 +539,3 @@ class TrackMixerView(DrawableView):
       tracks[0:] = new_tracks
       return(True)
     return(False)
-    
-# display a header with general track information
-class TrackHeaderView(Gtk.Box):
-  def __init__(self, track, track_view):
-    Gtk.Box.__init__(self)
-    self.set_orientation(Gtk.Orientation.HORIZONTAL)
-    self._track = track
-    self._track_view = track_view
-    self.mixer_view = TrackMixerView(self.track)
-    self.pack_start(self.mixer_view, False, True, 0)
-    self.pitch_key = PitchKeyView(self.track, track_view)
-    self.pack_end(self.pitch_key, True, True, 0)
-    ms = self.mixer_view.get_size_request()
-    ps = self.pitch_key.get_size_request()
-    self.set_size_request(ms[0] + ps[0], max(ms[1], ps[1]))
-  # expose 'track' as an alternate name for 'model' for readability
-  @property
-  def track(self):
-    return(self._track)
-  @property
-  def track_view(self):
-    return(self._track_view)
-  @track_view.setter
-  def track_view(self, value):
-    self._track_view = value
-    self.pitch_key.track_view = value
-  # do layout
-  def layout(self, width, height):
-    w = 60
-    self.mixer_view.size_allocate(geom.Rectangle(0, 0, w, height))
-    self.pitch_key.size_allocate(geom.Rectangle(w, 0, width - w, height))
-    
-# display a list of track headers
-class TrackListHeaderView(LayoutView):
-  def __init__(self, tracks, track_layout=None):
-    LayoutView.__init__(self, tracks)
-    self.track_layout = track_layout
-    if (self.track_layout is None):
-      self.track_layout = TrackLayout(self.tracks)
-  # expose 'tracks' as an alternate name for 'model' for readability
-  @property
-  def tracks(self):
-    return(self._model)
-  # place tracks in the view
-  def layout(self, width, height):
-    views = self.allocate_views_for_models(
-      self.tracks, 
-      lambda t: TrackHeaderView(t, None))
-    for view in views:
-      view.track_view = ViewManager.view_for_model(view.track, TrackView)
-      view.size_allocate(geom.Rectangle(
-        0, self.track_layout.position_of_item(view.track),
-        width, self.track_layout.size_of_item(view.track)))
-      size = view.get_size_request()

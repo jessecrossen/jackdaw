@@ -4,6 +4,7 @@ from gi.repository import Gtk, Gdk
 
 from ..common import observable
 import geom
+import symbols
 from core import DrawableView, ContextMenu, ViewManager
 
 # make a view that shows the events in a block
@@ -17,6 +18,7 @@ class BlockView(DrawableView):
     self.ending = observable.AttributeProxy(
       self.block, 'time', 'duration')
     self.ending_area = geom.Rectangle(x=-100, width=6)
+    self.beginning_area = geom.Rectangle(x=-100, width=6)    
     self.cursor_areas[self.ending_area] = Gdk.Cursor.new(
       Gdk.CursorType.RIGHT_SIDE)
     self.repeat = None
@@ -142,15 +144,20 @@ class BlockView(DrawableView):
     # draw the repeat sign
     if (self.repeat_time < self.ending.time):
       set_color_for(self.repeat, 0.75)
-      self.draw_repeat(cr)
+      self.repeat_area.x = (
+        self.x_of_time(self.repeat_time) - self.repeat_area.width)
+      self.repeat_area.height = self._height
+      symbols.draw_repeat(cr, self.repeat_area)
     # draw end caps
     set_color_for(None, 0.75)
-    self.draw_cap(cr, self.x_of_time(0), 6)
+    self.beginning_area.x = self.x_of_time(0)
+    self.beginning_area.height = height
+    symbols.draw_cap(cr, self.beginning_area, 1)
     set_color_for(self.ending, 0.75)
     x = self.x_of_time(self.ending.time)
-    self.draw_cap(cr, x, -6)
     self.ending_area.x = x - self.ending_area.width
     self.ending_area.height = height
+    symbols.draw_cap(cr, self.ending_area, -1)
     # draw boxes for all events with pitch
     for event in self.block.events:
       # skip events without pitch and time
@@ -165,11 +172,6 @@ class BlockView(DrawableView):
         if (event.duration != None):
           duration = event.duration
       except AttributeError: pass
-      velocity = 1
-      try:
-        if (event.velocity != None):
-          velocity = event.velocity
-      except AttributeError: pass
       # locate the beginning of the event
       x = self.x_of_time(time)
       y = self.y_of_pitch(pitch)
@@ -177,55 +179,17 @@ class BlockView(DrawableView):
       if ((x is None) or (y is None)):
         continue
       x = round(x)
-      # set the height of the event box based on velocity and center 
-      #  it vertically on the guideline, leaving at max a pixel above and 
-      #  below to separate from notes on other pitches
-      h = (self.pitch_height - 2) * velocity
+      # center the event vertically on the guideline
+      h = self.pitch_height
       y -= round(h / 2)
-      # make sure all notes are at least as wide as they are tall
       w = round(self.x_of_time(time + duration)) - x
-      w = max(w, h)
       # set the color depending on whether the note is selected
       set_color_for(event, 0.9)
+      area = geom.Rectangle(x, y, w, h)
       # draw the note, repeating it as many times as needed
-      while ((x < width) and (repeat_width > 0)):
-        self.draw_round_rect(cr, x, y, w, h, 3)
-        cr.fill()
-        x += repeat_width
-  
-  # draw the repeat sign
-  def draw_repeat(self, cr):
-    x = self.x_of_time(self.repeat_time)
-    self.repeat_area.x = x - self.repeat_area.width
-    self.repeat_area.height = self._height
-    cr.set_line_width(2)
-    cr.move_to(x, 0)
-    cr.line_to(x, self._height)
-    cr.stroke()
-    cr.set_line_width(1)
-    x -= 3.5
-    cr.move_to(x, 0)
-    cr.line_to(x, self._height)
-    cr.stroke()
-    x -= 4.5
-    y = round(self._height / 2)
-    cr.arc(x, y - 5, 1.5, 0, 2 * math.pi)
-    cr.arc(x, y + 5, 1.5, 0, 2 * math.pi)
-    cr.fill()
-  # draw the left and right caps
-  def draw_cap(self, cr, x, w):
-    sign = (w / abs(w))
-    inner = w - (2 * sign)
-    cr.move_to(x - sign, 0)
-    cr.rel_line_to(w, 0)
-    cr.rel_line_to(0, 1)
-    cr.rel_line_to(- inner, 1)
-    cr.rel_line_to(0, self._height - 4)
-    cr.rel_line_to(inner, 1)
-    cr.rel_line_to(0, 1)
-    cr.rel_line_to(- w, 0)
-    cr.close_path()
-    cr.fill()
+      while ((area.x < width) and (repeat_width > 0)):
+        symbols.draw_note(cr, event, area)
+        area.x += repeat_width
     
   # return the note(s) under the given position, if any
   def notes_at_pos(self, x, y):

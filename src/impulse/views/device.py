@@ -4,6 +4,7 @@ import cairo
 from gi.repository import Gtk, Gdk
 
 import geom
+import symbols
 from core import DrawableView, LayoutView, ViewManager, ListLayout
 
 # lay out a list of devices
@@ -76,8 +77,6 @@ class PatchBayView(DrawableView):
       Gdk.CursorType.SB_RIGHT_ARROW)
     self.cursor_areas[self.right_area] = Gdk.Cursor(
       Gdk.CursorType.SB_LEFT_ARROW)
-    # set the radius of connection points
-    self.radius = 4
   @property
   def patch_bay(self):
     return(self._model)
@@ -92,15 +91,17 @@ class PatchBayView(DrawableView):
     elif (self._drag_source_list is self.right_list):
       connections.add((self._drag_target, self._drag_source))
     # size the active areas for starting a drag
-    self.left_area.width = width / 4
+    self._left_x = 2 * symbols.BRACKET_WIDTH
+    self._right_x = width - symbols.RADIUS - 1
+    self.left_area.width = self._left_x + (4 * symbols.RADIUS)
     if (len(self.left_list) > 0):
       self.left_area.height = (
         self.left_layout.position_of_item(self.left_list[-1]) +
         self.left_layout.size_of_item(self.left_list[-1]))
     else:
       self.left_area.height = 0
-    self.right_area.width = width / 4
-    self.right_area.x = width - self.right_area.width
+    self.right_area.x = self._right_x - (4 * symbols.RADIUS)
+    self.right_area.width = width - self.right_area.x
     if (len(self.right_list) > 0):
       self.right_area.height = (
         self.right_layout.position_of_item(self.right_list[-1]) +
@@ -113,17 +114,15 @@ class PatchBayView(DrawableView):
              (layout.size_of_item(item) / 2))
     # get lines between all connections in the patch bay
     lines = [ ]
-    self._left_x = self.radius
-    self._right_x = width - self.radius
     unused_left = set(self.left_list)
     unused_right = set(self.right_list)
     for connection in connections:
-      style = 'o-o'
+      style = '*~*'
       (left_item, right_item) = connection
       if (isinstance(left_item, geom.Point)):
         lx = left_item.x
         ly = left_item.y
-        style = '<.'+style[-1:]
+        style = '<'+style[1:]
       elif (left_item in self.left_list):
         lx = self._left_x
         ly = y_of_item(left_item, self.left_layout)
@@ -134,7 +133,7 @@ class PatchBayView(DrawableView):
       if (isinstance(right_item, geom.Point)):
         rx = right_item.x
         ry = right_item.y
-        style = style[0:1]+'.>'
+        style = style[0:-1]+'>'
       elif (right_item in self.right_list):
         rx = self._right_x
         ry = y_of_item(right_item, self.right_layout)
@@ -149,11 +148,11 @@ class PatchBayView(DrawableView):
     for item in unused_left:
       lines.append((geom.Point(
         self._left_x, y_of_item(item, self.left_layout)), None, 
-        'o  ', None))
+        'o', None))
     for item in unused_right:
       lines.append((None, geom.Point(
         self._right_x, y_of_item(item, self.right_layout)), 
-        '  o', None))
+        'o', None))
     # index connections by position
     lefts = dict()
     rights = dict()
@@ -176,37 +175,63 @@ class PatchBayView(DrawableView):
       dirs.sort(key=sort_key)
     for (rk, dirs) in rights.iteritems():
       dirs.sort(key=sort_key)
+    # interconnect connections on each side
+    groups = lefts.values()
+    groups.extend(rights.values())
+    for dirs in groups:
+      last = None
+      for p in dirs:
+        if (last):
+          lines.append((last[0], p[0], '-', None))
+        last = p
     # spread connections out so each has its own endpoint
-    step = (self.radius * 2) + 4
+    #  but there is always one in the center position
+    def spread(num, i):
+      step = (symbols.RADIUS * 2) + 4
+      return((i - math.floor((num - 1) / 2.0)) * step)
     for (lk, dirs) in lefts.iteritems():
       for i in range(0, len(dirs)):
-        dirs[i][0].y = lk[1] + ((i - ((len(dirs) - 1) / 2.0)) * step)
+        dirs[i][0].y = lk[1] + spread(len(dirs), i)
     for (rk, dirs) in rights.iteritems():
       for i in range(0, len(dirs)):
-        dirs[i][0].y = rk[1] + ((i - ((len(dirs) - 1) / 2.0)) * step)
+        dirs[i][0].y = rk[1] + spread(len(dirs), i)
     # add a prospective connection when dragging would make one
     if ((self._over_item) and (not self._over_connection) and
         (self._over_item is not self._drag_source)):
       if ((self._over_list is self.left_list) and 
           (self._over_item not in unused_left)):
-        lp = geom.Point(
+        p2 = geom.Point(
           self._left_x, y_of_item(self._over_item, self.left_layout))
-        offset = ((len(lefts[(lp.x, lp.y)]) + 1) / 2.0) * step
+        num = len(lefts[(p2.x, p2.y)])
         if (self._over_dir < 0):
-          lp.y -= offset
+          p1 = geom.Point(p2.x, p2.y + spread(num, 0))
+          p2.y += spread(num, -1)
         else:
-          lp.y += offset
-        lines.append((lp, None, 'o  ', None))
+          p1 = geom.Point(p2.x, p2.y + spread(num, num - 1))
+          p2.y += spread(num, num)
+        symbols.draw_path(cr, (p1, p2), '-o')
       elif ((self._over_list is self.right_list) and 
             (self._over_item not in unused_right)):
-        rp = geom.Point(
+        p2 = geom.Point(
           self._right_x, y_of_item(self._over_item, self.right_layout))
-        offset = ((len(rights[(rp.x, rp.y)]) + 1) / 2.0) * step
+        num = len(rights[(p2.x, p2.y)])
         if (self._over_dir < 0):
-          rp.y -= offset
+          p1 = geom.Point(p2.x, p2.y + spread(num, 0))
+          p2.y += spread(num, -1)
         else:
-          rp.y += offset
-        lines.append((None, rp, '  o', None))
+          p1 = geom.Point(p2.x, p2.y + spread(num, num - 1))
+          p2.y += spread(num, num)
+        symbols.draw_path(cr, (p1, p2), '-o')
+    # draw stubs for interconnecting with views to the left and right
+    cr.set_line_width(2)
+    for item in self.left_list:
+      y = y_of_item(item, self.left_layout)
+      symbols.draw_path(cr, 
+        (geom.Point(symbols.BRACKET_WIDTH, y), geom.Point(self._left_x, y)), '}-')
+    for item in self.right_list:
+      y = y_of_item(item, self.right_layout)
+      symbols.draw_line(cr, 
+        geom.Point(self._right_x, y), geom.Point(width, y), '-')
     # draw connections
     cr.set_source_rgba(fg.red, fg.green, fg.blue, 1.0)
     for (lp, rp, s, c) in lines:
@@ -216,67 +241,9 @@ class PatchBayView(DrawableView):
           s = 'x'+s[1:]
         else:
           s = s[:-1]+'x'
-      self.draw_connection(cr, lp, rp, s)
+      symbols.draw_connection(cr, lp, rp, s)
     # store connection positions for mouseover effects
     self._lines = lines
-  # draw components
-  def draw_connection(self, cr, lp, rp, style):
-    cr.set_line_width(2)
-    if (lp):
-      lx = lp.x; ly = lp.y
-      if (style[0] == 'o'):
-        self.draw_port(cr, lx, ly)
-        lx += self.radius
-      elif (style[0] == 'x'):
-        self.draw_unplug(cr, lx, ly)
-      elif (style[0] == '<'):
-        self.draw_arrow(cr, lx, ly, style[0])
-    if (rp):
-      rx = rp.x; ry = rp.y
-      if (style[-1] == 'o'):
-        self.draw_port(cr, rx, ry)
-        rx -= self.radius
-      elif (style[-1] == 'x'):
-        self.draw_unplug(cr, rx, ry)
-      elif (style[-1] == '>'):
-        self.draw_arrow(cr, rx, ry, style[-1])
-    if ((lp) and (rp)):
-      if (style[1] == '-'):
-        cr.set_dash(())
-      else:
-        cr.set_dash((3, 2))
-      cr.move_to(lx, ly)
-      cx = abs((rx - lx) / 2)
-      cr.curve_to(lx + cx, ly, rx - cx, ry, rx, ry)
-      cr.stroke()
-      cr.set_dash(())
-  # draw a circle indicating a connection port
-  def draw_port(self, cr, x, y):
-    cr.set_line_width(2)
-    r = self.radius - 1
-    cr.move_to(x + r, y)
-    cr.arc(x, y, r, 0, math.pi * 2)
-    cr.stroke()
-  # draw an X indicating a connection can be unplugged
-  def draw_unplug(self, cr, x, y):
-    cr.set_line_width(2)
-    r = self.radius
-    cr.move_to(x - r, y - r)
-    cr.line_to(x + r, y + r)
-    cr.move_to(x - r, y + r)
-    cr.line_to(x + r, y - r)
-    cr.stroke()
-  # draw an arrow indicating the endpoint of a possible connection
-  def draw_arrow(self, cr, x, y, s):
-    if (s == '<'):
-      s = -1
-    else:
-      s = 1
-    cr.move_to(x, y - self.radius)
-    cr.line_to(x + (self.radius * 2 * s), y)
-    cr.line_to(x, y + self.radius)
-    cr.close_path()
-    cr.fill()
   
   # track the cursor
   def update_cursor(self, x, y, state):
@@ -287,8 +254,8 @@ class PatchBayView(DrawableView):
     if (self.left_area.contains(x, y)):
       over_list = self.left_list
       for (lp, rp, s, c) in self._lines:
-        if ((lp) and (rp) and 
-            (abs(y - lp.y) <= self.radius + 2)):
+        if ((lp) and (rp) and (c) and 
+            (abs(y - lp.y) <= symbols.RADIUS + 2)):
           over_connection = c
           over_item = c[0]
           break
@@ -300,8 +267,8 @@ class PatchBayView(DrawableView):
     elif (self.right_area.contains(x, y)):
       over_list = self.right_list
       for (lp, rp, s, c) in self._lines:
-        if ((lp) and (rp) and 
-            (abs(y - rp.y) <= self.radius + 1)):
+        if ((lp) and (rp) and (c) and
+            (abs(y - rp.y) <= symbols.RADIUS + 1)):
           over_connection = c
           over_item = c[1]
           break

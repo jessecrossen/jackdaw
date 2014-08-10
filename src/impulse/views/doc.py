@@ -1,4 +1,5 @@
 from gi.repository import Gtk
+import core
 import track
 import device
 from ..midi import inputs
@@ -34,12 +35,18 @@ class DocumentView(Gtk.Frame):
       right_list=self.document.tracks, right_layout=self.track_layout)
     self.left_box.pack_start(self.input_patch_bay_view, False, False, 0)
     self.input_patch_bay_view.set_size_request(80, 80)
-    # add a view for track headers
-    self.track_headers_view = track.TrackListHeaderView(
-      tracks=self.document.tracks,
-      track_layout=self.track_layout)
-    self.left_box.pack_end(self.track_headers_view, True, True, 0)
-    self.track_headers_view.set_size_request(90, 80)
+    # add a view for arming tracks
+    self.track_arms = core.ListView(
+      self.document.tracks, view_class=track.TrackArmView,
+      list_layout=self.track_layout)
+    self.left_box.pack_start(self.track_arms, False, False, 0)
+    self.track_arms.set_size_request(40, 80)
+    # add a view for track pitches
+    self.pitch_keys = core.ListView(
+      self.document.tracks, view_class=track.PitchKeyView, 
+      list_layout=self.track_layout)
+    self.left_box.pack_end(self.pitch_keys, True, True, 0)
+    self.pitch_keys.set_size_request(30, 80)
     # add a view for the document's tracks
     self.tracks_view = track.TrackListView(
       tracks=self.document.tracks, 
