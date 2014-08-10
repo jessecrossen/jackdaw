@@ -9,8 +9,11 @@ import geom
 import symbols
 from core import DrawableView, LayoutView, ViewManager, ListLayout
 
-# the font size for device names
-DEVICE_NAME_SIZE = 12.0
+# set the font for device names
+def set_name_font(cr):
+  cr.select_font_face('sans-serif', cairo.FONT_SLANT_NORMAL, 
+                      cairo.FONT_WEIGHT_BOLD)
+  cr.set_font_size(12.0)
 
 # lay out a list of devices
 class DeviceLayout(ListLayout):
@@ -19,12 +22,10 @@ class DeviceLayout(ListLayout):
     self.spacing = 4
     self.dummy_context = cairo.Context(cairo.ImageSurface(
       cairo.FORMAT_A8, 1, 1))
-    self.dummy_context.select_font_face('sans-serif', cairo.FONT_SLANT_NORMAL, 
-                      cairo.FONT_WEIGHT_BOLD)
-    self.dummy_context.set_font_size(DEVICE_NAME_SIZE)
+    set_name_font(self.dummy_context)
   def size_of_item(self, device):
     (xb, yb, w, h, xa, ya) = self.dummy_context.text_extents(device.name)
-    return(w + 8)
+    return(max(symbols.BRACKET_HEIGHT, w + 8))
 
 # show a single device
 class DeviceView(DrawableView):
@@ -35,9 +36,7 @@ class DeviceView(DrawableView):
     return(self._model)
   def redraw(self, cr, width, height):
     cr.save()
-    cr.select_font_face('sans-serif', cairo.FONT_SLANT_NORMAL, 
-                      cairo.FONT_WEIGHT_BOLD)
-    cr.set_font_size(DEVICE_NAME_SIZE)
+    set_name_font(cr)
     name = self.device.name
     while (len(name) > 1):
       (xb, yb, w, h, xa, ya) = cr.text_extents(name)

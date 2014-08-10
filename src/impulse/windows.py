@@ -17,13 +17,8 @@ class DocumentWindow(Gtk.ApplicationWindow):
     self.app = app
     # set default size
     self.set_default_size(800, 600)
-    # make a toolbar
+    # make window-wide actions
     self._make_actions()
-    self._make_toolbar()
-    # make some widgets for the main content
-    self.box = Gtk.Box.new(Gtk.Orientation.VERTICAL, 0)
-    self.add(self.box)
-    self.box.pack_start(self.toolbar, False, False, 0)
     # initialize state
     self.control_surface = None
     self.transport = None
@@ -78,7 +73,7 @@ class DocumentWindow(Gtk.ApplicationWindow):
     self.document_view = views.doc.DocumentView(
       document=self._document,
       transport=self.transport)
-    self.box.pack_end(self.document_view, True, True, 0)
+    self.add(self.document_view)
     # bind actions for the new document
     self._bind_actions()
     # show the document view
@@ -141,24 +136,3 @@ class DocumentWindow(Gtk.ApplicationWindow):
         track_armed = True
         break
     self.record_action.set_enabled(track_armed)
-  # make a toolbar with document actions
-  def _make_toolbar(self):
-    # make a toolbar
-    t = Gtk.Toolbar.new()
-    self.toolbar = t
-    # transport actions
-    t.add(Gtk.ToolButton(Gtk.STOCK_MEDIA_REWIND, 
-                         action_name='win.transportBack'))
-    t.add(Gtk.ToolButton(Gtk.STOCK_MEDIA_FORWARD, 
-                         action_name='win.transportForward'))
-    t.add(Gtk.ToolButton(Gtk.STOCK_MEDIA_STOP, 
-                         action_name='win.transportStop'))
-    t.add(Gtk.ToolButton(Gtk.STOCK_MEDIA_PLAY, 
-                         action_name='win.transportPlay'))
-    t.add(Gtk.ToolButton(Gtk.STOCK_MEDIA_RECORD, 
-                         action_name='win.transportRecord'))
-    t.add(Gtk.SeparatorToolItem())
-    # undo/redo
-    t.add(Gtk.ToolButton(Gtk.STOCK_UNDO, action_name='win.undo'))
-    t.add(Gtk.ToolButton(Gtk.STOCK_REDO, action_name='win.redo'))
-
