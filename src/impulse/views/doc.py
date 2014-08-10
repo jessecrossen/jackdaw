@@ -24,8 +24,9 @@ class DocumentView(Gtk.Frame):
     self.input_device_layout = device.DeviceLayout(self.input_devices)
     self.track_layout = track.TrackLayout(self.document.tracks)
     # add a view for input devices
-    self.input_list_view = device.DeviceListView(
-      devices=self.input_devices, device_layout=self.input_device_layout)
+    self.input_list_view = core.ListView(
+      self.input_devices, view_class=device.DeviceView, 
+      list_layout=self.input_device_layout)
     self.left_box.pack_start(self.input_list_view, False, False, 0)
     self.input_list_view.set_size_request(20, 80)
     # add a patch bay to route between inputs and tracks

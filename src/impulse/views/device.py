@@ -29,25 +29,6 @@ class DeviceView(LayoutView):
   def layout(self, width, height):
     self.label.size_allocate(geom.Rectangle(0, 0, width, height))
     self.label.set_text(self.device.name)
-
-# show a vertical list of devices
-class DeviceListView(LayoutView):
-  def __init__(self, devices, device_layout):
-    LayoutView.__init__(self, devices)
-    self.device_layout = device_layout
-    if (self.device_layout is None):
-      self.device_layout = DeviceLayout(self.devices)
-  @property
-  def devices(self):
-    return(self._model)
-  def layout(self, width, height):
-    views = self.allocate_views_for_models(
-      self.devices, lambda d: DeviceView(d))
-    for view in views:
-      r = geom.Rectangle(
-        0, self.device_layout.position_of_item(view.device),
-        width, self.device_layout.size_of_item(view.device))
-      view.size_allocate(r)
       
 # show an interface to route between two lists
 class PatchBayView(DrawableView):

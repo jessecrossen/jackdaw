@@ -230,29 +230,38 @@ class Interactive(object):
   # override this and return True to handle keyboard input
   def on_key(self, keyval, state):
     return(False)
-    
+  
+  # get the real coordinates of an event in this widget
+  def get_pointer_coords(self):
+    (win, x, y, state) = self.get_window().get_pointer()
+    return(x, y)
+  
   # handle mouse events
   def on_button_press(self, target, event):
+    (x, y) = self.get_pointer_coords()
     # expose the context menu
     if (event.button == 3):
       return(self.on_context(event))
     # otherwise only register the primary button
     if (event.button != 1): return(False)
     self._down = {
-      'x': event.x,
-      'y': event.y,
+      'x': x,
+      'y': y,
       'x_root': event.x_root,
       'y_root': event.y_root,
       'state': event.state
     }
     self.dragging = None
   def on_pointer_motion(self, target, event):
+    (x, y) = self.get_pointer_coords()
+    if (target is not self):
+      (found, x, y) = target.translate_coordinates(self, x, y)
     if (self._down is None):
       self.update_cursor(event.x, event.y, event.state)
       return
     if (self.dragging is None):
-      dx = abs(event.x - self._down['x'])
-      dy = abs(event.y - self._down['y'])
+      dx = abs(x - self._down['x'])
+      dy = abs(y - self._down['y'])
       if (max(dx, dy) > 6):
         self.dragging = self.start_drag(
           self._down['x'], self._down['y'],
@@ -275,9 +284,10 @@ class Interactive(object):
       return(True)
     elif (self._down):
       result = None
-      if ((not self.dragging) and 
-            (event.x >= 0) and (event.x <= self._width) and 
-            (event.y >= 0) and (event.y <= self._height)):
+      if ((event.x >= 0) and (event.x <= self._width) and 
+          (event.y >= 0) and (event.y <= self._height) and 
+          (abs(self._down['x_root'] - event.x_root) <= 6) and
+          (abs(self._down['y_root'] - event.y_root) <= 6)):
         result = self.on_click(event.x, event.y, self._down['state'])
       self._down = None
       return(result)
@@ -498,8 +508,12 @@ class ListLayout(object):
 class ListView(LayoutView):
   def __init__(self, models, view_class, list_layout):
     LayoutView.__init__(self, models)
+    self.make_interactive()
     self.list_layout = list_layout
     self.view_class = view_class
+    self.drag_to_reorder = True
+    self._dragging_item = None
+    self._last_dy = 0
   def layout(self, width, height):
     views = self.allocate_views_for_models(
       self._model, 
@@ -508,4 +522,26 @@ class ListView(LayoutView):
       view.size_allocate(geom.Rectangle(
         0, self.list_layout.position_of_item(view.model),
         width, self.list_layout.size_of_item(view.model)))
-
+  def start_drag(self, x, y, state):
+    item = self.list_layout.item_at_position(y)
+    if (item is None): return(False)
+    self._dragging_item = item
+    return(True)
+  def on_drag(self, dx, dy, state):
+    ddy = dy - self._last_dy
+    jump = self.list_layout.size_of_item(self._dragging_item) / 2
+    if (abs(ddy) < jump): return
+    old_index = self._model.index(self._dragging_item)
+    if (ddy < 0):
+      new_index = max(0, old_index - 1)
+    else:
+      new_index = min(old_index + 1, len(self._model) - 1)
+    if (new_index != old_index):
+      new_list = list(self._model)
+      del new_list[old_index]
+      new_list.insert(new_index, self._dragging_item)
+      self._model[0:] = new_list
+      self._last_dy = dy
+  def on_drop(self):
+    self._dragging_item = None
+    self._last_dy = 0
