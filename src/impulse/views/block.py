@@ -150,11 +150,11 @@ class BlockView(DrawableView):
       symbols.draw_repeat(cr, self.repeat_area)
     # draw end caps
     set_color_for(None, 0.75)
-    self.beginning_area.x = self.x_of_time(0)
+    self.beginning_area.x = self.x_of_time(0) - 1
     self.beginning_area.height = height
     symbols.draw_cap(cr, self.beginning_area, 1)
     set_color_for(self.ending, 0.75)
-    x = self.x_of_time(self.ending.time)
+    x = self.x_of_time(self.ending.time) + 1
     self.ending_area.x = x - self.ending_area.width
     self.ending_area.height = height
     symbols.draw_cap(cr, self.ending_area, -1)

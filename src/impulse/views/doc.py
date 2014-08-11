@@ -17,6 +17,13 @@ class DocumentView(Gtk.Frame):
     self.input_device_layout = device.DeviceLayout(self.input_devices)
     self.output_device_layout = device.DeviceLayout(self.output_devices)
     self.track_layout = track.TrackLayout(self.document.tracks)
+    # make some functions to make the code below shorter
+    def track_column(view_class, width):
+      column = core.ListView(
+        self.document.tracks, view_class=view_class,
+        list_layout=self.track_layout)
+      column.set_size_request(width, -1)
+      return(column)
     # build the left panel
     self.input_list_view = core.ListView(
       self.input_devices, view_class=device.DeviceView, 
@@ -36,10 +43,7 @@ class DocumentView(Gtk.Frame):
     self.inputs_column.pack_start(self.input_list_view, False, False, 0)
     self.inputs_column.pack_start(transition, False, False, 0)
     self.inputs_column.pack_start(self.input_patch_bay_view, True, True, 0)
-    self.track_arms = core.ListView(
-      self.document.tracks, view_class=track.TrackArmView,
-      list_layout=self.track_layout)
-    self.track_arms.set_size_request(40, -1)
+    self.track_arms = track_column(track.TrackArmView, 40)
     transition = core.ListView(
       self.document.tracks,
       view_class=track.FromSignalTransitionView,
@@ -50,10 +54,7 @@ class DocumentView(Gtk.Frame):
     self.left_panel.pack_start(self.track_arms, False, False, 0)
     self.left_panel.pack_start(transition, False, False, 0)
     # set up the center panel
-    self.pitch_keys = core.ListView(
-      self.document.tracks, view_class=track.PitchKeyView, 
-      list_layout=self.track_layout)
-    self.pitch_keys.set_size_request(30, -1)
+    self.pitch_keys = track_column(track.PitchKeyView, 30)
     self.tracks_view = track.TrackListView(
       tracks=self.document.tracks, 
       track_layout=self.track_layout,
@@ -62,10 +63,8 @@ class DocumentView(Gtk.Frame):
     self.center_panel.pack_start(self.pitch_keys, False, False, 0)
     self.center_panel.pack_start(self.tracks_view, True, True, 0)
     # set up the right panel
-    self.mixer_view = core.ListView(
-      self.document.tracks, view_class=track.TrackMixerView,
-      list_layout=self.track_layout)
-    self.mixer_view.set_size_request(40, -1)
+    self.mixer_view = track_column(track.TrackMixerView, 40)
+    self.mute_solo_view = track_column(track.TrackMuteSoloView, 60)
     self.output_patch_bay_view = device.PatchBayView(
       patch_bay=self.document.output_patch_bay,
       left_list=self.document.tracks, left_layout=self.track_layout,
@@ -92,6 +91,7 @@ class DocumentView(Gtk.Frame):
     self.right_panel = Gtk.Box.new(Gtk.Orientation.HORIZONTAL, 0)
     self.right_panel.pack_start(transition, False, False, 0)
     self.right_panel.pack_start(self.mixer_view, False, False, 0)
+    self.right_panel.pack_start(self.mute_solo_view, False, False, 0)
     self.right_panel.pack_start(self.outputs_column, True, True, 0)
     # set up the main layout structure
     self.root = Gtk.Box.new(Gtk.Orientation.HORIZONTAL, 4)

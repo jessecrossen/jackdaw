@@ -386,11 +386,53 @@ class ToSignalTransitionView(TransitionView):
   def __init__(self, model):
     TransitionView.__init__(self, model, '>-')
 
+# display mute and solo controls for a track
+class TrackMuteSoloView(DrawableView):
+  def __init__(self, track):
+    DrawableView.__init__(self, track)
+    self.make_interactive()
+  # expose 'track' as an alternate name for 'model' for readability
+  @property
+  def track(self):
+    return(self._model)
+  def redraw(self, cr, width, height):
+    y = round(height / 2)
+    lx = (symbols.RADIUS * 2)
+    rx = (width - lx)
+    sy = y - (symbols.RADIUS * 6)
+    # draw the solo label
+    cr.set_font_size(8.0)
+    (xb, yb, w, h, xa, ya) = cr.text_extents('SOLO')
+    cr.move_to(((lx + rx) / 2) - (w / 2) - xb, sy - yb + symbols.RADIUS)
+    cr.show_text('SOLO')
+    # lay out the switches on center
+    inset = math.floor((width - 20) / 2)
+    # draw the mute switch
+    symbols.draw_path(cr, 
+      (geom.Point(0, y), geom.Point(lx, y), 
+       geom.Point(rx, y), geom.Point(width, y)),
+      '-'+('0' if self.track.mute else '1')+'-')
+    # draw the solo switch
+    symbols.draw_path(cr, 
+      (geom.Point(lx, y), geom.Point(lx, sy),
+       geom.Point(rx, sy), geom.Point(rx, y)),
+      '.-.'+('1' if self.track.solo else '0')+'.-.')
+  # toggle mute/solo on click
+  def on_click(self, x, y, state):
+    dy = (self._height / 2) - (symbols.RADIUS * 3)
+    if (y < dy):
+      self.track.solo = not self.track.solo
+    else:
+      self.track.mute = not self.track.mute
+
 # display mixer controls for a track
 class TrackMixerView(DrawableView):
   def __init__(self, track):
     DrawableView.__init__(self, track)
     self.make_interactive()
+    self.enable_automation = True
+    self.bar_area = geom.Rectangle()
+    self.drag_to_reorder = False
   # expose 'track' as an alternate name for 'model' for readability
   @property
   def track(self):
@@ -404,8 +446,19 @@ class TrackMixerView(DrawableView):
     elif (self.track.pan > 0.0):
       left *= (1.0 - abs(self.track.pan))
     # inset on the left and bottom so we can show connections
-    inset = symbols.RADIUS * 4
-    bars = geom.Rectangle(inset, 1, width - inset - 1, height - inset)
+    bars = self.bar_area
+    bars.x = 1; bars.y = 1
+    bars.width = width - 2
+    bars.height = height - 2
+    if (self.enable_automation):
+      inset = symbols.RADIUS * 4
+      bars.x += inset
+      bars.width -= inset
+      bars.height -= inset
+    else:
+      inset = symbols.RADIUS
+      bars.x += inset; bars.y += inset
+      bars.width -= inset; bars.height -= inset
     lb = geom.Rectangle(bars.x, bars.y, 
       round(bars.width / 2), bars.height)
     rb = geom.Rectangle(lb.x + lb.width, bars.y,
@@ -443,20 +496,38 @@ class TrackMixerView(DrawableView):
     cr.close_path()
     cr.fill()
     cr.restore()
-    # draw connections for the level and pan
-    rad = symbols.RADIUS
-    y = bars.y + bars.height - (rad * 2)
-    symbols.draw_path(cr, 
-      (geom.Point(rad, y), geom.Point(bars.x, y)), 
-      'o-')
-    x = bars.x + round(bars.width / 2.0)
-    y = bars.y + bars.height + (rad * 2) 
-    symbols.draw_path(cr, 
-      (geom.Point(rad, y), geom.Point(x, y), 
-       geom.Point(x, bars.y + bars.height)), 
-      'o-.-')
+    # draw connections for the level and pan if automation is on
+    if (self.enable_automation):
+      rad = symbols.RADIUS
+      y = bars.y + bars.height - (rad * 2)
+      symbols.draw_path(cr, 
+        (geom.Point(bars.x, y), geom.Point(rad, y)), 
+        '-o')
+      x = bars.x + round(bars.width / 2.0)
+      y = bars.y + bars.height + (rad * 2) 
+      symbols.draw_path(cr, 
+        (geom.Point(x, bars.y + bars.height), geom.Point(x, y), 
+         geom.Point(rad, y)), 
+        '-.-o')
     # draw a connection showing the incoming track signal
     y = round(height / 2.0)
     symbols.draw_path(cr, 
       (geom.Point(0, y), geom.Point(bars.x, y)), 
       '-')
+  # handle drag and drop
+  def start_drag(self, x, y, state):
+    if (self.bar_area.contains(x, y)):
+      self._drag_level = None
+      self._drag_pan = None 
+      return(True)
+  def on_drag(self, dx, dy, state):
+    if (self._drag_level is not None):
+      self.track.level = self._drag_level - (dy / self._height)
+    elif (self._drag_pan is not None):
+      self.track.pan = self._drag_pan + (dx / self._width)
+    elif (abs(dx - dy) > 6):
+      if (dx > dy):
+        self._drag_pan = self.track.pan
+      else:
+        self._drag_level = self.track.level
+      
