@@ -106,10 +106,9 @@ class TrackListView(LayoutView):
     self.time_scale = time_scale
     self.time_scale.add_observer(self.on_change)
     # make a background view
-    self.back = TrackListBackgroundView(self.tracks,
+    self.back = TrackListBackgroundView(self.tracks, self.time_scale,
                                         transport=transport, 
                                         manager=ViewManager)
-    self.back.x_of_time = self.x_of_time
     self.add(self.back)
     # receive events
     self.make_interactive()
@@ -210,7 +209,7 @@ class TrackListView(LayoutView):
 
 # display a background behind a list of tracks
 class TrackListBackgroundView(DrawableView):
-  def __init__(self, tracks, transport=None, manager=None):
+  def __init__(self, tracks, time_scale, transport=None, manager=None):
     DrawableView.__init__(self, tracks)
     self.transport = transport
     if (transport):
@@ -218,11 +217,14 @@ class TrackListBackgroundView(DrawableView):
     self.manager = manager
     if (manager):
       self.manager.add_observer(self.on_change)
-    self.x_of_time = lambda self, x: x
+    self.time_scale = time_scale
+    self.time_scale.add_observer(self.on_change)
   # expose 'tracks' as an alternate name for 'model'
   @property
   def tracks(self):
     return(self._model)
+  def x_of_time(self, time):
+    return(1 + self.time_scale.x_of_time(time))
   # draw guide markers in the background
   def redraw(self, cr, width, height):
     # get colors
@@ -465,7 +467,6 @@ class TrackMixerView(DrawableView):
     self.make_interactive()
     self.enable_automation = True
     self.bar_area = geom.Rectangle()
-    self.drag_to_reorder = False
   # expose 'track' as an alternate name for 'model' for readability
   @property
   def track(self):
@@ -559,8 +560,15 @@ class TrackMixerView(DrawableView):
     elif (self._drag_pan is not None):
       self.track.pan = self._drag_pan + (dx / self._width)
     elif (abs(dx - dy) > 6):
+      ViewManager.begin_action((self.track,))
       if (dx > dy):
         self._drag_pan = self.track.pan
       else:
         self._drag_level = self.track.level
-      
+  def on_drop(self):
+    if ((self._drag_level is not None) or 
+        (self._drag_pan is not None)):
+      ViewManager.end_action()
+    self._drag_level = None
+    self._drag_pan = None
+    

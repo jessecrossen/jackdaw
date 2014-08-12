@@ -71,6 +71,7 @@ class DocumentView(Gtk.Frame):
     self.center_panel.pack_start(tracks_column, True, True, 0)
     # set up the right panel
     self.mixer_view = track_column(track.TrackMixerView, 40)
+    self.mixer_view.drag_to_reorder = False
     self.mute_solo_view = track_column(track.TrackMuteSoloView, 60)
     self.output_patch_bay_view = device.PatchBayView(
       patch_bay=self.document.output_patch_bay,

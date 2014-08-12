@@ -268,6 +268,12 @@ class Interactive(object):
           self._down['state'])
         if (self.dragging):
           self.grab_add()
+          # cancel dragging for all parent widgets
+          node = self.get_parent()
+          while(node):
+            if (hasattr(node, 'dragging')):
+              node.dragging = False
+            node = node.get_parent()
     if (self.dragging):
       self.on_drag(event.x_root - self._down['x_root'], 
                    event.y_root - self._down['y_root'], 

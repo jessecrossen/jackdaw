@@ -1,5 +1,5 @@
 import time
-import rtmidi
+import pypm
 import re
 
 from gi.repository import GLib, GObject
@@ -12,10 +12,9 @@ from ..models import doc
 _input_devices = set()
 def _service_input_devices():
   for device in _input_devices:
-    while(True):
-      result = device._in.get_message()
-      if (result is None): break
-      device.receive_message(result[0], result[1])
+    while(device._in.Poll()):
+      result = device._in.Read(1)
+      device.receive_message(result[0][1], result[0][0])
   return(True)
 GObject.idle_add(_service_input_devices)
 
@@ -23,8 +22,7 @@ GObject.idle_add(_service_input_devices)
 class InputDevice(core.Device):
   def __init__(self, name):
     core.Device.__init__(self, name)
-    self._last_message_time = None
-    self._abs_time = time.time()
+    self._base_time = pypm.Time()
     # keep a list of methods to call when events become available
     self._listeners = set()
   # register/unregister the input for polling
@@ -49,57 +47,33 @@ class InputDevice(core.Device):
     for listener in self._listeners:
       listener(self, event)
   # handle messages from the device
-  def receive_message(self, message, delta_time):
-    # accumulate time deltas to provide total time
-    now = time.time()
-    if (self._last_message_time is None):
-      message_time = now - self._abs_time
-      self._last_message_time = message_time
-    else:
-      self._last_message_time += delta_time
-      message_time = self._last_message_time
-    self._abs_time = now
-    self.on_message(message_time, message)
+  def receive_message(self, message_time, message):
+    time = (message_time - self._base_time) / 1000.0
+    self.on_message(time, message)
   # receive an message from the input port, override to handle
   def on_message(self, time, message):
     pass
   # send a message to the output port if possible
   def send_message(self, message):
-    self._out.send_message(message)
+    if (self._out):
+      self._out.Write([[message, pypm.Time()]])
   # get the amount of time elapsed since the time origin
   @property
   def time(self):
-    elapsed = time.time() - self._abs_time
-    return(self._last_message_time + elapsed)
+    return((pypm.Time() - self._base_time) / 1000.0)
   # reset the time origin to the given value, such that subsequent
   #  messages have a time relative to it
   @time.setter
   def time(self, value):
-    self._last_message_time = None
-    self._abs_time = time.time() - value
+    self._base_time = pypm.Time() - (value * 1000.0)
 
-# a list of all available input devices
-class InputDeviceList(observable.List):
-  def __init__(self):
-    observable.List.__init__(self)
-    self._names_in_list = set()
-    self.update()
-    GLib.timeout_add(5000, self.update)
-  # update the list from available ports
-  def update(self):
-    connection = rtmidi.MidiIn()
-    port_count = connection.get_port_count()
-    for port in range(0, port_count):
-      name = connection.get_port_name(port)
-      # ignore RtMidi devices, which are likely ours
-      if (name.startswith('RtMidi')): continue
-      m = re.search(r'^(.*?)(\s[0-9:]+)?$', name)
-      name = m.group(1)
-      # strip off the numbers
-      if (name not in self._names_in_list):
-        self._names_in_list.add(name)
-        self.append(NoteInput(name))
-    return(True)
+# a list of all available output devices
+class InputDeviceList(core.DeviceList):
+  def __init__(self, devices=()):
+    core.DeviceList.__init__(self, devices, device_class=NoteInput)
+    GLib.timeout_add(5000, self.scan)
+  def filter_device(self, name, is_input, is_output):
+    return(is_input)
     
 # interprets note and control channel messages
 class NoteInput(InputDevice):
@@ -112,7 +86,9 @@ class NoteInput(InputDevice):
     return(self._playing_notes.values())
   # interpret messages
   def on_message(self, time, message):
-    (status, data1, data2) = message
+    status = message[0]
+    data1 = message[1]
+    data2 = message[2]
     kind = (status & 0xF0) >> 4
     channel = (status & 0x0F)
     # get note on/off messages

@@ -24,7 +24,8 @@ class DeviceLayout(ListLayout):
       cairo.FORMAT_A8, 1, 1))
     set_name_font(self.dummy_context)
   def size_of_item(self, device):
-    (xb, yb, w, h, xa, ya) = self.dummy_context.text_extents(device.name)
+    (xb, yb, w, h, xa, ya) = (
+      self.dummy_context.text_extents(device.short_name))
     return(max(symbols.BRACKET_HEIGHT, w + 12))
 
 # show a single device
@@ -37,7 +38,7 @@ class DeviceView(DrawableView):
   def redraw(self, cr, width, height):
     cr.save()
     set_name_font(cr)
-    name = self.device.name
+    name = self.device.short_name
     while (len(name) > 1):
       (xb, yb, w, h, xa, ya) = cr.text_extents(name)
       if (w < (height - 4)): break
@@ -294,7 +295,9 @@ class PatchBayView(DrawableView):
     self._drag_source = None
     if (self._over_connection):
       c = self._over_connection
+      ViewManager.begin_action((self.patch_bay,))
       self.patch_bay.disconnect(c[0], c[1])
+      ViewManager.end_action()
       if (self._over_item is c[0]):
         self._drag_source = c[1]
         self._drag_source_list = self.right_list
@@ -338,10 +341,14 @@ class PatchBayView(DrawableView):
   def on_drop(self):
     if ((self._drag_source_list is self.left_list) and
         (not isinstance(self._drag_target, geom.Point))):
+      ViewManager.begin_action((self.patch_bay,))
       self.patch_bay.connect(self._drag_source, self._drag_target)
+      ViewManager.end_action()
     if ((self._drag_source_list is self.right_list) and
         (not isinstance(self._drag_target, geom.Point))):
+      ViewManager.begin_action((self.patch_bay,))
       self.patch_bay.connect(self._drag_target, self._drag_source)
+      ViewManager.end_action()
     self._drag_source_list = None
     self._drag_source = None
     self._drag_target = None

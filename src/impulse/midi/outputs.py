@@ -1,5 +1,5 @@
 import time
-import rtmidi
+import pypm
 import re
 
 from gi.repository import GLib, GObject
@@ -18,24 +18,10 @@ class OutputDevice(core.Device):
            (self.is_output_available))
 
 # a list of all available output devices
-class OutputDeviceList(observable.List):
-  def __init__(self):
-    observable.List.__init__(self)
-    self._names_in_list = set()
-    self.update()
-    GLib.timeout_add(5000, self.update)
-  # update the list from available ports
-  def update(self):
-    connection = rtmidi.MidiOut()
-    port_count = connection.get_port_count()
-    for port in range(0, port_count):
-      name = connection.get_port_name(port)
-      # ignore RtMidi devices, which are likely ours
-      if (name.startswith('RtMidi')): continue
-      m = re.search(r'^(.*?)(\s[0-9:]+)?$', name)
-      name = m.group(1)
-      # strip off the numbers
-      if (name not in self._names_in_list):
-        self._names_in_list.add(name)
-        self.append(OutputDevice(name))
-    return(True)
+class OutputDeviceList(core.DeviceList):
+  def __init__(self, devices=()):
+    core.DeviceList.__init__(self, devices, device_class=OutputDevice)
+    GLib.timeout_add(5000, self.scan)
+  def filter_device(self, name, is_input, is_output):
+    return(is_output)
+

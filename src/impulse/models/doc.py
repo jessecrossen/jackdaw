@@ -505,6 +505,19 @@ class PatchBay(observable.Object):
   @property
   def connections(self):
     return(set(self._connections))
+  @connections.setter
+  def connections(self, value):
+    removed = self.connections
+    added = set()
+    for c in value:
+      if c in self._connections:
+        removed.remove(c)
+      else:
+        added.add(c)
+    for (from_what, to_what) in removed:
+      self.disconnect(from_what, to_what)
+    for (from_what, to_what) in added:
+      self.connect(from_what, to_what)
   # make a connection between two objects
   def connect(self, from_what, to_what):
     connection = (from_what, to_what)
