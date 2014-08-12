@@ -4,7 +4,7 @@ import sys
 import copy
 
 from ..common import observable
-
+  
 # make a base class to implement common functions of the model layer
 class Model(observable.Object):
   def __init__(self):

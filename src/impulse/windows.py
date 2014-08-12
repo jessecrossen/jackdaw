@@ -95,6 +95,11 @@ class DocumentWindow(Gtk.ApplicationWindow):
     self.stop_action = self.make_action('transportStop')
     self.play_action = self.make_action('transportPlay')
     self.record_action = self.make_action('transportRecord')
+    # zoom actions
+    self.zoom_in_action = self.make_action('zoomIn', 
+      '<Control><Shift>plus')
+    self.zoom_out_action = self.make_action('zoomOut', 
+      '<Control><Shift>underscore')
     # keep a list of action bindings so we can unbind them later
     self._action_bindings = [ ]
   # make an action with an optional accelerator
@@ -116,7 +121,11 @@ class DocumentWindow(Gtk.ApplicationWindow):
     self._bind_action(self.stop_action, t.stop)
     self._bind_action(self.play_action, t.play)
     self._bind_action(self.record_action, t.record)
+    # zoom
+    self._bind_action(self.zoom_in_action, self.document_view.zoom_in)
+    self._bind_action(self.zoom_out_action, self.document_view.zoom_out)
     # update action state
+    self.document_view.time_scale.add_observer(self.update_actions)
     self.document.tracks.add_observer(self.update_actions)
     ViewManager.add_observer(self.update_actions)
     self.update_actions()
@@ -134,6 +143,8 @@ class DocumentWindow(Gtk.ApplicationWindow):
   def update_actions(self):
     self.undo_action.set_enabled(ViewManager.can_undo)
     self.redo_action.set_enabled(ViewManager.can_redo)
+    self.zoom_in_action.set_enabled(self.document_view.can_zoom_in)
+    self.zoom_out_action.set_enabled(self.document_view.can_zoom_out)
     # only allow recording if a track is armed
     track_armed = False
     for track in self.document.tracks:
@@ -161,4 +172,8 @@ class DocumentWindow(Gtk.ApplicationWindow):
     # undo/redo
     t.add(Gtk.ToolButton(Gtk.STOCK_UNDO, action_name='win.undo'))
     t.add(Gtk.ToolButton(Gtk.STOCK_REDO, action_name='win.redo'))
-
+    t.add(Gtk.SeparatorToolItem())
+    # zoom
+    t.add(Gtk.ToolButton(Gtk.STOCK_ZOOM_OUT, action_name='win.zoomOut'))
+    t.add(Gtk.ToolButton(Gtk.STOCK_ZOOM_IN, action_name='win.zoomIn'))
+    

@@ -5,14 +5,16 @@ from gi.repository import Gtk, Gdk
 from ..common import observable
 import geom
 import symbols
-from core import DrawableView, ContextMenu, ViewManager
+from core import DrawableView, ContextMenu, ViewManager, TimeScale
 
 # make a view that shows the events in a block
 class BlockView(DrawableView):
-  def __init__(self, block):
+  def __init__(self, block, time_scale):
     DrawableView.__init__(self, block)
     self.make_transparent()
     self.make_interactive()
+    self.time_scale = time_scale
+    self.time_scale.add_observer(self.on_change)
     self._menu = None
     self._pitches = None
     self.ending = observable.AttributeProxy(
@@ -72,12 +74,12 @@ class BlockView(DrawableView):
   # map between time and an x coordinate on the view
   def x_of_time(self, time):
     try:
-      return(1 + (time * (float(self._width - 2) / self.block.duration)))
+      return(1 + self.time_scale.x_of_time(time))
     except ZeroDivisionError:
       return(0)
   def time_of_x(self, x):
     try:
-      return(float(x - 1) * (self.block.duration / float(self._width - 2)))
+      return(self.time_scale.time_of_x(x - 1))
     except ZeroDivisionError:
       return(0)
   # get the time in seconds at which the contents would repeat
@@ -87,7 +89,7 @@ class BlockView(DrawableView):
   # get the width in pixels at which the contents would repeat
   @property
   def repeat_width(self):
-    return(self.x_of_time(self.repeat_time) - self.x_of_time(0))
+    return(self.time_scale.x_of_time(self.repeat_time))
   
   def redraw(self, cr, width, height):
     # get the colors to draw with
@@ -255,13 +257,14 @@ class BlockView(DrawableView):
     # update the selection
     targets = self.selection_at_pos(x, y)
     context = self.block
-    if ((len(targets) > 0) and (targets[0] is self.block)):
+    target = targets[0] if len(targets) > 0 else None
+    if ((target is self.block) or (target is self.ending)):
       track_view = self.get_parent_with_attribute('track')
       if (track_view is not None):
         context = track_view.track
     if ((state & Gdk.ModifierType.CONTROL_MASK) != 0):
       if (len(targets) > 0):
-        ViewManager.toggle_select(targets[0], context)
+        ViewManager.toggle_select(target, context)
     elif ((state & Gdk.ModifierType.SHIFT_MASK) != 0):
       for target in targets:
         if (target not in ViewManager.selection):
@@ -269,7 +272,7 @@ class BlockView(DrawableView):
           break
     else:
       ViewManager.clear_selection()
-      ViewManager.select(targets[0], context)
+      ViewManager.select(target, context)
     # give this view the input focus for keyboard commands
     ViewManager.focused = self.block
   # initiate dragging

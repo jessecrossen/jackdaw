@@ -5,14 +5,16 @@ from gi.repository import Gtk, Gdk
 
 import geom
 import symbols
-from core import DrawableView, LayoutView, ViewManager, ListLayout
+from core import DrawableView, LayoutView, ViewManager, ListLayout, TimeScale
 import block
 
 class TrackView(LayoutView):
-  def __init__(self, track):
+  def __init__(self, track, time_scale):
     LayoutView.__init__(self, track)
     self.make_transparent()
     self.make_interactive()
+    self.time_scale = time_scale
+    self.time_scale.add_observer(self.on_change)
   # expose 'track' as an alternate name for 'model' for readability
   @property
   def track(self):
@@ -20,12 +22,12 @@ class TrackView(LayoutView):
   # map between time and an x coordinate on the view
   def x_of_time(self, time):
     try:
-      return(1 + (time * ((self._width - 2) / self.track.duration)))
+      return(1 + self.time_scale.x_of_time(time))
     except ZeroDivisionError:
       return(0)
   def time_of_x(self, x):
     try:
-      return(float(x - 1) * (self.track.duration / float(self._width - 2)))
+      return(self.time_scale.time_of_x(x - 1))
     except ZeroDivisionError:
       return(0)
   # get the height of a pitch
@@ -55,7 +57,8 @@ class TrackView(LayoutView):
   # place blocks in the track
   def layout(self, width, height):
     # get views for the track's blocks and position them by time
-    views = self.allocate_views_for_models(self.track, lambda b: block.BlockView(b))
+    views = self.allocate_views_for_models(
+      self.track, lambda b: block.BlockView(b, self.time_scale))
     for view in views:
       if (view is None): continue
       x = self.x_of_time(view.block.time)
@@ -92,11 +95,16 @@ class TrackLayout(ListLayout):
 
 # display a list of tracks stacked vertically
 class TrackListView(LayoutView):
-  def __init__(self, tracks, transport=None, track_layout=None):
+  def __init__(self, tracks, transport=None, track_layout=None, 
+                     time_scale=None):
     LayoutView.__init__(self, tracks)
     self.track_layout = track_layout
     if (self.track_layout is None):
       self.track_layout = TrackLayout(self.tracks)
+    if (time_scale is None):
+      time_scale = TimeScale()
+    self.time_scale = time_scale
+    self.time_scale.add_observer(self.on_change)
     # make a background view
     self.back = TrackListBackgroundView(self.tracks,
                                         transport=transport, 
@@ -105,6 +113,14 @@ class TrackListView(LayoutView):
     self.add(self.back)
     # receive events
     self.make_interactive()
+    # set up scrolling
+    self.time_scroll = Gtk.Adjustment()
+    self.time_scroll.connect('value-changed', self.on_scroll)
+    self.time_scroll.set_lower(0.0)
+    self.time_scroll.set_value(0.0)
+    self.time_scroll.set_step_increment(1.0)
+  def on_scroll(self, *args):
+    self.on_change()
   # expose 'tracks' as an alternate name for 'model' for readability
   @property
   def tracks(self):
@@ -128,18 +144,35 @@ class TrackListView(LayoutView):
       return(None)
   # place tracks in the view
   def layout(self, width, height):
+    # get the duration of the longest track
+    max_duration = 0
+    for track in self.tracks:
+      max_duration = max(max_duration, track.duration)
+    # update horizontal scrolling
+    page_duration = min(max_duration, self.time_scale.time_of_x(width))
+    self.time_scroll.set_upper(max_duration)
+    self.time_scroll.set_page_size(page_duration)
+    self.time_scroll.set_page_increment(page_duration * 0.9)
+    self.time_scroll.changed()
+    left_time = self.time_scroll.get_value()
+    clamped = min(max(0.0, left_time), max_duration - page_duration)
+    if (clamped != left_time):
+      left_time = clamped
+      self.time_scroll.set_value(left_time)
+    # do layout for track views
     views = self.allocate_views_for_models(
-      self.tracks, lambda t: TrackView(t))
+      self.tracks, lambda t: TrackView(t, self.time_scale))
+    x = self.x_of_time(0) - self.time_scale.x_of_time(left_time)
     for view in views:
       track_height = self.track_layout.size_of_item(view.track)
-      x = self.x_of_time(0)
-      w = self.x_of_time(view.track.duration) - x
+      w = self.time_scale.x_of_time(view.track.duration)
       r = geom.Rectangle(
         x - 1, self.track_layout.position_of_item(view.track),
         w + 2, self.track_layout.size_of_track_view(view.track))
       r.y += round((track_height - r.height) / 2)
       view.size_allocate(r)
-    self.back.size_allocate(geom.Rectangle(0, 0, width, height))
+    w = self.time_scale.x_of_time(max_duration)
+    self.back.size_allocate(geom.Rectangle(x - 1, 0, w + 2, height))
   # deselect when the user clicks
   def on_click(self, x, y, state):
     ViewManager.clear_selection()
