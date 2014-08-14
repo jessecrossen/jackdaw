@@ -18,7 +18,7 @@ class DeviceAdapter(observable.Object):
   def is_plugged(self):
     return(self._is_plugged)
   @is_plugged.setter
-  def is_plugged(self, value):
+  def is_plugged(self, value):  
     if (value != self._is_plugged):
       self._is_plugged = value
       self.on_change()
@@ -48,14 +48,15 @@ class DeviceAdapter(observable.Object):
     return(self.device.is_output)
   # connect the device
   def connect(self):
-    if ((self.device) and (not self._is_connected)):
+    if ((self.device) and 
+        ((not self._is_connected) or (not self.device.is_connected))):
       self.device.connect()
       self.on_connect()
       self._is_connected = True
   def disconnect(self):
-    if ((self.device) and (self._is_connected)):
-      # TODO: device disconnection
-      pass
+    if ((self.device) and 
+        ((self._is_connected) or (self.device.is_connected))):
+      self.device.disconnect()
       self.on_disconnect()
       self._is_connected = False
   # override these to perform actions on connect/disconnect
@@ -80,32 +81,36 @@ class DevicePoolSingleton(observable.Object):
     return(self._unplugged.values())
   # scan for new devices
   def scan(self):
+    changed = False
     devices = alsamidi.get_devices()
-    plugged = dict()
-    unplugged = self._plugged.copy()
+    not_found = dict(self._plugged)
     for device in devices:
       key = (device.name, device.client, device.port)
       # existing device
       if (key in self._plugged):
-        del unplugged[key]
+        del not_found[key]
       # unplugged device that got plugged back in
       elif (key in self._unplugged):
-        plugged[key] = device
-        del self._uplugged[key]
+        self._plugged[key] = self._unplugged[key]
+        del self._unplugged[key]
+        changed = True
       # newly plugged-in device
       else:
-        plugged[key] = device
-    if (len(plugged) > 0):
-      self._plugged.update(plugged)
+        self._plugged[key] = device
+        changed = True
+    # see if any devices were unplugged
+    for (key, device) in not_found.iteritems():
+      self._unplugged[key] = self._plugged[key]
+      del self._plugged[key]
+      changed = True
+    if (changed):
       self.on_change()
-    if (len(unplugged) > 0):
-      self._unplugged.update(unplugged)
-      self.on_change()
+    return(True)
 # make a shared device pool and periodically scan for 
 #  plugged/unplugged devices
 DevicePool = DevicePoolSingleton()
 DevicePool.scan()
-GLib.timeout_add(5000, DevicePool.scan)      
+GLib.timeout_add(2000, DevicePool.scan)      
 
 # keep a list of device adapters matching a certain filter
 class DeviceAdapterList(observable.List):

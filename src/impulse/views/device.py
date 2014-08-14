@@ -37,6 +37,10 @@ class DeviceView(DrawableView):
     return(self._model)
   def redraw(self, cr, width, height):
     cr.save()
+    (r, g, b, a) = cr.get_source().get_rgba()
+    # dim unplugged devices
+    if (not self.device.is_plugged):
+      cr.set_source_rgba(r, g, b, a * 0.25)
     set_name_font(cr)
     name = self.device.short_name
     while (len(name) > 1):

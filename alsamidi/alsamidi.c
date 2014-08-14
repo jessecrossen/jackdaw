@@ -90,8 +90,8 @@ static snd_seq_t *_open_sequencer(int mode) {
   int status;
   snd_seq_t *seq;
   if ((status = snd_seq_open(&seq, "default", mode, 0)) < 0) {
-    _error("Failed to open sequencer: %s", 
-      snd_strerror(status));
+    _error("Failed to open sequencer (%d): %s", 
+      status, snd_strerror(status));
     return(NULL);
   }
   return(seq);
@@ -142,8 +142,8 @@ Device_connect(Device *self) {
   // create a queue for receiving events
   self->_queue = snd_seq_alloc_queue(self->_seq);
   if (self->_queue < 0) {
-    _error("Failed to create a sequencer queue: %s",
-      snd_strerror(status));
+    _error("Failed to create a sequencer queue (%d): %s",
+      status, snd_strerror(status));
     snd_seq_close(self->_seq);
     return(NULL);
   }
@@ -172,8 +172,8 @@ Device_connect(Device *self) {
   // start the queue running
   status = snd_seq_start_queue(self->_seq, self->_queue, NULL);
   if (status < 0) {
-    _error("Failed to start queue: %s",
-      snd_strerror(status));
+    _error("Failed to start queue (%d): %s",
+      status, snd_strerror(status));
     snd_seq_close(self->_seq);
     return(NULL);
   }
@@ -181,6 +181,33 @@ Device_connect(Device *self) {
   // make an encoder/decoder for MIDI data
   snd_midi_event_new(BUFFER_SIZE, &self->_codec);
   self->is_connected = 1;
+  Py_RETURN_NONE;
+}
+
+static PyObject *
+Device_disconnect(Device *self) {
+  int status;
+  // if not connected, there's nothing to do
+  if (! self->is_connected) return(Py_None);
+  // free the encoder/decoder
+  snd_midi_event_free(self->_codec);
+  // stop the queue
+  status = snd_seq_stop_queue(self->_seq, self->_queue, NULL);
+  if (status < 0) {
+    _warn("Failed to stop queue (%d): %s", status, snd_strerror(status));
+  }
+  // close the sequencer client
+  status = snd_seq_close(self->_seq);
+  if (status < 0) {
+    _warn("Failed to close sequencer client (%d): %s", 
+      status, snd_strerror(status));
+  }
+  // clear state
+  self->_seq = NULL;
+  self->_queue = 0;
+  self->_seq_port = 0;
+  self->_codec = NULL;
+  self->is_connected = 0;
   Py_RETURN_NONE;
 }
 
@@ -193,8 +220,8 @@ Device_get_time(Device *self) {
   snd_seq_queue_status_alloca(&queue_status);
   status = snd_seq_get_queue_status(self->_seq, self->_queue, queue_status);
   if (status < 0) {
-    _error("Failed to get queue status: %s",
-      snd_strerror(status));
+    _error("Failed to get queue status (%d): %s",
+      status, snd_strerror(status));
     return(NULL);
   }
   const snd_seq_real_time_t *t = 
@@ -237,8 +264,8 @@ Device_send(Device *self, PyObject *args) {
   snd_midi_event_reset_encode(self->_codec);
   status = snd_midi_event_encode(self->_codec, midibuf, bytes, &event);
   if (status < 0) {
-    _error("Failed to encode data as a MIDI event: %s",
-      snd_strerror(status));
+    _error("Failed to encode data as a MIDI event (%d): %s",
+      status, snd_strerror(status));
     return(NULL);
   }
   // use the queue if the event is not direct
@@ -276,17 +303,47 @@ Device_receive(Device *self) {
       self->client, self->port);
   }
   else if (status < 0) {
-    _error("Failed to get input from sequencer: %s",
-      snd_strerror(status));
+    _error("Failed to get input from sequencer (%d): %s",
+      status, snd_strerror(status));
     return(NULL);
+  }
+  // see if the event is an encodable MIDI event
+  switch(event->type) {
+    case (SND_SEQ_EVENT_NOTEOFF):
+    case (SND_SEQ_EVENT_NOTEON):
+    case (SND_SEQ_EVENT_KEYPRESS):
+    case (SND_SEQ_EVENT_CONTROLLER):
+    case (SND_SEQ_EVENT_PGMCHANGE):
+    case (SND_SEQ_EVENT_CHANPRESS):
+    case (SND_SEQ_EVENT_PITCHBEND):
+    case (SND_SEQ_EVENT_SYSEX):
+    case (SND_SEQ_EVENT_QFRAME):
+    case (SND_SEQ_EVENT_SONGPOS):
+    case (SND_SEQ_EVENT_SONGSEL):
+    case (SND_SEQ_EVENT_TUNE_REQUEST):
+    case (SND_SEQ_EVENT_CLOCK):
+    case (SND_SEQ_EVENT_START):
+    case (SND_SEQ_EVENT_CONTINUE):
+    case (SND_SEQ_EVENT_STOP):
+    case (SND_SEQ_EVENT_SENSING):
+    case (SND_SEQ_EVENT_RESET):
+    case (SND_SEQ_EVENT_CONTROL14):
+    case (SND_SEQ_EVENT_NONREGPARAM):
+    case (SND_SEQ_EVENT_REGPARAM):
+      break;
+    // handle the device getting unplugged
+    case (SND_SEQ_EVENT_PORT_UNSUBSCRIBED):
+      return(Device_disconnect(self));
+    default:
+      Py_RETURN_NONE;
   }
   // get event data as raw MIDI data
   snd_midi_event_reset_decode(self->_codec);
-  size_t bytes = snd_midi_event_decode(
+  long bytes = snd_midi_event_decode(
     self->_codec, midibuf, sizeof(midibuf), event);
   if (bytes < 0) {
-    _error("Failed to decode ALSA event to MIDI data: %s",
-      snd_strerror(bytes));
+    _error("Failed to decode ALSA event to MIDI data (%d): %s",
+      bytes, snd_strerror(bytes));
     return(NULL);
   }
   // get the event time
@@ -325,6 +382,8 @@ static PyMethodDef Device_methods[] = {
       "Probe the device's capabilities without connecting to it. If a device is instantiated manually, this updates attributes like is_input and is_output. This does not need to be called if the device has been returned from alsamidi.get_devices()."},
     {"connect", (PyCFunction)Device_connect, METH_NOARGS,
       "Connect to the device for input and/or output"},
+    {"disconnect", (PyCFunction)Device_disconnect, METH_NOARGS,
+      "Disconnect from the device"},
     {"get_time", (PyCFunction)Device_get_time, METH_NOARGS,
       "Get the current real time of the device's clock, in seconds"},
     {"send", (PyCFunction)Device_send, METH_VARARGS,
@@ -397,10 +456,14 @@ alsamidi_get_devices(PyObject *self) {
       port_info, snd_seq_client_info_get_client(client_info));
     snd_seq_port_info_set_port(port_info, -1);
     while ((status = snd_seq_query_next_port(seq, port_info)) >= 0) {
+      // get the device name
+      const char *name = snd_seq_port_info_get_name(port_info);
+      // skip our own client
+      if (strncmp(name, "alsamidi", 8) == 0) continue;
       // make a device to add to the list
       Device *device = (Device *)Device_new(&DeviceType, NULL, NULL);
       if (device != NULL) {
-        device->name = PyString_FromString(snd_seq_port_info_get_name(port_info));
+        device->name = PyString_FromString(name);
         device->client = snd_seq_port_info_get_client(port_info);
         device->port = snd_seq_port_info_get_port(port_info);
         _update_from_port_info(device, port_info);
@@ -414,8 +477,8 @@ alsamidi_get_devices(PyObject *self) {
     }
   }
   if ((status < 0) && (PyList_Size(return_list) == 0)) {
-    _error("Failed to get client/port info: %s",
-      snd_strerror(status));
+    _error("Failed to get client/port info (%d): %s",
+      status, snd_strerror(status));
     snd_seq_close(seq);
     Py_DECREF(return_list);
     return(NULL);
@@ -443,7 +506,7 @@ initalsamidi(void) {
       return;
 
   m = Py_InitModule3("alsamidi", alsamidi_methods,
-                     "A Pythonic wrapper for the ALSA Sequencer");
+                     "A Pythonic wrapper for the ALSA Sequencer supporting virtual devices and hotplugging");
 
   DeviceError = PyErr_NewException("alsamidi.DeviceError", NULL, NULL);
   Py_INCREF(DeviceError);

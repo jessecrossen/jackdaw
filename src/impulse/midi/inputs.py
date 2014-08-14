@@ -10,11 +10,15 @@ from ..models import doc
 # handle MIDI input events when the UI is idling
 _input_adapters = set()
 def _service_input_adapters():
+  global _input_adapters
   for adapter in _input_adapters:
-    while ((adapter.device) and (adapter.device.is_connected)):
-      result = adapter.device.receive()
-      if (result is None): break
-      adapter.receive_message(result[0], result[1])
+    if (adapter.device):
+      if (adapter.device.is_connected):
+        result = adapter.device.receive()
+        if (result is None): break
+        adapter.receive_message(result[0], result[1])
+      else:
+        adapter.is_plugged = False
   return(True)
 GObject.idle_add(_service_input_adapters)
 
@@ -138,8 +142,12 @@ class NanoKONTROL2(InputAdapter):
   # when a matching device is plugged in, connect to it
   def on_pool_change(self):
     for device in core.DevicePool.plugged:
-      if ((device is not self.device) and 
-          (device.name.startswith('nanoKONTROL2'))):
+      if (device is self.device):
+        if (not self.is_connected):
+          self.connect()
+        self.is_plugged = True
+        return
+      elif (device.name.startswith('nanoKONTROL2')):
         self.disconnect()
         self.device = device
         self.connect()
