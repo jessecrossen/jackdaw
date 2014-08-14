@@ -14,11 +14,14 @@ from ..common import observable
 
 # manage a LinuxSampler process acting as a backend for sample playback
 class LinuxSamplerSingleton(observable.Object):
-  def __init__(self, preferred_outputs=('ALSA', 'JACK')):
+  def __init__(self, 
+      preferred_outputs=('ALSA', 'JACK', 'OSS'),
+      preferred_inputs=('ALSA', 'JACK', 'OSS')):
     observable.Object.__init__(self)
-    self.verbose = True
+    self.verbose = False
     self.address = '0.0.0.0'
     self.port = '8888'
+    self.preferred_inputs = preferred_inputs
     self.preferred_outputs = preferred_outputs
     self._reset()
   # log activity
@@ -212,26 +215,58 @@ class LinuxSamplerSingleton(observable.Object):
     self._log('sampler is ready')
     self.ready = True
     self.on_change()
-    # connect automatically for audio output
+    # connect automatically for input and output
     self._connect_output()
-  # connect for audio output
+    self._connect_input()
+  # set up audio output
   def _connect_output(self):
     def on_connected(result):
-      if (result.startswith('OK')):
+      if (result.startswith('OK') or (result.startswith('WRN'))):
         self.output_connected = True
         self.on_change()
       else:
-        self.warn('failed to connect output: %s' % result)
+        self._warn('failed to connect audio output: %s' % result)
     def on_drivers(drivers):
       if (not (len(drivers) > 0)):
         self._warn('No audio output drivers available.')
         return
+      selected = drivers[0]
       for driver in self.preferred_outputs:
         if (driver in drivers):
-          self.call('CREATE AUDIO_OUTPUT_DEVICE %s' % driver, on_connected)
-          return
-      self.call('CREATE AUDIO_OUTPUT_DEVICE %s' % drivers[0], on_connected)
+          selected = driver
+          break
+      self.call('CREATE AUDIO_OUTPUT_DEVICE %s' % selected, on_connected)
     self.call('LIST AVAILABLE_AUDIO_OUTPUT_DRIVERS', on_drivers)
+  # set up midi input
+  def _connect_input(self):
+    def on_connected(result):
+      if (result.startswith('OK') or (result.startswith('WRN'))):
+        self.input_connected = True
+        self.on_change()
+      else:
+        self._warn('failed to connect MIDI input: %s' % result)
+    def on_driver_info(driver):
+      def closure(info):
+        args = list()
+        if ('PARAMETERS' in info):
+          params = info['PARAMETERS'].split(',')
+          if ('NAME' in params):
+            args.append('NAME=LinuxSampler')
+        self.call('CREATE MIDI_INPUT_DEVICE %s %s' % 
+          (driver, ' '.join(args)), on_connected)
+      return(closure)
+    def on_drivers(drivers):
+      if (not (len(drivers) > 0)):
+        self._warn('No MIDI input drivers available.')
+        return
+      selected = drivers[0]
+      for driver in self.preferred_inputs:
+        if (driver in drivers):
+          selected = driver
+          break
+      self.call('GET MIDI_INPUT_DRIVER INFO %s' % selected, 
+        on_driver_info(selected))    
+    self.call('LIST AVAILABLE_MIDI_INPUT_DRIVERS', on_drivers)
 
 # make a singleton instance of the sampler backend
 LinuxSampler = LinuxSamplerSingleton()

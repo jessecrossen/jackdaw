@@ -1,5 +1,4 @@
 import time
-import pypm
 import re
 
 from gi.repository import GLib, GObject
@@ -9,31 +8,33 @@ import core
 from ..models import doc
 
 # handle MIDI input events when the UI is idling
-_input_devices = set()
-def _service_input_devices():
-  for device in _input_devices:
-    while(device._in.Poll()):
-      result = device._in.Read(1)
-      device.receive_message(result[0][1], result[0][0])
+_input_adapters = set()
+def _service_input_adapters():
+  for adapter in _input_adapters:
+    while ((adapter.device) and (adapter.device.is_connected)):
+      result = adapter.device.receive()
+      if (result is None): break
+      adapter.receive_message(result[0], result[1])
   return(True)
-GObject.idle_add(_service_input_devices)
+GObject.idle_add(_service_input_adapters)
 
 # acts as a base class for MIDI input device adapters
-class InputDevice(core.Device):
-  def __init__(self, name):
-    core.Device.__init__(self, name)
-    self._base_time = pypm.Time()
+class InputAdapter(core.DeviceAdapter):
+  def __init__(self, device):
+    core.DeviceAdapter.__init__(self, device)
+    self._base_time = 0.0
     # keep a list of methods to call when events become available
     self._listeners = set()
   # register/unregister the input for polling
   def on_connect(self):
-    _input_devices.add(self)
+    _input_adapters.add(self)
+    self._base_time = self.device.get_time()
   def on_disconnect(self):
-    if (self in _input_devices):
-      _input_devices.remove(self)
+    if (self in _input_adapters):
+      _input_adapters.remove(self)
   # determine whether input is available from the named device
   def is_available(self):
-    return((self.is_connected) or 
+    return((self.is_plugged) and 
            (self.is_input_available))
   # add and remove listeners to receive generated doc.Event instances
   def add_listener(self, listener):
@@ -47,38 +48,40 @@ class InputDevice(core.Device):
     for listener in self._listeners:
       listener(self, event)
   # handle messages from the device
-  def receive_message(self, message_time, message):
-    time = (message_time - self._base_time) / 1000.0
-    self.on_message(time, message)
+  def receive_message(self, message, message_time):
+    self.on_message(message_time - self._base_time, message)
   # receive an message from the input port, override to handle
   def on_message(self, time, message):
     pass
   # send a message to the output port if possible
   def send_message(self, message):
-    if (self._out):
-      self._out.Write([[message, pypm.Time()]])
+    if ((self.device) and (self.device.is_output)):
+      self.device.send(message)
   # get the amount of time elapsed since the time origin
   @property
   def time(self):
-    return((pypm.Time() - self._base_time) / 1000.0)
+    if (not self.device): return(0.0)
+    return(self.device.get_time() - self._base_time)
   # reset the time origin to the given value, such that subsequent
   #  messages have a time relative to it
   @time.setter
   def time(self, value):
-    self._base_time = pypm.Time() - (value * 1000.0)
+    if (self.device):
+      self._base_time = self.device.get_time() - value
+    else:
+      self._base_time = - value
 
 # a list of all available output devices
-class InputDeviceList(core.DeviceList):
+class InputList(core.DeviceAdapterList):
   def __init__(self, devices=()):
-    core.DeviceList.__init__(self, devices, device_class=NoteInput)
-    GLib.timeout_add(5000, self.scan)
-  def filter_device(self, name, is_input, is_output):
-    return(is_input)
+    core.DeviceAdapterList.__init__(self, adapter_class=NoteInput)
+  def include_device(self, device):
+    return((device) and (device.is_input))
     
 # interprets note and control channel messages
-class NoteInput(InputDevice):
-  def __init__(self, name):
-    InputDevice.__init__(self, name)
+class NoteInput(InputAdapter):
+  def __init__(self, device):
+    InputAdapter.__init__(self, device)
     # hold a set of notes for all "voices" currently playing, keyed by pitch
     self._playing_notes = dict()
   @property
@@ -113,9 +116,9 @@ class NoteInput(InputDevice):
       print('%s: Unhandled message type %02X' % (self.name, status))
 
 # handles input/output for a Korg NanoKONTROL2
-class NanoKONTROL2(InputDevice):
+class NanoKONTROL2(InputAdapter):
   def __init__(self, transport=None, mixer=None):
-    InputDevice.__init__(self, 'nanoKONTROL2')
+    InputAdapter.__init__(self, None)
     # cache state for all the leds to reduce update message overhead
     self._leds = dict()
     # store the controlled objects
@@ -129,8 +132,23 @@ class NanoKONTROL2(InputDevice):
     self._hold_timer = None
     self._repeat_timer = None
     self._hold_button = None
+    # set up to autoconnect if the device is plugged in
+    core.DevicePool.add_observer(self.on_pool_change)
+    self.on_pool_change()
+  # when a matching device is plugged in, connect to it
+  def on_pool_change(self):
+    for device in core.DevicePool.plugged:
+      if ((device is not self.device) and 
+          (device.name.startswith('nanoKONTROL2'))):
+        self.disconnect()
+        self.device = device
+        self.connect()
+        self.is_plugged = True
+        return
+    self.is_plugged = False
+  # do setup on connection with the device
   def on_connect(self):
-    InputDevice.on_connect(self)
+    InputAdapter.on_connect(self)
     # send a sysex message to let the controller know we'll be
     #  managing the state of its LEDs
     self.send_message([ 0xF0, 0x42, 0x40, 0x00, 0x01, 0x13,
@@ -193,6 +211,8 @@ class NanoKONTROL2(InputDevice):
   
   # interpret messages
   def on_message(self, time, message):
+    # ignore all long messages
+    if (len(message) != 3): return
     (status, controller, value) = message
     # filter for control-change messages
     if ((status & 0xF0) != 0xB0): return

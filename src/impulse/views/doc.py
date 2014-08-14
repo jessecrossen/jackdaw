@@ -12,8 +12,8 @@ class DocumentView(Gtk.Frame):
     self._document = document
     self._transport = transport
     # make layouts for inputs and tracks
-    self.input_devices = inputs.InputDeviceList()
-    self.output_devices = outputs.OutputDeviceList()
+    self.input_devices = inputs.InputList()
+    self.output_devices = outputs.OutputList()
     self.input_device_layout = device.DeviceLayout(self.input_devices)
     self.output_device_layout = device.DeviceLayout(self.output_devices)
     self.track_layout = track.TrackLayout(self.document.tracks)

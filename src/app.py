@@ -6,6 +6,7 @@ from gi.repository import Gtk, Gdk, Gio
 
 from impulse import windows
 from impulse.models import doc
+from impulse.midi import sampler
 
 def dummy_document():
   d = doc.Document()
@@ -31,6 +32,8 @@ class App(Gtk.Application):
   def __init__(self):
     Gtk.Application.__init__(self)
     self._window = None
+    # start the sampler engine
+    sampler.LinuxSampler.start()
   
   def do_startup(self):
     Gtk.Application.do_startup(self)

@@ -129,8 +129,7 @@ Device_probe(Device *self) {
   snd_seq_port_info_t *port_info = _get_port_info(self);
   if (port_info != NULL)
     _update_from_port_info(self, port_info);
-  Py_INCREF(Py_None);
-  return(Py_None);
+  Py_RETURN_NONE;
 }
 
 static PyObject *
@@ -182,8 +181,26 @@ Device_connect(Device *self) {
   // make an encoder/decoder for MIDI data
   snd_midi_event_new(BUFFER_SIZE, &self->_codec);
   self->is_connected = 1;
-  Py_INCREF(Py_None);
-  return(Py_None);
+  Py_RETURN_NONE;
+}
+
+static PyObject *
+Device_get_time(Device *self) {
+  double time = 0.0;
+  int status;
+  if (! self->is_connected) return(Py_BuildValue("d", time));
+  snd_seq_queue_status_t *queue_status;
+  snd_seq_queue_status_alloca(&queue_status);
+  status = snd_seq_get_queue_status(self->_seq, self->_queue, queue_status);
+  if (status < 0) {
+    _error("Failed to get queue status: %s",
+      snd_strerror(status));
+    return(NULL);
+  }
+  const snd_seq_real_time_t *t = 
+    snd_seq_queue_status_get_real_time(queue_status);
+  time = (double)t->tv_sec + ((double)t->tv_nsec / 1000000000.0);
+  return(Py_BuildValue("d", time));
 }
 
 static PyObject *
@@ -232,8 +249,7 @@ Device_send(Device *self, PyObject *args) {
   if (event.type != SND_SEQ_EVENT_ECHO) snd_seq_ev_set_subs(&event);
   // send the event
   snd_seq_event_output_direct(self->_seq, &event);
-  Py_INCREF(Py_None);
-  return(Py_None);
+  Py_RETURN_NONE;
 }
 
 static PyObject *
@@ -250,8 +266,7 @@ Device_receive(Device *self) {
   }
   status = snd_seq_event_input_pending(self->_seq, 1);
   if (status <= 0) {
-    Py_INCREF(Py_None);
-    return(Py_None);
+    Py_RETURN_NONE;
   }
   // fetch an event from the buffer
   snd_seq_event_t *event;
@@ -310,6 +325,8 @@ static PyMethodDef Device_methods[] = {
       "Probe the device's capabilities without connecting to it. If a device is instantiated manually, this updates attributes like is_input and is_output. This does not need to be called if the device has been returned from alsamidi.get_devices()."},
     {"connect", (PyCFunction)Device_connect, METH_NOARGS,
       "Connect to the device for input and/or output"},
+    {"get_time", (PyCFunction)Device_get_time, METH_NOARGS,
+      "Get the current real time of the device's clock, in seconds"},
     {"send", (PyCFunction)Device_send, METH_VARARGS,
       "Send a tuple of ints as a MIDI message to the device"},
     {"receive", (PyCFunction)Device_receive, METH_NOARGS,

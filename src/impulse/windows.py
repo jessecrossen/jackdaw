@@ -69,7 +69,6 @@ class DocumentWindow(Gtk.ApplicationWindow):
     self.transport = controllers.Transport()
     self.control_surface = inputs.NanoKONTROL2(
       transport=self.transport, mixer=self.mixer)
-    self.control_surface.connect()
     # add a recorder
     self.recorder = controllers.Recorder(
       transport=self.transport,
