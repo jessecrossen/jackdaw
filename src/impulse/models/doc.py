@@ -573,6 +573,10 @@ class Document(Model):
     self.output_patch_bay = PatchBay()
     self.output_patch_bay.add_observer(self.on_output_change)
   
+  # add a track to the document
+  def add_track(self, *args):
+    self.tracks.append(Track())
+  
   # connect input adapters when they're routed to something in the patch bay
   def on_input_change(self):
     for adapter in self.input_patch_bay.from_items:

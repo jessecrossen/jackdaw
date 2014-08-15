@@ -1,5 +1,6 @@
 - instrument selection
 - midi output
+- vertical scrolling
 - file save/load
 - make filters that can alter the characteristics of underlying notes at play-time (e.g. quantize, timewarp)
 - general curve editing for control channel events in a block (BlockView => NotesView)

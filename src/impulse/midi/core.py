@@ -30,8 +30,9 @@ class DeviceAdapter(observable.Object):
   # return a shorter version of the device name
   @property
   def short_name(self):
-    m = re.match('\\S*', self.name)
-    return(m.group(0))
+    m = re.match(
+      '^(.*?)(\\s+([Pp]ort|[Mm][Ii][Dd][Ii]|[0-9:]+|\\s+)*)?$', self.name)
+    return(m.group(1))
   # return whether the device is connected
   @property
   def is_connected(self):
@@ -85,12 +86,20 @@ class DevicePoolSingleton(observable.Object):
     devices = alsamidi.get_devices()
     not_found = dict(self._plugged)
     for device in devices:
-      key = (device.name, device.client, device.port)
+      key = (device.client, device.port)
       # existing device
       if (key in self._plugged):
         del not_found[key]
+        # update the device's name in case it changed while plugged in
+        if (self._plugged[key].name != device.name):
+          self._plugged[key].name = device.name
+          changed = True
       # unplugged device that got plugged back in
       elif (key in self._unplugged):
+        # if the name has changed while unplugged, 
+        #  it's probably not the same device
+        if (self._unplugged[key].name != device.name): continue
+        # otherwise transfer the device to the plugged-in pool
         self._plugged[key] = self._unplugged[key]
         del self._unplugged[key]
         changed = True

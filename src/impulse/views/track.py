@@ -5,14 +5,17 @@ from gi.repository import Gtk, Gdk
 
 import geom
 import symbols
-from core import DrawableView, LayoutView, ViewManager, ListLayout, TimeScale
+from core import DrawableView, LayoutView, ViewManager, TimeScale
+from core import ListLayout, ListView
 import block
 
 class TrackView(LayoutView):
-  def __init__(self, track, time_scale):
+  def __init__(self, track, time_scale=None):
     LayoutView.__init__(self, track)
     self.make_transparent()
     self.make_interactive()
+    if (time_scale is None):
+      time_scale = TimeScale()
     self.time_scale = time_scale
     self.time_scale.add_observer(self.on_change)
   # expose 'track' as an alternate name for 'model' for readability
@@ -94,30 +97,31 @@ class TrackLayout(ListLayout):
     return(len(track.pitches) * 20)
 
 # display a list of tracks stacked vertically
-class TrackListView(LayoutView):
+class TrackListView(ListView):
   def __init__(self, tracks, transport=None, track_layout=None, 
                      time_scale=None):
-    LayoutView.__init__(self, tracks)
-    self.track_layout = track_layout
-    if (self.track_layout is None):
-      self.track_layout = TrackLayout(self.tracks)
+    ListView.__init__(self, tracks, 
+      view_class=TrackView, list_layout=track_layout)
     if (time_scale is None):
       time_scale = TimeScale()
     self.time_scale = time_scale
     self.time_scale.add_observer(self.on_change)
-    # make a background view
-    self.back = TrackListBackgroundView(self.tracks, self.time_scale,
-                                        transport=transport, 
-                                        manager=ViewManager)
-    self.add(self.back)
+    # link to the transport and view manager
+    self.transport = transport
+    if (self.transport):
+      self.transport.add_observer(self.on_change)
+    ViewManager.add_observer(self.on_change)
     # receive events
     self.make_interactive()
     # set up scrolling
+    self._scroll_x = 0
     self.time_scroll = Gtk.Adjustment()
     self.time_scroll.connect('value-changed', self.on_scroll)
     self.time_scroll.set_lower(0.0)
     self.time_scroll.set_value(0.0)
     self.time_scroll.set_step_increment(1.0)
+    # show a button to add tracks
+    self.show_add_button = 'win.addTrack'
   def on_scroll(self, *args):
     self.on_change()
   # expose 'tracks' as an alternate name for 'model' for readability
@@ -138,9 +142,24 @@ class TrackListView(LayoutView):
   # map between track index and position
   def y_of_track_index(self, index):
     try:
-      return(self.track_layout.position_of_item(self.tracks[index]))
+      return(self.list_layout.position_of_item(self.tracks[index]))
     except IndexError:
       return(None)
+  # do custom positioning for views
+  def x_of_item(self, item):
+    return(self._scroll_x - 1)
+  def width_of_item(self, item):
+    return(self.time_scale.x_of_time(item.duration) + 2)
+  def y_of_item(self, item):
+    y = ListView.y_of_item(self, item)
+    outer = ListView.height_of_item(self, item)
+    inner = self.height_of_item(item)
+    return(y + round((outer - inner) / 2))
+  def height_of_item(self, item):
+    return(self.list_layout.size_of_track_view(item))
+  # add the time scale to views
+  def view_for_model(self, model):
+    return(TrackView(model, self.time_scale))
   # place tracks in the view
   def layout(self, width, height):
     # get the duration of the longest track
@@ -158,20 +177,62 @@ class TrackListView(LayoutView):
     if (clamped != left_time):
       left_time = clamped
       self.time_scroll.set_value(left_time)
+    self._scroll_x = self.x_of_time(0) - self.time_scale.x_of_time(left_time)
     # do layout for track views
-    views = self.allocate_views_for_models(
-      self.tracks, lambda t: TrackView(t, self.time_scale))
-    x = self.x_of_time(0) - self.time_scale.x_of_time(left_time)
-    for view in views:
-      track_height = self.track_layout.size_of_item(view.track)
-      w = self.time_scale.x_of_time(view.track.duration)
+    ListView.layout(self, width, height)
+  # draw guide markers in the background
+  def redraw(self, cr, width, height):
+    # get colors
+    style = self.get_style_context()
+    fg = style.get_color(Gtk.StateType.NORMAL)
+    backdrop = ((self.get_state_flags() & Gtk.StateFlags.BACKDROP) != 0)
+    fade = 1.0
+    if (backdrop):
+      fade = 0.25
+    # draw backgrounds behind the tracks to show their states
+    for track in self.tracks:
       r = geom.Rectangle(
-        x - 1, self.track_layout.position_of_item(view.track),
-        w + 2, self.track_layout.size_of_track_view(view.track))
-      r.y += round((track_height - r.height) / 2)
-      view.size_allocate(r)
-    w = self.time_scale.x_of_time(max_duration)
-    self.back.size_allocate(geom.Rectangle(x - 1, 0, w + 2, height))
+        0, self.y_of_item(track), width, self.height_of_item(track))
+      if (track.arm):
+        cr.set_source_rgba(1.0, 0.0, 0.0, 0.25 * fade)
+        cr.rectangle(r.x, r.y, r.width, r.height)
+        cr.fill()
+      if (not track.enabled):
+        cr.set_source_rgba(fg.red, fg.green, fg.blue, 0.25 * fade)
+        cr.rectangle(r.x, r.y, r.width, r.height)
+        cr.fill()
+    # draw transport state
+    if (self.transport):
+      # draw the transport's current time point with a fill on the left
+      #  so we can easily see whether we're before or after it
+      x = round(self.x_of_time(self.transport.time))
+      cr.set_source_rgba(fg.red, fg.green, fg.blue, 0.1 * fade)
+      cr.rectangle(0, 0, x, height)
+      cr.fill()
+      cr.set_source_rgba(1.0, 0.0, 0.0, 0.75 * fade)
+      cr.set_line_width(2)
+      cr.move_to(x, 0)
+      cr.line_to(x, height)
+      cr.stroke()
+      # draw all the marks on the transport
+      for t in self.transport.marks:
+        x = round(self.x_of_time(t))
+        cr.set_source_rgba(fg.red, fg.green, fg.blue, 0.75 * fade)
+        cr.set_dash((2, 2))
+        cr.set_line_width(2)
+        cr.move_to(x, 0)
+        cr.line_to(x, height)
+        cr.stroke()
+    # draw the snap indicator
+    snapped_time = ViewManager.snapped_time
+    if (snapped_time is not None):
+      x = round(self.x_of_time(snapped_time)) + 0.5
+      cr.set_source_rgba(fg.red, fg.green, fg.blue, 0.75 * fade)
+      cr.set_line_width(1)
+      cr.set_dash((2, 3))
+      cr.move_to(x, 0)
+      cr.line_to(x, height)
+      cr.stroke()  
   # deselect when the user clicks
   def on_click(self, x, y, state):
     ViewManager.clear_selection()
@@ -206,82 +267,6 @@ class TrackListView(LayoutView):
       ViewManager.select(block_view.block)
     if (had_focus):
       block_view.grab_focus()
-
-# display a background behind a list of tracks
-class TrackListBackgroundView(DrawableView):
-  def __init__(self, tracks, time_scale, transport=None, manager=None):
-    DrawableView.__init__(self, tracks)
-    self.transport = transport
-    if (transport):
-      self.transport.add_observer(self.on_change)
-    self.manager = manager
-    if (manager):
-      self.manager.add_observer(self.on_change)
-    self.time_scale = time_scale
-    self.time_scale.add_observer(self.on_change)
-  # expose 'tracks' as an alternate name for 'model'
-  @property
-  def tracks(self):
-    return(self._model)
-  def x_of_time(self, time):
-    return(1 + self.time_scale.x_of_time(time))
-  # draw guide markers in the background
-  def redraw(self, cr, width, height):
-    # get colors
-    style = self.get_style_context()
-    fg = style.get_color(Gtk.StateType.NORMAL)
-    backdrop = ((self.get_state_flags() & Gtk.StateFlags.BACKDROP) != 0)
-    fade = 1.0
-    if (backdrop):
-      fade = 0.25
-    # draw backgrounds behind the tracks to show their states
-    track_list_view = self.get_parent_with_attribute('tracks')
-    if (track_list_view is not None):
-      for track in self.tracks:
-        r = geom.Rectangle(
-          0, track_list_view.track_layout.position_of_item(track), 
-          width, track_list_view.track_layout.size_of_item(track))
-        if (track.arm):
-          cr.set_source_rgba(1.0, 0.0, 0.0, 0.25 * fade)
-          cr.rectangle(r.x, r.y, r.width, r.height)
-          cr.fill()
-        if (not track.enabled):
-          cr.set_source_rgba(fg.red, fg.green, fg.blue, 0.25 * fade)
-          cr.rectangle(r.x, r.y, r.width, r.height)
-          cr.fill()
-    # draw transport state
-    if (self.transport):
-      # draw the transport's current time point with a fill on the left
-      #  so we can easily see whether we're before or after it
-      x = round(self.x_of_time(self.transport.time))
-      cr.set_source_rgba(fg.red, fg.green, fg.blue, 0.1 * fade)
-      cr.rectangle(0, 0, x, height)
-      cr.fill()
-      cr.set_source_rgba(1.0, 0.0, 0.0, 0.75 * fade)
-      cr.set_line_width(2)
-      cr.move_to(x, 0)
-      cr.line_to(x, height)
-      cr.stroke()
-      # draw all the marks on the transport
-      for t in self.transport.marks:
-        x = round(self.x_of_time(t))
-        cr.set_source_rgba(fg.red, fg.green, fg.blue, 0.75 * fade)
-        cr.set_dash((2, 2))
-        cr.set_line_width(2)
-        cr.move_to(x, 0)
-        cr.line_to(x, height)
-        cr.stroke()
-    if (self.manager):
-      # draw the snap indicator
-      snapped_time = ViewManager.snapped_time
-      if (snapped_time is not None):
-        x = round(self.x_of_time(snapped_time)) + 0.5
-        cr.set_source_rgba(fg.red, fg.green, fg.blue, 0.75 * fade)
-        cr.set_line_width(1)
-        cr.set_dash((2, 3))
-        cr.move_to(x, 0)
-        cr.line_to(x, height)
-        cr.stroke()
 
 # display pitch names for a track
 class PitchKeyView(LayoutView):

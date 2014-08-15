@@ -7,7 +7,8 @@ from gi.repository import Gtk, Gdk
 
 import geom
 import symbols
-from core import DrawableView, LayoutView, ViewManager, ListLayout
+from core import DrawableView, LayoutView, ViewManager
+from core import ListView, ListLayout
 
 # set the font for device names
 def set_name_font(cr):
@@ -55,7 +56,13 @@ class DeviceView(DrawableView):
     cr.rotate(- math.pi / 2)
     cr.show_text(name)
     cr.restore()
-      
+
+# show a list of output devices
+class OutputDeviceListView(ListView):
+  def __init__(self, *args, **kwargs):
+    ListView.__init__(self, *args, **kwargs)
+    self.show_add_button = 'win.addOutput'
+
 # show an interface to route between two lists
 class PatchBayView(DrawableView):
   def __init__(self, patch_bay, left_list, left_layout, right_list, right_layout):

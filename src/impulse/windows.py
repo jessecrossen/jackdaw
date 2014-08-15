@@ -6,7 +6,7 @@ from models import doc, controllers
 import views.track
 import views.doc
 from views.core import ViewManager
-from midi import inputs
+from midi import inputs, sampler
 
 class DocumentWindow(Gtk.ApplicationWindow):
   def __init__(self, app):
@@ -94,6 +94,9 @@ class DocumentWindow(Gtk.ApplicationWindow):
     self.stop_action = self.make_action('transportStop')
     self.play_action = self.make_action('transportPlay')
     self.record_action = self.make_action('transportRecord')
+    # track/output actions
+    self.add_track_action = self.make_action('addTrack', '<Control>t')
+    self.add_output_action = self.make_action('addOutput', '<Control>o')
     # zoom actions
     self.zoom_in_action = self.make_action('zoomIn', 
       '<Control><Shift>plus')
@@ -123,17 +126,23 @@ class DocumentWindow(Gtk.ApplicationWindow):
     # zoom
     self._bind_action(self.zoom_in_action, self.document_view.zoom_in)
     self._bind_action(self.zoom_out_action, self.document_view.zoom_out)
+    # track/output
+    self._bind_action(self.add_track_action, self.document.add_track)
+    self._bind_action(self.add_output_action, self.document_view.add_output)
     # update action state
     self.document_view.time_scale.add_observer(self.update_actions)
     self.document.tracks.add_observer(self.update_actions)
     ViewManager.add_observer(self.update_actions)
+    sampler.LinuxSampler.add_observer(self.update_actions)
     self.update_actions()
   # unbind all actions
   def _unbind_actions(self):
     for (action, handler) in self._action_bindings:
       action.disconnect(handler)
     ViewManager.remove_observer(self.update_actions)
+    sampler.LinuxSampler.remove_observer(self.update_actions)
     self.document.tracks.remove_observer(self.update_actions)
+    self.document_view.time_scale.remove_observer(self.update_actions)
   # bind to an action and remember the binding
   def _bind_action(self, action, callback):
     handler = action.connect('activate', callback)
@@ -151,6 +160,11 @@ class DocumentWindow(Gtk.ApplicationWindow):
         track_armed = True
         break
     self.record_action.set_enabled(track_armed)
+    # only allow adding instruments if the sampler is ready
+    self.add_output_action.set_enabled(
+      (sampler.LinuxSampler.ready) and 
+      (sampler.LinuxSampler.input_connected) and 
+      (sampler.LinuxSampler.output_connected))
   # make a toolbar with document actions
   def _make_toolbar(self):
     # make a toolbar

@@ -371,9 +371,13 @@ class LayoutView(View, Gtk.Layout):
     except AttributeError: pass
     # do base class configuration
     Gtk.Layout.__init__(self)
+    # respond to resizing and state changes
     self.connect('configure-event', self.on_change)
     self.connect('state-changed', self.on_change)
     self._layout_scheduled = False
+    # do redrawing of the background
+    self.set_app_paintable(True)
+    self.connect('draw', self.on_draw)
     # keep track of the size at last layout
     self._width = 0
     self._height = 0
@@ -386,6 +390,7 @@ class LayoutView(View, Gtk.Layout):
   # call this to schedule an update of the view's layout, 
   #  which is done after a delay to aggregate multiple quick changes
   def on_change(self, *args):
+    self.queue_draw()
     if (not self._layout_scheduled):
       self._layout_scheduled = True
       GLib.idle_add(self._do_layout)
@@ -409,6 +414,12 @@ class LayoutView(View, Gtk.Layout):
     return(False)
   # override this to provide custom layout
   def layout(self, width, height):
+    pass
+  # handle redrawing requests
+  def on_draw(self, widget, cr):
+    self.redraw(cr, self._width, self._height)
+  # override this to draw a custom background
+  def redraw(self, cr, width, height):
     pass
   # traverse parent widgets and return the nearest with the given attribute
   def get_parent_with_attribute(self, attr):
@@ -520,17 +531,54 @@ class ListView(LayoutView):
     self.drag_to_reorder = True
     self._dragging_item = None
     self._last_dy = 0
+    self._show_add_button = False
+    self._add_button = None
+  # return positioning for the given item
+  def x_of_item(self, item):
+    return(0)
+  def width_of_item(self, item):
+    return(self._width)
+  def y_of_item(self, item):
+    return(self.list_layout.position_of_item(item))
+  def height_of_item(self, item):
+    return(self.list_layout.size_of_item(item))
+  # make a view for the given model
+  def view_for_model(self, model):
+    return(self.view_class(model))
   def layout(self, width, height):
     views = self.allocate_views_for_models(
-      self._model, 
-      lambda t: self.view_class(t))
-    max_width = 0
+      self._model, self.view_for_model)
+    max_width = -1
+    total_height = 0
+    model = None
     for view in views:
-      view.size_allocate(geom.Rectangle(
-        0, self.list_layout.position_of_item(view.model),
-        width, self.list_layout.size_of_item(view.model)))
+      model = view.model
+      r = geom.Rectangle(
+        self.x_of_item(model), self.y_of_item(model),
+        self.width_of_item(model), self.height_of_item(model))
+      view.size_allocate(r)
       (minimum_size, preferred_size) = view.get_preferred_size()
-      max_width = max(max_width, preferred_size.width)  
+      max_width = max(max_width, preferred_size.width)
+      total_height = max(total_height, r.y + r.height)
+    # place the add button
+    if (self.show_add_button):
+      if (not self._add_button):
+        if (type(self.show_add_button) is str):
+          self._add_button = Gtk.ToolButton(Gtk.STOCK_ADD,
+            action_name=self.show_add_button)
+        else:
+          self._add_button = Gtk.ToolButton(Gtk.STOCK_ADD)
+        self._add_button.connect('clicked', self.on_add)
+        self.add(self._add_button)
+        self._add_button.show()
+      self._add_button.set_visible(True)
+      (s, m) = (32, 16)
+      r = geom.Rectangle(
+        min(max(0, width - s - m), width - s), total_height + m, s, s)
+      self._add_button.size_allocate(r)
+    elif (self._add_button):
+      self._add_button.set_visible(False)
+    # request the width of the widest item, if any
     if (max_width > 0): 
       self.set_size_request(max_width, -1)
   def start_drag(self, x, y, state):
@@ -556,6 +604,18 @@ class ListView(LayoutView):
   def on_drop(self):
     self._dragging_item = None
     self._last_dy = 0
+  # set to show/hide an add button
+  @property
+  def show_add_button(self):
+    return(self._show_add_button)
+  @show_add_button.setter
+  def show_add_button(self, value):
+    if (value != self._show_add_button):
+      self._show_add_button = value
+      self.on_change()
+  # override to handle the add button being clicked
+  def on_add(self, *args):
+    pass
 
 # make a time-to-pixel mapping with observable changes
 class TimeScale(observable.Object):

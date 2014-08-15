@@ -23,7 +23,10 @@ class OutputList(core.DeviceAdapterList):
     core.DeviceAdapterList.__init__(self, adapter_class=OutputAdapter)
   def include_device(self, device):
     if (not device): return(False)
-    if (device.name in ('Timer', 'Announce')): return(False)
+    if (device.name in ('Timer', 'Announce', 'Notify')): return(False)
+    # we probably don't need the JACK interconnection client
     if (device.name.startswith('Midi Through')): return(False)
+    # don't show LinuxSampler itself because we expose its instruments instead
+    if (device.name.startswith('LinuxSampler')): return(False)
     return(device.is_output)
-
+  

@@ -14,9 +14,10 @@ def _service_input_adapters():
   for adapter in _input_adapters:
     if (adapter.device):
       if (adapter.device.is_connected):
-        result = adapter.device.receive()
-        if (result is None): break
-        adapter.receive_message(result[0], result[1])
+        while (True):
+          result = adapter.device.receive()
+          if (result is None): break
+          adapter.receive_message(result[0], result[1])
       else:
         adapter.is_plugged = False
   return(True)
@@ -81,7 +82,7 @@ class InputList(core.DeviceAdapterList):
     core.DeviceAdapterList.__init__(self, adapter_class=NoteInput)
   def include_device(self, device):
     if (not device): return(False)
-    if (device.name in ('Timer', 'Announce')): return(False)
+    if (device.name in ('Timer', 'Announce', 'Notify')): return(False)
     if (device.name.startswith('Midi Through')): return(False)
     return(device.is_input)
     

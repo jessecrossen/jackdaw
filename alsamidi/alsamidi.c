@@ -12,7 +12,7 @@ static void _error(const char *format, ...) {
   static char message[BUFFER_SIZE];
   va_list ap;
   va_start(ap, format);
-  sprintf(message, format, ap);
+  vsnprintf(message, BUFFER_SIZE, format, ap);
   va_end(ap);
   PyErr_SetString(DeviceError, message);
 }
@@ -20,7 +20,7 @@ static void _warn(const char *format, ...) {
   static char message[BUFFER_SIZE];
   va_list ap;
   va_start(ap, format);
-  sprintf(message, format, ap);
+  vsnprintf(message, BUFFER_SIZE, format, ap);
   va_end(ap);
   PyErr_WarnEx(PyExc_RuntimeWarning, message, 2);
 }
@@ -488,9 +488,98 @@ alsamidi_get_devices(PyObject *self) {
   return(return_list);
 }
 
+// get a subscription from one device to another
+static snd_seq_port_subscribe_t *
+_fill_subscription(snd_seq_port_subscribe_t *subs, Device *source, Device *dest) {
+  // add the source
+  static snd_seq_addr_t source_addr;
+  source_addr.client = source->client;
+  source_addr.port = source->port;
+  snd_seq_port_subscribe_set_sender(subs, &source_addr);
+  // add the destination
+  static snd_seq_addr_t dest_addr;
+  dest_addr.client = dest->client;
+  dest_addr.port = dest->port;
+  snd_seq_port_subscribe_set_dest(subs, &dest_addr);
+  return(subs);
+}
+
+static PyObject *
+alsamidi_connect_devices(PyObject *self, PyObject *args, PyObject *kwds) {
+  int status;
+  Device *source = NULL;
+  Device *dest = NULL;
+  static char *kwlist[] = {"source", "dest", NULL};
+  if (! PyArg_ParseTupleAndKeywords(args, kwds, "O!O!", kwlist, 
+                                    &DeviceType, &source, &DeviceType, &dest))
+    return(NULL);
+  // get a subscription between the ports
+  snd_seq_port_subscribe_t *subs;
+  snd_seq_port_subscribe_alloca(&subs);
+  _fill_subscription(subs, source, dest);
+  // open a sequencer client to do the work
+  snd_seq_t *seq = _open_sequencer(SND_SEQ_OPEN_DUPLEX);
+  if (seq == NULL) return(NULL);
+  // if there is already such a connection, there's nothing to do
+  if (snd_seq_get_port_subscription(seq, subs) >= 0) {
+    snd_seq_close(seq);
+    Py_RETURN_NONE;
+  }
+  // make the connection
+  status = snd_seq_subscribe_port(seq, subs);
+  if (status < 0) {
+    _error("Failed to connect devices (%d): %s",
+      status, snd_strerror(status));
+    snd_seq_close(seq);
+    return(NULL);
+  }
+  // clean up
+  snd_seq_close(seq);
+  Py_RETURN_NONE;
+}
+
+static PyObject *
+alsamidi_disconnect_devices(PyObject *self, PyObject *args, PyObject *kwds) {
+  int status;
+  Device *source = NULL;
+  Device *dest = NULL;
+  static char *kwlist[] = {"source", "dest", NULL};
+  if (! PyArg_ParseTupleAndKeywords(args, kwds, "O!O!", kwlist, 
+                                    &DeviceType, &source, &DeviceType, &dest))
+    return(NULL);
+  // get a subscription between the ports
+  snd_seq_port_subscribe_t *subs;
+  snd_seq_port_subscribe_alloca(&subs);
+  _fill_subscription(subs, source, dest);
+  // open a sequencer client to do the work
+  snd_seq_t *seq = _open_sequencer(SND_SEQ_OPEN_DUPLEX);
+  if (seq == NULL) return(NULL);
+  // if there is no such connection, don't treat it as an error,
+  //  because the desired state has been reached
+  if (snd_seq_get_port_subscription(seq, subs) < 0) {
+    snd_seq_close(seq);
+    Py_RETURN_NONE;
+  }
+  status = snd_seq_unsubscribe_port(seq, subs);
+  if (status < 0) {
+    _error("Failed to disconnect devices (%d): %s",
+      status, snd_strerror(status));
+    snd_seq_close(seq);        
+    return(NULL);
+  }
+  snd_seq_close(seq);
+  Py_RETURN_NONE;
+}
+
 static PyMethodDef alsamidi_methods[] = {
     {"get_devices",  alsamidi_get_devices, METH_NOARGS,
      "Get a list of available MIDI devices."},
+    {"connect_devices",  
+      alsamidi_connect_devices, METH_VARARGS|METH_KEYWORDS,
+     "Add a connection between two devices."},
+    {"disconnect_devices",  
+      alsamidi_disconnect_devices, METH_VARARGS|METH_KEYWORDS,
+     "Remove a connection between two devices."},
     {NULL}  /* Sentinel */
 };
 

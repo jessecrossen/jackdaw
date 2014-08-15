@@ -2,7 +2,7 @@ from gi.repository import Gtk
 import core
 import track
 import device
-from ..midi import inputs, outputs
+from ..midi import inputs, outputs, sampler
 
 class DocumentView(Gtk.Frame):
   def __init__(self, document, transport):
@@ -29,7 +29,7 @@ class DocumentView(Gtk.Frame):
     self.input_list_view = core.ListView(
       self.input_devices, view_class=device.DeviceView, 
       list_layout=self.input_device_layout)
-    self.input_list_view.set_size_request(20, -1)
+    self.input_list_view.set_size_request(32, -1)
     transition = core.ListView(
       self.input_devices,
       view_class=track.ToSignalTransitionView,
@@ -83,10 +83,10 @@ class DocumentView(Gtk.Frame):
       view_class=track.FromSignalTransitionView,
       list_layout=self.output_device_layout)
     transition.set_size_request(12, -1)
-    self.output_list_view = core.ListView(
+    self.output_list_view = device.OutputDeviceListView(
       self.output_devices, view_class=device.DeviceView, 
       list_layout=self.output_device_layout)
-    self.output_list_view.set_size_request(20, -1)
+    self.output_list_view.set_size_request(32, -1)
     self.outputs_column = Gtk.Box.new(Gtk.Orientation.HORIZONTAL, 0)
     self.outputs_column.pack_start(self.output_patch_bay_view, True, True, 0)
     self.outputs_column.pack_start(transition, False, False, 0)
@@ -146,3 +146,25 @@ class DocumentView(Gtk.Frame):
   @property
   def can_zoom_out(self):
     return(self.time_scale.pixels_per_second > self.ZOOMS[0])
+  # prompt the user to add an output device
+  def add_output(self, *args):
+    # make a dialog to choose a sampler instrument
+    dialog = Gtk.FileChooserDialog(
+      title="Open Sampler Instrument", 
+      action=Gtk.FileChooserAction.OPEN,
+      buttons=(
+        Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL,
+        Gtk.STOCK_OPEN, Gtk.ResponseType.OK
+      ))
+    f = Gtk.FileFilter()
+    f.set_name("Sample Instruments")
+    for ext in sampler.EXTENSIONS:
+      f.add_pattern('*.%s' % ext)
+    dialog.add_filter(f)
+    result = dialog.run()
+    # handle responses
+    if (result == Gtk.ResponseType.OK):
+      instrument = sampler.LinuxSampler.get_instrument()
+      instrument.path = dialog.get_file()
+    dialog.destroy()
+    

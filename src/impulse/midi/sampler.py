@@ -7,10 +7,13 @@ import fcntl
 import atexit
 import socket
 
-from gi.repository import GLib
+from gi.repository import GLib, Gio
 
 import outputs
 from ..common import observable
+
+# provide extensions for sample instruments
+EXTENSIONS = ('gig', 'sfz', 'sf2')
 
 # escape string literals for inclusion in LSCP commands
 def _escape(s):
@@ -46,6 +49,8 @@ class Instrument(observable.Object):
     return(self._path)
   @path.setter
   def path(self, value):
+    if (isinstance(value, Gio.File)):
+      value = value.get_path()
     if (value != self._path):
       self._path = value
       self._attach()
@@ -70,16 +75,16 @@ class Instrument(observable.Object):
           self._on_output_set)
   def _on_output_set(self, result):
     if (result.startswith('OK')):
+      # create a port if there isn't one
+      if (self._port >= self._sampler.input_ports):
+        self._sampler.add_port(self._on_output_set)
+        return
+      # connect to the port
       self._sampler.call(
         'ADD CHANNEL MIDI_INPUT %d %d %d' % 
           (self.channel, self._sampler.device_id, self._port), 
             self._on_input_set)
   def _on_input_set(self, result):
-    if (result.startswith('OK')):
-      self._sampler.call(
-        'SET CHANNEL MIDI_INPUT_CHANNEL %d %d' %
-          (self._channel, self._channel), self._on_midi_channel_set)
-  def _on_midi_channel_set(self, result):
     if (result.startswith('OK')):
       self._load_engine()
   # load a sampler engine for the channel
@@ -105,6 +110,18 @@ class Instrument(observable.Object):
   # load a new instrument
   def _load_path(self):
     if (self._path is None): return
+    # rename the input port to match the new instrument
+    name = os.path.basename(self._path)
+    name = name.split('.')
+    if (len(name) > 0):
+      name = '.'.join(name[:-1])
+    else:
+      name = name[0]
+    if (len(name) > 16):
+      name = name[0:16]
+    self._sampler.call(
+      'SET MIDI_INPUT_PORT_PARAMETER %d %d NAME="%s"' %
+              (self._sampler.device_id, self._port, name))
     # stop the progress timer if an instrument was being loaded
     if (self._progress_timer is not None):
       GLib.source_remove(self._progress_timer)
@@ -131,11 +148,11 @@ class Instrument(observable.Object):
 
 # manage a LinuxSampler process acting as a backend for sample playback
 class LinuxSamplerSingleton(observable.Object):
-  def __init__(self, 
+  def __init__(self, verbose=False,
       preferred_outputs=('ALSA', 'JACK', 'OSS'),
       preferred_inputs=('ALSA', 'JACK', 'OSS')):
     observable.Object.__init__(self)
-    self.verbose = True
+    self.verbose = verbose
     self.address = '0.0.0.0'
     self.port = '8888'
     self.device_id = None
@@ -158,6 +175,8 @@ class LinuxSamplerSingleton(observable.Object):
     self.started = False
     self.ready = False
     self.input_connected = False
+    self.input_ports = 0
+    self.next_input_port = 0
     self.output_connected = False
     self.output_id = 0
     # a socket for communicating with the sampler
@@ -373,12 +392,13 @@ class LinuxSamplerSingleton(observable.Object):
   def _connect_input(self):
     def on_connected(result):
       if (result.startswith('OK') or (result.startswith('WRN'))):
+        self.input_ports += 1
         m = re.match('OK\[(.*)\]', result)
         if (m):
           self.device_id = int(m.group(1))
           # rename the port, without a callback because this is optional
           self.call(
-            'SET MIDI_INPUT_PORT_PARAMETER %s 0 NAME="LinuxSampler 0"' %
+            'SET MIDI_INPUT_PORT_PARAMETER %d 0 NAME="LinuxSampler 0"' %
               self.device_id)
         self.input_connected = True
         self.on_change()
@@ -406,9 +426,19 @@ class LinuxSamplerSingleton(observable.Object):
       self.call('GET MIDI_INPUT_DRIVER INFO %s' % selected, 
         on_driver_info(selected))    
     self.call('LIST AVAILABLE_MIDI_INPUT_DRIVERS', on_drivers)
+  # expand the number of available ports and call the given callback
+  def add_port(self, callback=None):
+    def on_port_added(result):
+      if (result.startswith('OK')):
+        self.input_ports += 1
+        if (callback is not None):
+          callback(result)
+    self.call('SET MIDI_INPUT_DEVICE_PARAMETER %d PORTS=%d' %
+      (self.device_id, self.input_ports + 1), on_port_added)
   # get the next unused instrument, if any
   def get_instrument(self):
-    instrument = Instrument(self)
+    instrument = Instrument(self, port=self.next_input_port)
+    self.next_input_port += 1
     self._instruments.append(instrument)
     self.on_change()
     return(instrument)
