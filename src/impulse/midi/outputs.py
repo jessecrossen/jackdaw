@@ -22,5 +22,8 @@ class OutputList(core.DeviceAdapterList):
   def __init__(self):
     core.DeviceAdapterList.__init__(self, adapter_class=OutputAdapter)
   def include_device(self, device):
-    return((device) and (device.is_output))
+    if (not device): return(False)
+    if (device.name in ('Timer', 'Announce')): return(False)
+    if (device.name.startswith('Midi Through')): return(False)
+    return(device.is_output)
 

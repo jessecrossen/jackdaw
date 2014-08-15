@@ -80,7 +80,10 @@ class InputList(core.DeviceAdapterList):
   def __init__(self, devices=()):
     core.DeviceAdapterList.__init__(self, adapter_class=NoteInput)
   def include_device(self, device):
-    return((device) and (device.is_input))
+    if (not device): return(False)
+    if (device.name in ('Timer', 'Announce')): return(False)
+    if (device.name.startswith('Midi Through')): return(False)
+    return(device.is_input)
     
 # interprets note and control channel messages
 class NoteInput(InputAdapter):

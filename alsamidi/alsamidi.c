@@ -25,7 +25,6 @@ static void _warn(const char *format, ...) {
   PyErr_WarnEx(PyExc_RuntimeWarning, message, 2);
 }
 
-
 typedef struct {
   PyObject_HEAD
   // public attributes
@@ -178,6 +177,7 @@ Device_connect(Device *self) {
     return(NULL);
   }
   snd_seq_drain_output(self->_seq);
+  snd_seq_drop_input_buffer(self->_seq);
   // make an encoder/decoder for MIDI data
   snd_midi_event_new(BUFFER_SIZE, &self->_codec);
   self->is_connected = 1;

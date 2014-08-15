@@ -1,7 +1,7 @@
 import unittest
 
 # a mixin to provide basic observer functionality
-class Observable():
+class Observable(object):
   # add/remove a callback to be called when the object changes
   def add_observer(self, callback):
     try:
@@ -18,10 +18,11 @@ class Observable():
   # call this to notify all listeners that the object changed
   def on_change(self):
     try:
-      listeners = self._observers
+      observers = self._observers
     except AttributeError:
-      listeners = self._observers = set()
-    for callback in listeners:
+      observers = self._observers = set()
+    observers = set(observers)
+    for callback in observers:
       callback()
 
 # make an object which can report changes to itself

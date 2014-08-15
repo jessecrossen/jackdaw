@@ -530,8 +530,9 @@ class ListView(LayoutView):
         0, self.list_layout.position_of_item(view.model),
         width, self.list_layout.size_of_item(view.model)))
       (minimum_size, preferred_size) = view.get_preferred_size()
-      max_width = max(max_width, preferred_size.width)
-    self.set_size_request(max_width, -1)
+      max_width = max(max_width, preferred_size.width)  
+    if (max_width > 0): 
+      self.set_size_request(max_width, -1)
   def start_drag(self, x, y, state):
     item = self.list_layout.item_at_position(y)
     if (item is None): return(False)
