@@ -131,12 +131,12 @@ class TrackListView(ListView):
   # map between time and an x coordinate on the view
   def x_of_time(self, time):
     try:
-      return(1 + (time * ((self._width - 2) / self.tracks.duration)))
+      return(1 + self.time_scale.x_of_time(time))
     except ZeroDivisionError:
       return(0)
   def time_of_x(self, x):
     try:
-      return(float(x - 1) * (self.tracks.duration / float(self._width - 2)))
+      return(self.time_scale.time_of_x(x - 1))
     except ZeroDivisionError:
       return(0)
   # map between track index and position
@@ -192,7 +192,8 @@ class TrackListView(ListView):
     # draw backgrounds behind the tracks to show their states
     for track in self.tracks:
       r = geom.Rectangle(
-        0, self.y_of_item(track), width, self.height_of_item(track))
+        0, self.list_layout.position_of_item(track), 
+        width, self.list_layout.size_of_item(track))
       if (track.arm):
         cr.set_source_rgba(1.0, 0.0, 0.0, 0.25 * fade)
         cr.rectangle(r.x, r.y, r.width, r.height)
@@ -236,8 +237,6 @@ class TrackListView(ListView):
   # deselect when the user clicks
   def on_click(self, x, y, state):
     ViewManager.clear_selection()
-    ViewManager.focused = None
-    self.grab_focus()
     return(True)
   # move a block from one track to another
   def move_block(self, block, from_index, to_index):

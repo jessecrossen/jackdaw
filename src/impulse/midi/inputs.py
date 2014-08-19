@@ -27,7 +27,6 @@ GObject.idle_add(_service_input_adapters)
 class InputAdapter(core.DeviceAdapter):
   def __init__(self, device):
     core.DeviceAdapter.__init__(self, device)
-    self._base_time = 0.0
     # keep a list of methods to call when events become available
     self._listeners = set()
   # register/unregister the input for polling
@@ -62,19 +61,6 @@ class InputAdapter(core.DeviceAdapter):
   def send_message(self, message):
     if ((self.device) and (self.device.is_output)):
       self.device.send(message)
-  # get the amount of time elapsed since the time origin
-  @property
-  def time(self):
-    if (not self.device): return(0.0)
-    return(self.device.get_time() - self._base_time)
-  # reset the time origin to the given value, such that subsequent
-  #  messages have a time relative to it
-  @time.setter
-  def time(self, value):
-    if (self.device):
-      self._base_time = self.device.get_time() - value
-    else:
-      self._base_time = - value
 
 # a list of all available output devices
 class InputList(core.DeviceAdapterList):
@@ -95,6 +81,8 @@ class NoteInput(InputAdapter):
   @property
   def playing_notes(self):
     return(self._playing_notes.values())
+  def end_all_notes(self):
+    self._playing_notes = dict()
   # interpret messages
   def on_message(self, time, message):
     status = message[0]

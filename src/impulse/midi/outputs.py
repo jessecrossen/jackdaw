@@ -16,6 +16,10 @@ class OutputAdapter(core.DeviceAdapter):
   def is_available(self):
     return((self.is_plugged) and 
            (self.is_output_available))
+  # handle messages from the device
+  def send_message(self, message, message_time):
+    if (not self.device): return
+    self.device.send(message, max(0.0, message_time - self.time))
 
 # a list of all available output devices
 class OutputList(core.DeviceAdapterList):

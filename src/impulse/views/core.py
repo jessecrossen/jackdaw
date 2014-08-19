@@ -202,6 +202,8 @@ class Traversable(object):
 
 # make a mixin for handling mouse events
 class Interactive(object):
+  # whether a click has been handled for the last down event
+  _click_handled = False
   # bind mouse events (this should be called in the constructor)
   def make_interactive(self):
     # initialize state
@@ -252,6 +254,7 @@ class Interactive(object):
       'state': event.state
     }
     self.dragging = None
+    Interactive._click_handled = False
   def on_pointer_motion(self, target, event):
     (x, y) = self.get_pointer_coords()
     if (target is not self):
@@ -287,16 +290,16 @@ class Interactive(object):
       self.dragging = None
       self._down = None
       self.on_drop()
-      return(True)
     elif (self._down):
       result = None
-      if ((event.x >= 0) and (event.x <= self._width) and 
+      if ((not Interactive._click_handled) and 
+          (event.x >= 0) and (event.x <= self._width) and 
           (event.y >= 0) and (event.y <= self._height) and 
           (abs(self._down['x_root'] - event.x_root) <= 6) and
           (abs(self._down['y_root'] - event.y_root) <= 6)):
-        result = self.on_click(event.x, event.y, self._down['state'])
+        Interactive._click_handled = self.on_click(
+          event.x, event.y, self._down['state'])
       self._down = None
-      return(result)
 
   # override this to customize cursor behavior
   def update_cursor(self, x, y, state):

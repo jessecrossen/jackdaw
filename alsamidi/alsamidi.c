@@ -166,7 +166,7 @@ Device_connect(Device *self) {
   snd_seq_get_port_info(self->_seq, self->_seq_port, port_info);
   snd_seq_port_info_set_timestamping(port_info, 1);
   snd_seq_port_info_set_timestamp_queue(port_info, self->_queue);
-  snd_seq_port_info_set_timestamp_real( port_info, 1);
+  snd_seq_port_info_set_timestamp_real(port_info, 1);
   snd_seq_set_port_info(self->_seq, self->_seq_port, port_info);
   // start the queue running
   status = snd_seq_start_queue(self->_seq, self->_queue, NULL);
@@ -235,7 +235,8 @@ Device_send(Device *self, PyObject *args) {
   int status;
   static unsigned char midibuf[BUFFER_SIZE];
   PyObject *data;
-  if (! PyArg_ParseTuple(args, "O", &data)) return(NULL);
+  double time = 0.0;
+  if (! PyArg_ParseTuple(args, "O|d", &data, &time)) return(NULL);
   if (! PySequence_Check(data)) {
     PyErr_SetString(PyExc_TypeError, 
       "Device.send expects argument 1 to be a sequence.");
@@ -268,8 +269,13 @@ Device_send(Device *self, PyObject *args) {
       status, snd_strerror(status));
     return(NULL);
   }
-  // use the queue if the event is not direct
-  if (event.queue != SND_SEQ_QUEUE_DIRECT) event.queue = self->_queue;
+  // schedule the event at the given time
+  long time_seconds = (long)floor(time);
+  long time_nanoseconds = (long)((time - time_seconds) * 1000000000);
+  event.time.time.tv_sec = time_seconds;
+  event.time.time.tv_nsec = time_nanoseconds;
+  // use the queue to schedule the output
+  event.queue = self->_queue;
   // set the source to be the current client
   snd_seq_ev_set_source(&event, self->_seq_port);
   // all events except echo events should be broadcast to subscribers

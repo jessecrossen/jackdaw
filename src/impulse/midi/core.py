@@ -13,6 +13,7 @@ class DeviceAdapter(observable.Object):
     self.device = device
     self._is_plugged = False
     self._is_connected = False
+    self._base_time = 0.0
   # return whether the device is currently plugged in to the system
   @property
   def is_plugged(self):
@@ -65,6 +66,19 @@ class DeviceAdapter(observable.Object):
     pass
   def on_disconnect(self):
     pass
+  # get the amount of time elapsed since the time origin
+  @property
+  def time(self):
+    if (not self.device): return(0.0)
+    return(self.device.get_time() - self._base_time)
+  # reset the time origin to the given value, such that subsequent
+  #  messages have a time relative to it
+  @time.setter
+  def time(self, value):
+    if (self.device):
+      self._base_time = self.device.get_time() - value
+    else:
+      self._base_time = - value
 
 # keep a core list of devices keyed by name and location so we can 
 #  scan hotplugged devices and not replace connected ones

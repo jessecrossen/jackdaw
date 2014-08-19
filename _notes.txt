@@ -1,5 +1,5 @@
-- instrument selection
-- midi output
+- playback
+- systematize time/pitch dragging
 - vertical scrolling
 - file save/load
 - make filters that can alter the characteristics of underlying notes at play-time (e.g. quantize, timewarp)
@@ -13,3 +13,4 @@
 - draw_path draws all nodes last
 - color tracks view white like a document
 - more spacing between tracks
+- context menu on sampler outputs allows deletion, quick selection of other files from same folder, and selection of different file/folder

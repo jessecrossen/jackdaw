@@ -1,4 +1,6 @@
+import math
 import time
+import alsamidi
 
 from gi.repository import GLib
 
@@ -89,19 +91,19 @@ class Transport(observable.Object):
   def time(self):
     t = self._time
     if (self._start_time is not None):
-      t += time.time() - self._start_time
+      t += time.clock() - self._start_time
     return(t)
   @time.setter
   def time(self, t):
     self._time = max(0.0, t)
     if (self._start_time is not None):
-      self._start_time = time.time()
+      self._start_time = time.clock()
     self.update_cycle_bounds()
     self.on_change()
   
   # start the time moving forward
   def _run(self):
-    self._start_time = time.time()
+    self._start_time = time.clock()
     self._last_played_to = self._time
     # establish the cycle region
     self.update_cycle_bounds()
@@ -130,7 +132,7 @@ class Transport(observable.Object):
     # play up to the current time
     self.on_play_to(current_time)
     # notify for a display update if the minimum interval has passed
-    abs_time = time.time()
+    abs_time = time.clock()
     elapsed = abs_time - self._last_display_update
     if (elapsed >= self.display_interval):
       self.on_change()
@@ -197,16 +199,23 @@ class Transport(observable.Object):
 # manages the manipulation of tracks and routing of events for recording
 #  by coordinating a transport, input patch bay, and tracks
 class Recorder(observable.Object):
-  def __init__(self, transport, patch_bay):
+  def __init__(self, transport, input_patch_bay, output_patch_bay):
     observable.Object.__init__(self)
+    self._updating = False
     self.transport = transport
     self.transport.add_observer(self.on_transport_change)
-    self.patch_bay = patch_bay
-    self.patch_bay.add_observer(self.on_patch_bay_change)
+    self.input_patch_bay = input_patch_bay
+    self.input_patch_bay.add_observer(self.update)
+    self.output_patch_bay = output_patch_bay
+    self.output_patch_bay.add_observer(self.update)
     # track whether we've registered the start of recording
     self._recording = False
+    # the transport time when recording started
+    self._start_time = 0.0
     # hold a list of tracks mapped to the block on that track that's 
     #  receiving input
+    self._preview_connections = set()
+    self._tracks = set()
     self._active_inputs = set()
     self._active_tracks = set()
     self._active_blocks = dict()
@@ -233,32 +242,84 @@ class Recorder(observable.Object):
           note.duration = active_input.time - note.time
   # handle changes to the patch bay so we can respect plugging and unplugging 
   #  during recording
-  def on_patch_bay_change(self):
-    pass
+  def update(self):
+    if (self._updating): return
+    self._updating = True
+    # cache the transport time so all time operations below are synchronous
+    time = self.transport.time
+    # listen to all connected tracks for changes in the arm state
+    tracks = set()
+    for track in self.input_patch_bay.to_items:
+      tracks.add(track)
+    for track in self.output_patch_bay.from_items:
+      tracks.add(track)
+    new_tracks = tracks.difference(self._tracks)
+    for track in new_tracks:
+      track.add_observer(self.update)
+    old_tracks = self._tracks.difference(tracks)
+    for track in old_tracks:
+      track.remove_observer(self.update)
+    self._tracks = tracks
+    # update active tracks, inputs, and preview connection lists
+    active_tracks = set()
+    active_inputs = set()
+    preview_connections = set()
+    tracks = self.input_patch_bay.to_items
+    for track in tracks:
+      if (track.arm):
+        active_tracks.add(track)
+        ins = self.input_patch_bay.items_connected_to(track)
+        outs = self.output_patch_bay.items_connected_from(track)
+        for i in ins:
+          active_inputs.add(i)
+          for o in outs:
+            preview_connections.add((i, o))
+    # end all pending notes for deactivated inputs
+    deactivated_inputs = self._active_inputs.difference(active_inputs)
+    for i in deactivated_inputs:
+      i.remove_listener(self.on_event)
+      i.end_all_notes()
+    # connect to all newly-activated inputs
+    activated_inputs = active_inputs.difference(self._active_inputs)
+    for i in activated_inputs:
+      i.add_listener(self.on_event)
+      i.connect()
+      # sync all newly-activated inputs to the current transport 
+      #  time if recording
+      if (self._recording):
+        i.time = time - self._start_time
+    self._active_inputs = active_inputs
+    # close blocks for all disarmed tracks
+    deactivated_tracks = self._active_tracks.difference(active_tracks)
+    for t in deactivated_tracks:
+      if (t in self._active_blocks):
+        del self._active_blocks[t]
+    # if recording, start blocks for all newly-activated tracks
+    activated_tracks = active_tracks.difference(self._active_tracks)
+    for t in activated_tracks:
+      if ((self._recording) and (t not in self._active_blocks)):
+        self.add_block_to_track(t, self._start_time)
+    self._active_tracks = active_tracks
+    # update input preview connections
+    old_previews = self._preview_connections.difference(preview_connections)
+    for (source, dest) in old_previews:
+      alsamidi.disconnect_devices(source.device, dest.device)
+    new_previews = preview_connections.difference(self._preview_connections)
+    for (source, dest) in new_previews:
+      alsamidi.connect_devices(source.device, dest.device)
+    self._preview_connections = preview_connections
+    self._updating = False
   # start recording
   def start(self):
     # get the current transport time so it's the same across tracks
-    time = self.transport.time
-    # find all armed tracks with input connections
-    tracks = self.patch_bay.to_items
-    for track in tracks:
-      if (track.arm):
-        self._active_tracks.add(track)
-        incoming_inputs = self.patch_bay.items_connected_to(track)
-        self._active_inputs.update(incoming_inputs)
-    # add a block with an event list to each one, starting at 
-    #  the transport's current time
+    time = self._start_time = self.transport.time
+    # make sure all active tracks have a block to record to
     for track in self._active_tracks:
-      self.add_block_to_track(track, time)
-    # connect to inputs
-    for active_input in self._active_inputs:
-      # reset all inputs to zero time
-      active_input.time = 0.0
-      # make sure all active inputs are connected
-      if (not active_input.is_connected):
-        active_input.connect()
-      # listen for events from all active inputs
-      active_input.add_listener(self.on_event)
+      if (track not in self._active_blocks):
+        self.add_block_to_track(track, time)
+    # sync all inputs to the current transport time
+    for i in self._active_inputs:
+      i.time = 0.0
   # activate a new block on a track to receive recorded events
   def add_block_to_track(self, track, time):
     block = doc.Block(doc.EventList(), time=time, duration=0.5)
@@ -267,7 +328,7 @@ class Recorder(observable.Object):
   # receive events
   def on_event(self, from_input, event):
     # get all tracks the input routes to
-    to_tracks = self.patch_bay.items_connected_from(from_input)
+    to_tracks = self.input_patch_bay.items_connected_from(from_input)
     for track in to_tracks:
       if (track in self._active_blocks):
         # add the event
@@ -275,13 +336,118 @@ class Recorder(observable.Object):
         block.events.append(event)
   # stop recording
   def stop(self):
-    # stop listening to inputs
-    for active_input in self._active_inputs:
-      active_input.remove_listener(self.on_event)
-    # reset all connections
-    self._active_inputs = set()
-    self._active_tracks = set()
+    # deactivate all blocks
     self._active_blocks = dict()
+    
+# a controller to manage playback
+class Player(observable.Object):
+  def __init__(self, transport, output_patch_bay):
+    observable.Object.__init__(self)
+    self.transport = transport
+    self.transport.add_observer(self.on_transport_change)
+    self.output_patch_bay = output_patch_bay
+    self._playing = False
+    # the time events have been scheduled up to (non-inclusive)
+    self._scheduled_to = None
+    # the amount of time to schedule events into the future
+    self.min_schedule_ahead = self.transport.display_interval
+    self.max_schedule_ahead = 2.0 * self.min_schedule_ahead
+    # a list of tuples containing outputs note-ons have been sent to,
+    #  the pitch of the note, and the time at which it should stop playing
+    self._open_notes = [ ]
+  def on_transport_change(self):
+    if (self.transport.playing != self._playing):
+      self._playing = self.transport.playing
+      if (self._playing):
+        self.start()
+      else:
+        self.stop()
+    if (self._playing):
+    
+      # TODO: handle time jumps
+    
+      self.send()
+  # start playback
+  def start(self):
+    self._scheduled_to = self.transport.time
+    # reset the timers of all output tracks to the transport time
+    time = self.transport.time
+    for output in self.output_patch_bay.to_items:
+      output.connect()
+      output.time = time
+  # schedule some events for playback
+  def send(self):
+    # if we're already scheduled ahead enough, we're done
+    ahead = self.transport.time - self._scheduled_to
+    if (ahead > self.min_schedule_ahead): return
+    # get the interval to schedule
+    begin = self._scheduled_to
+    end = self.transport.time + self.max_schedule_ahead
+    # schedule events into the future
+    tracks = self.output_patch_bay.from_items
+    for track in tracks:
+      events = [ ]
+      for block in track:
+        bt = block.time
+        # skip blocks that don't overlap the current time
+        if ((bt > end) or (bt + block.duration <= begin)):
+          continue
+        # get the indices of the possible repeats of the block's events 
+        #  that notes in this time range might fall into
+        repeat = float(block.events.duration)
+        begin_repeat = int(math.floor((begin - bt) / repeat))
+        end_repeat = int(math.floor((end - bt) / repeat))
+        # limit played notes to ones that start before the end of the block
+        block_end = min(end, block.time + block.duration)
+        # find events in the block that should be scheduled for a start
+        for event in block.events:
+          et = bt + (begin_repeat * repeat) + event.time
+          if ((et >= begin) and (et < block_end)):
+            events.append((event, et))
+          # try the note in two places if the time range straddles 
+          #  a repeat boundary
+          if (end_repeat != begin_repeat):
+            et = bt + (end_repeat * repeat) + event.time
+            if ((et >= begin) and (et < block_end)):
+              events.append((event, et))
+      # schedule beginnings og events on all outputs for the track
+      for output in self.output_patch_bay.items_connected_from(track):
+        for (event, t1) in events:
+          t2 = t1
+          try:
+            t2 += event.duration
+          except AttributeError: pass
+          velocity = 127
+          try:
+            velocity = int(math.floor(event.velocity * 127.0))
+          except AttributeError: pass
+          pitch = None
+          try:
+            pitch = event.pitch
+          except AttributeError: pass
+          # start notes
+          if (hasattr(event, 'pitch')):
+            output.send_message((0x90, pitch, velocity), t1)
+            self._open_notes.append((output, pitch, t2))
+    # schedule ending events if they are in the current interval
+    open_notes = [ ]
+    for note in self._open_notes:
+      (output, pitch, time) = note
+      if ((time >= begin) and (time < end)):
+        output.send_message((0x90, pitch, 0), time)
+      else:
+        open_notes.append(note)
+    self._open_notes = open_notes
+    self._scheduled_to = end
+  # schedule endings for all currently playing notes
+  def end_all_notes(self):
+    for (output, pitch, time) in self._open_notes:
+      output.send_message((0x80, pitch, 0), self._scheduled_to)
+    self._open_notes = [ ]
+  # stop playback
+  def stop(self):
+    self.end_all_notes()
+    
 
 # a mixer that tracks various properties for a set of tracks
 class Mixer(observable.Object):

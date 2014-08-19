@@ -9,6 +9,7 @@ import socket
 
 from gi.repository import GLib, Gio
 
+import core
 import outputs
 from ..common import observable
 
@@ -87,6 +88,8 @@ class Instrument(observable.Object):
   def _on_input_set(self, result):
     if (result.startswith('OK')):
       self._load_engine()
+      # make the device show up in the device list
+      core.DevicePool.scan()
   # load a sampler engine for the channel
   def _load_engine(self):
     if (self._path is None): return

@@ -29,6 +29,7 @@ class DocumentWindow(Gtk.ApplicationWindow):
     self.transport = None
     self.mixer = None
     self.recorder = None
+    self.player = None
     # start with an empty document
     self.document_view = None
     self.document = doc.Document()
@@ -53,6 +54,7 @@ class DocumentWindow(Gtk.ApplicationWindow):
     self.transport = None
     self.mixer = None
     self.recorder = None
+    self.player = None
     if (self.control_surface):
       self.control_surface.disconnect()
     self.control_surface = None
@@ -69,10 +71,14 @@ class DocumentWindow(Gtk.ApplicationWindow):
     self.transport = controllers.Transport()
     self.control_surface = inputs.NanoKONTROL2(
       transport=self.transport, mixer=self.mixer)
-    # add a recorder
+    # add record/playback controllers
     self.recorder = controllers.Recorder(
       transport=self.transport,
-      patch_bay=self._document.input_patch_bay)
+      input_patch_bay=self._document.input_patch_bay,
+      output_patch_bay=self._document.output_patch_bay)
+    self.player = controllers.Player(
+      transport=self.transport,
+      output_patch_bay=self._document.output_patch_bay)
     # make a view for the document
     self.document_view = views.doc.DocumentView(
       document=self._document,
