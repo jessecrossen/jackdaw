@@ -1,10 +1,24 @@
 import time
 import alsamidi
 import re
+import yaml
 
 from gi.repository import GLib, GObject
 
-from ..common import observable
+from ..common import observable, serializable
+
+# device serialization
+def device_representer(dumper, device):
+  return(dumper.represent_mapping(u'!device', { 
+    'name': device.name,
+    'client': device.client,
+    'port': device.port
+  }))
+def device_constructor(loader, node):
+  kwargs = loader.construct_mapping(node, deep=True)
+  return(alsamidi.Device(**kwargs))
+yaml.add_representer(alsamidi.Device, device_representer)
+yaml.add_constructor('!device', device_constructor)
 
 # acts as a base class for MIDI device adapters
 class DeviceAdapter(observable.Object):
@@ -79,6 +93,12 @@ class DeviceAdapter(observable.Object):
       self._base_time = self.device.get_time() - value
     else:
       self._base_time = - value
+  # adapter serialization
+  def serialize(self):
+    return({ 
+      'device': self.device
+    })
+serializable.add(DeviceAdapter)
 
 # keep a core list of devices keyed by name and location so we can 
 #  scan hotplugged devices and not replace connected ones

@@ -1,10 +1,10 @@
 # coding=utf-8
 
-import sys
+import yaml
 import copy
 
-from ..common import observable
-  
+from ..common import observable, serializable
+
 # make a base class to implement common functions of the model layer
 class Model(observable.Object):
   def __init__(self):
@@ -44,7 +44,6 @@ class Note(Model):
     self._duration = duration
     self._pitch = pitch
     self._velocity = velocity
-  
   # the time relative to the beginning of its container when the note 
   #  begins playing (in seconds)
   @property
@@ -88,6 +87,17 @@ class Note(Model):
                 pitch=self.pitch,
                 velocity=self.velocity,
                 duration=self.duration))
+  def __repr__(self):
+    return('Note(time=%0.9g, pitch=%d, velocity=%g, duration=%0.9g)' %
+            (self.time, self.pitch, self.velocity, self.duration))
+  def serialize(self):
+    return({ 
+      'time': self.time,
+      'pitch': self.pitch,
+      'velocity': self.velocity,
+      'duration': self.duration
+    })
+serializable.add(Note)
 
 # represents a series of events grouped into a logical block with a duration
 class EventList(ModelList):
@@ -95,7 +105,6 @@ class EventList(ModelList):
     ModelList.__init__(self, events)
     self._duration = duration
     self._divisions = divisions
-  
   # the total length of time the events occur in (in seconds)
   @property
   def duration(self):
@@ -115,12 +124,10 @@ class EventList(ModelList):
     if (self._divisions != value):
       self._divisions = value
       self.on_change()
-  
   # invalidate cached data
   def invalidate(self):
     self._pitches = None
     self._times = None
-  
   # lazily get a list of unique pitches for all notes in the list
   @property
   def pitches(self):
@@ -143,6 +150,14 @@ class EventList(ModelList):
       self._times = list(times)
       self._times.sort()
     return(self._times)
+  # serialization
+  def serialize(self):
+    return({ 
+      'events': list(self),
+      'duration': self.duration,
+    'divisions': self.divisions
+    })
+serializable.add(EventList)
 
 # represents a placement of an event list on a timeline with its own duration
 # the event list is truncated or repeated to fill the duration
@@ -153,7 +168,6 @@ class Block(Model):
     self._events.add_observer(self.on_change)
     self._time = time
     self._duration = duration
-  
   # the events in the block
   @property
   def events(self):
@@ -183,12 +197,10 @@ class Block(Model):
     if (self._duration != value):
       self._duration = value
       self.on_change()
-  
   # invalidate cached data
   def invalidate(self):
     self._pitches = None
     self._times = None
-  
   # get all event times within the block
   @property
   def times(self):
@@ -213,7 +225,6 @@ class Block(Model):
   @property
   def pitches(self):
     return(self.events.pitches)
-  
   # join repeats into one event list
   def join_repeats(self):
     repeat_time = self.events.duration
@@ -228,7 +239,6 @@ class Block(Model):
           new_events.append(new_event)
       time += repeat_time
     self.events = new_events
-  
   # join multiple blocks into this block
   def join(self, blocks, tracks=None):
     # make sure the list of blocks includes this one
@@ -265,7 +275,6 @@ class Block(Model):
         for block in track_blocks:
           if (block in blocks):
             track.remove(block)
-  
   # break apart repeats of the block's events into new blocks
   def split_repeats(self, track):
     repeat_time = self.events.duration
@@ -284,7 +293,6 @@ class Block(Model):
       track.append(block)
       time += repeat_time
     self.duration = repeat_time
-  
   # split the block on the given time boundaries
   def split(self, times, track):
     event_lists = [ ]
@@ -318,7 +326,15 @@ class Block(Model):
         time=self.time + times[i],
         duration=event_lists[i].duration)
       track.append(block)
-  
+  # block serialization
+  def serialize(self):
+    return({
+      'events': self.events,
+      'duration': self.duration,
+      'time': self.time
+    })
+serializable.add(Block)
+
 # represent a track, which can contain multiple blocks
 class Track(ModelList):
 
@@ -326,16 +342,19 @@ class Track(ModelList):
   PITCH_CLASS_NAMES = ( 
     'C', 'D♭', 'D', 'E♭', 'E', 'F', 'F♯', 'G', 'A♭', 'A', 'B♭', 'B' )
 
-  def __init__(self, blocks=(), duration=60):
+  def __init__(self, blocks=(), duration=60, 
+                     solo=False, mute=False, arm=False,
+                     level=1.0, pan=0.0, pitch_names=None):
     ModelList.__init__(self, blocks)
     self._duration = duration
-    self._solo = False
-    self._mute = False
-    self._arm = False
-    self._level = 1.0
-    self._pan = 0.0
-    self._pitch_names = dict()
-    
+    self._solo = solo
+    self._mute = mute
+    self._arm = arm
+    self._level = level
+    self._pan = pan
+    if (pitch_names is None): 
+      pitch_names = dict()
+    self._pitch_names = pitch_names
   # invalidate cached data
   def invalidate(self):
     self._pitches = None
@@ -343,7 +362,6 @@ class Track(ModelList):
     # whether the track is enabled for playback 
     # (this will be controlled by the track list)
     self.enabled = True
-  
   # get and set user-defined names for pitches
   @property
   def pitch_names(self):
@@ -352,7 +370,6 @@ class Track(ModelList):
   def pitch_names(self, value):
     self._pitch_names = value
     self.on_change()
-  
   # get a name for a MIDI note number
   def name_of_pitch(self, pitch):
     # snap to the closest whole number
@@ -362,7 +379,6 @@ class Track(ModelList):
       return(self._pitch_names[pitch])
     # otherwise look it up in the list of pitch classes
     return(self.PITCH_CLASS_NAMES[pitch % 12])
-    
   # the total length of time of the track content (in seconds)
   @property
   def duration(self):
@@ -372,7 +388,6 @@ class Track(ModelList):
     if (self._duration != value):
       self._duration = value
       self.on_change()
-  
   # whether the track should play by itself or as part of a solo group
   @property
   def solo(self):
@@ -424,7 +439,6 @@ class Track(ModelList):
     if (self._pan != value):
       self._pan = value
       self.on_change()
-  
   # get a list of unique times for all the notes in the track
   @property
   def times(self):
@@ -451,6 +465,19 @@ class Track(ModelList):
       self._pitches = list(pitches)
       self._pitches.sort()
     return(self._pitches)
+  # track serialization
+  def serialize(self):
+    return({ 
+      'blocks': list(self),
+      'duration': self.duration,
+      'solo': self.solo,
+      'mute': self.mute,
+      'arm': self.arm,
+      'level': self.level,
+      'pan': self.pan,
+      'pitch_names': self.pitch_names
+    })
+serializable.add(Track)
 
 # represent a list of tracks
 class TrackList(ModelList):
@@ -470,12 +497,10 @@ class TrackList(ModelList):
       for track in self:
         track.enabled = not track.mute
     ModelList.on_change(self)
-  
   # invalidate cached data
   def invalidate(self):
     self._max_duration = None
     self._times = None
-    
   # return the duration of the longest track in the list
   @property
   def duration(self):
@@ -495,12 +520,20 @@ class TrackList(ModelList):
       self._times = list(times)
       self._times.sort()
     return(self._times)
-    
+  # track serialization
+  def serialize(self):
+    return({ 
+      'tracks': list(self)
+    })
+serializable.add(TrackList)
+
 # represent a directed patch bay that routes between two lists
 class PatchBay(observable.Object):
-  def __init__(self):
+  def __init__(self, connections=None):
     observable.Object.__init__(self)
-    self._connections = set()
+    if (connections is None):
+      connections = set()
+    self._connections = connections
     self._update_maps()
   @property
   def connections(self):
@@ -561,16 +594,31 @@ class PatchBay(observable.Object):
       if (to_what not in self._to_items):
         self._to_items[to_what] = set()
       self._to_items[to_what].add(from_what)
+  def serialize(self):
+    return({
+      'connections': list(self._connections)
+    })
+serializable.add(PatchBay)
 
 # represent a document, which can contain multiple tracks
 class Document(Model):
-  def __init__(self):
+  def __init__(self, tracks=None, 
+               input_patch_bay=None, output_patch_bay=None):
     Model.__init__(self)
-    self.tracks = TrackList()
+    if (tracks is None):
+      tracks = TrackList()
+    # tracks
+    self.tracks = tracks
     self.tracks.add_observer(self.on_change)
-    self.input_patch_bay = PatchBay()
+    # inputs
+    if (input_patch_bay is None):
+      input_patch_bay = PatchBay()
+    self.input_patch_bay = input_patch_bay
     self.input_patch_bay.add_observer(self.on_input_change)
-    self.output_patch_bay = PatchBay()
+    # outputs
+    if (output_patch_bay is None):
+      output_patch_bay = PatchBay()
+    self.output_patch_bay = output_patch_bay
     self.output_patch_bay.add_observer(self.on_output_change)
   
   # add a track to the document
@@ -587,4 +635,12 @@ class Document(Model):
     for adapter in self.output_patch_bay.to_items:
       if (not adapter.is_connected):
         adapter.connect()
+  # document serialization
+  def serialize(self):
+    return({ 
+      'tracks': self.tracks,
+      'input_patch_bay': self.input_patch_bay,
+      'output_patch_bay': self.output_patch_bay
+    })
+serializable.add(Document)
 

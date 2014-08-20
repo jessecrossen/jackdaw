@@ -20,6 +20,7 @@ class OutputAdapter(core.DeviceAdapter):
   def send_message(self, message, message_time):
     if (not self.device): return
     self.device.send(message, max(0.0, message_time - self.time))
+serializable.add(OutputAdapter)
 
 # a list of all available output devices
 class OutputList(core.DeviceAdapterList):

@@ -61,8 +61,9 @@ class InputAdapter(core.DeviceAdapter):
   def send_message(self, message):
     if ((self.device) and (self.device.is_output)):
       self.device.send(message)
+serializable.add(InputAdapter)
 
-# a list of all available output devices
+# a list of all available input devices
 class InputList(core.DeviceAdapterList):
   def __init__(self, devices=()):
     core.DeviceAdapterList.__init__(self, adapter_class=NoteInput)
@@ -110,6 +111,7 @@ class NoteInput(InputAdapter):
     # report unexpected messages
     else:
       print('%s: Unhandled message type %02X' % (self.name, status))
+serializable.add(NoteInput)
 
 # handles input/output for a Korg NanoKONTROL2
 class NanoKONTROL2(InputAdapter):
