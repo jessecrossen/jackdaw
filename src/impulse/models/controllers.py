@@ -95,6 +95,8 @@ class Transport(observable.Object):
     return(t)
   @time.setter
   def time(self, t):
+    # don't allow the time to be set while recording
+    if (self._recording): return
     self._time = max(0.0, t)
     if (self._start_time is not None):
       self._start_time = time.clock()
@@ -158,7 +160,6 @@ class Transport(observable.Object):
       self._cycle_end_time = self.cycle_end_time
     else:
       self._cycle_end_time = self.get_next_mark(current_time)
-  
   # skip forward or back in time
   def skip_back(self, *args):
     self.time = self.time - self.skip_delta
@@ -356,8 +357,9 @@ class Player(observable.Object):
     #  the pitch of the note, and the time at which it should stop playing
     self._open_notes = [ ]
   def on_transport_change(self):
-    if (self.transport.playing != self._playing):
-      self._playing = self.transport.playing
+    playing = (self.transport.playing or self.transport.recording)
+    if (playing != self._playing):
+      self._playing = playing
       if (self._playing):
         self.start()
       else:
