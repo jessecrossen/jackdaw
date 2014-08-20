@@ -5,8 +5,9 @@ from gi.repository import Gtk, Gdk
 
 import geom
 import symbols
-from core import DrawableView, LayoutView, ViewManager, TimeScale
+from core import DrawableView, LayoutView, ViewManager
 from core import ListLayout, ListView
+from ..models.doc import TimeScale
 import block
 
 class TrackView(LayoutView):
@@ -118,12 +119,12 @@ class TrackListView(ListView):
     self.time_scroll = Gtk.Adjustment()
     self.time_scroll.connect('value-changed', self.on_scroll)
     self.time_scroll.set_lower(0.0)
-    self.time_scroll.set_value(0.0)
+    self.time_scroll.set_value(self.time_scale.time_offset)
     self.time_scroll.set_step_increment(1.0)
     # show a button to add tracks
     self.show_add_button = 'win.addTrack'
   def on_scroll(self, *args):
-    self.on_change()
+    self.time_scale.time_offset = self.time_scroll.get_value()
   # expose 'tracks' as an alternate name for 'model' for readability
   @property
   def tracks(self):
@@ -172,16 +173,19 @@ class TrackListView(ListView):
     self.time_scroll.set_page_size(page_duration)
     self.time_scroll.set_page_increment(page_duration * 0.9)
     self.time_scroll.changed()
-    left_time = self.time_scroll.get_value()
-    clamped = min(max(0.0, left_time), max_duration - page_duration)
-    if (clamped != left_time):
-      left_time = clamped
-      self.time_scroll.set_value(left_time)
-    self._scroll_x = self.x_of_time(0) - self.time_scale.x_of_time(left_time)
+    time_offset = self.time_scale.time_offset
+    clamped = min(max(0.0, time_offset), max_duration - page_duration)
+    if (clamped != time_offset):
+      time_offset = clamped
+      self.time_scroll.set_value(time_offset)
+      self.time_scale.time_offset = time_offset
+    self._scroll_x = self.x_of_time(0) - self.time_scale.x_offset
     # do layout for track views
     ListView.layout(self, width, height)
   # draw guide markers in the background
   def redraw(self, cr, width, height):
+    # get an offset to handle scrolling
+    self._scroll_x = self.x_of_time(0) - self.time_scale.x_offset
     # get colors
     style = self.get_style_context()
     fg = style.get_color(Gtk.StateType.NORMAL)
@@ -206,7 +210,7 @@ class TrackListView(ListView):
     if (self.transport):
       # draw the transport's current time point with a fill on the left
       #  so we can easily see whether we're before or after it
-      x = round(self.x_of_time(self.transport.time))
+      x = round(self.x_of_time(self.transport.time) + self._scroll_x)
       cr.set_source_rgba(fg.red, fg.green, fg.blue, 0.1 * fade)
       cr.rectangle(0, 0, x, height)
       cr.fill()
@@ -217,7 +221,7 @@ class TrackListView(ListView):
       cr.stroke()
       # draw all the marks on the transport
       for t in self.transport.marks:
-        x = round(self.x_of_time(t))
+        x = round(self.x_of_time(t) + self._scroll_x)
         cr.set_source_rgba(fg.red, fg.green, fg.blue, 0.75 * fade)
         cr.set_dash((2, 2))
         cr.set_line_width(2)
@@ -227,7 +231,7 @@ class TrackListView(ListView):
     # draw the snap indicator
     snapped_time = ViewManager.snapped_time
     if (snapped_time is not None):
-      x = round(self.x_of_time(snapped_time)) + 0.5
+      x = round(self.x_of_time(snapped_time) + self._scroll_x) + 0.5
       cr.set_source_rgba(fg.red, fg.green, fg.blue, 0.75 * fade)
       cr.set_line_width(1)
       cr.set_dash((2, 3))

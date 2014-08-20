@@ -1,23 +1,22 @@
 from gi.repository import Gtk
+
 import core
 import track
 import device
 from ..midi import inputs, outputs, sampler
 
 class DocumentView(Gtk.Frame):
-  def __init__(self, document, transport):
+  def __init__(self, document):
     Gtk.Frame.__init__(self)
     self.set_border_width(0)
     self.set_label(None)
     self._document = document
-    self._transport = transport
     # make layouts for inputs and tracks
     self.input_devices = inputs.InputList()
     self.output_devices = outputs.OutputList()
     self.input_device_layout = device.DeviceLayout(self.input_devices)
     self.output_device_layout = device.DeviceLayout(self.output_devices)
     self.track_layout = track.TrackLayout(self.document.tracks)
-    self.time_scale = core.TimeScale()
     # make some functions to make the code below shorter
     def track_column(view_class, width):
       column = core.ListView(
@@ -59,8 +58,8 @@ class DocumentView(Gtk.Frame):
     self.tracks_view = track.TrackListView(
       tracks=self.document.tracks, 
       track_layout=self.track_layout,
-      transport=self.transport,
-      time_scale=self.time_scale)
+      transport=self.document.transport,
+      time_scale=self._document.time_scale)
     self.tracks_scroll = Gtk.Scrollbar.new(
       Gtk.Orientation.HORIZONTAL, self.tracks_view.time_scroll)
     tracks_column = Gtk.Box.new(Gtk.Orientation.VERTICAL, 0)
@@ -111,14 +110,11 @@ class DocumentView(Gtk.Frame):
   @property
   def document(self):
     return(self._document)
-  @property
-  def transport(self):
-    return(self._transport)
     
   # control track list zoom
   ZOOMS = (8, 16, 24, 32, 48, 64, 96, 128)
   def _zoom_index(self):
-    pps = self.time_scale.pixels_per_second
+    pps = self._document.time_scale.pixels_per_second
     closest = None
     closest_dist = None
     for i in range(0, len(self.ZOOMS)):
@@ -131,21 +127,21 @@ class DocumentView(Gtk.Frame):
   def _apply_zoom_delta(self, delta):
     index = self._zoom_index()
     if (index is None): return
-    pps = self.time_scale.pixels_per_second
+    pps = self._document.time_scale.pixels_per_second
     new_pps = self.ZOOMS[index]
     if (new_pps == pps):
       new_pps = self.ZOOMS[index + delta]
-    self.time_scale.pixels_per_second = new_pps
+    self._document.time_scale.pixels_per_second = new_pps
   def zoom_in(self, *args):
     self._apply_zoom_delta(1)
   def zoom_out(self, *args):
     self._apply_zoom_delta(-1)
   @property
   def can_zoom_in(self):
-    return(self.time_scale.pixels_per_second < self.ZOOMS[-1])
+    return(self._document.time_scale.pixels_per_second < self.ZOOMS[-1])
   @property
   def can_zoom_out(self):
-    return(self.time_scale.pixels_per_second > self.ZOOMS[0])
+    return(self._document.time_scale.pixels_per_second > self.ZOOMS[0])
   # prompt the user to add an output device
   def add_output(self, *args):
     # make a dialog to choose a sampler instrument

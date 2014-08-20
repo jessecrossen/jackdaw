@@ -1,7 +1,10 @@
 # coding=utf-8
 
+import time
 import yaml
 import copy
+
+from gi.repository import GLib
 
 from ..common import observable, serializable
 
@@ -600,14 +603,244 @@ class PatchBay(observable.Object):
     })
 serializable.add(PatchBay)
 
+# a transport to keep track of timepoints, playback, and recording
+class Transport(observable.Object):
+  def __init__(self, time=0.0, cycling=False, marks=None):
+    observable.Object.__init__(self)
+    # set up internal state
+    self._playing = False
+    self._recording = False
+    self._cycling = cycling
+    # store the time
+    self._time = time
+    self._last_played_to = time
+    self._last_display_update = 0
+    self._start_time = None
+    # keep a timer that updates when the time is running
+    self._run_timer = None
+    # the minimum time resolution to send display updates
+    self.display_interval = 0.05 # seconds
+    # store all time marks
+    if (marks is None):
+      marks = [ ]
+    self.marks = marks
+    # the start and end times of the cycle region, which will default
+    #  to the next and previous marks if not set externally
+    self._cycle_start_time = None
+    self.cycle_start_time = None
+    self._cycle_end_time = None
+    self.cycle_end_time = None
+    # the amount to change time by when the skip buttons are pressed
+    self.skip_delta = 1.0 # seconds
+  # add methods for easy button binding
+  def play(self, *args):
+    self.playing = True
+  def record(self, *args):
+    self.recording = True
+  def stop(self, *args):
+    self.playing = False
+    self.recording = False
+  # whether play mode is on
+  @property
+  def playing(self):
+    return(self._playing)
+  @playing.setter
+  def playing(self, value):
+    value = (value == True)
+    if (self._playing != value):
+      self.recording = False
+      self._playing = value
+      if (self.playing):
+        self._run()
+      else:
+        self._stop()
+      self.on_change()
+  # whether record mode is on
+  @property
+  def recording(self):
+    return(self._recording)
+  @recording.setter
+  def recording(self, value):
+    value = (value == True)
+    if (self._recording != value):
+      self.playing = False
+      self._recording = value
+      if (self.recording):
+        self._run()
+      else:
+        self._stop()
+      self.on_change()
+  # whether cycle mode is on
+  @property
+  def cycling(self):
+    return(self._cycling)
+  @cycling.setter
+  def cycling(self, value):
+    value = (value == True)
+    if (self._cycling != value):
+      self.update_cycle_bounds()
+      self._cycling = value
+      self.on_change()
+  # get the current timepoint of the transport
+  @property
+  def time(self):
+    t = self._time
+    if (self._start_time is not None):
+      t += time.clock() - self._start_time
+    return(t)
+  @time.setter
+  def time(self, t):
+    # don't allow the time to be set while recording
+    if (self._recording): return
+    self._time = max(0.0, t)
+    if (self._start_time is not None):
+      self._start_time = time.clock()
+    self.update_cycle_bounds()
+    self.on_change()
+  # start the time moving forward
+  def _run(self):
+    self._start_time = time.clock()
+    self._last_played_to = self._time
+    # establish the cycle region
+    self.update_cycle_bounds()
+    # start the update timer
+    if (self._run_timer is None):
+      self._run_timer = GLib.idle_add(self.on_running)
+  # stop the time moving forward
+  def _stop(self):
+    self._time = self.time
+    self._start_time = None
+    if (self._run_timer is not None):
+      GLib.source_remove(self._run_timer)
+      self._run_timer = None
+  def on_running(self):
+    current_time = self.time
+    # do cycling
+    if ((self.cycling) and (self._cycle_end_time is not None) and 
+        (current_time > self._cycle_end_time)):
+      # only play up to the cycle end time
+      self.on_play_to(self._cycle_end_time)
+      # bounce back to the start, maintaining any interval we went past the end
+      self._last_played_to = self._cycle_start_time
+      current_time = (self._cycle_start_time + 
+        (current_time - self._cycle_end_time))
+      self.time = current_time
+    # play up to the current time
+    self.on_play_to(current_time)
+    # notify for a display update if the minimum interval has passed
+    abs_time = time.clock()
+    elapsed = abs_time - self._last_display_update
+    if (elapsed >= self.display_interval):
+      self.on_change()
+      self._last_display_update = abs_time
+    return(True)
+  # handle the playback of the span after and including self._last_played_to
+  #  and up to but not including the given time
+  def on_play_to(self, end_time):
+    # prepare for the next range
+    self._last_played_to = end_time
+  # set the cycle region based on the current time
+  def update_cycle_bounds(self):
+    current_time = self.time
+    if (self.cycle_start_time is not None):
+      self._cycle_start_time = self.cycle_start_time
+    else:
+      self._cycle_start_time = self.get_previous_mark(current_time + 0.001)
+    if (self.cycle_end_time is not None):
+      self._cycle_end_time = self.cycle_end_time
+    else:
+      self._cycle_end_time = self.get_next_mark(current_time)
+  # skip forward or back in time
+  def skip_back(self, *args):
+    self.time = self.time - self.skip_delta
+  def skip_forward(self, *args):
+    self.time = self.time + self.skip_delta
+  # toggle a mark at the current time
+  def toggle_mark(self, *args):
+    t = self.time
+    if (t in self.marks):
+      self.marks.remove(t)
+    else:
+      self.marks.append(t)
+      self.marks.sort()
+    self.on_change()
+  # return the time of the next or previous mark relative to a given time
+  def get_previous_mark(self, from_time):
+    for t in reversed(self.marks):
+      if (t < from_time):
+        return(t)
+    # if we're back past the first mark, treat the beginning 
+    #  like a virtual mark
+    return(0)
+  def get_next_mark(self, from_time):
+    for t in self.marks:
+      if (t > from_time):
+        return(t)
+    return(None)
+  # move to the next or previous mark
+  def previous_mark(self, *args):
+    t = self.get_previous_mark(self.time)
+    if (t is not None):
+      self.time = t
+  def next_mark(self, *args):
+    t = self.get_next_mark(self.time)
+    if (t is not None):
+      self.time = t
+  # transport serialization
+  def serialize(self):
+    return({
+      'time': self.time,
+      'cycling': self.cycling,
+      'marks': self.marks
+    })
+serializable.add(Transport)
+
+# make a time-to-pixel mapping with observable changes
+class TimeScale(observable.Object):
+  def __init__(self, pixels_per_second=24, time_offset=0.0):
+    observable.Object.__init__(self)
+    self._pixels_per_second = pixels_per_second
+    self._time_offset = time_offset
+  @property
+  def pixels_per_second(self):
+    return(self._pixels_per_second)
+  @pixels_per_second.setter
+  def pixels_per_second(self, value):
+    if (value != self._pixels_per_second):
+      self._pixels_per_second = float(value)
+      self.on_change()
+  @property
+  def time_offset(self):
+    return(self._time_offset)
+  @time_offset.setter
+  def time_offset(self, value):
+    if (value != self._time_offset):
+      self._time_offset = value
+      self.on_change()
+  # get the x offset of the current time
+  @property
+  def x_offset(self):
+    return(self.x_of_time(self.time_offset))
+  # convenience functions
+  def time_of_x(self, x):
+    return(float(x) / self._pixels_per_second)
+  def x_of_time(self, time):
+    return(float(time) * self._pixels_per_second)
+  def serialize(self):
+    return({
+      'pixels_per_second': self.pixels_per_second,
+      'time_offset': self.time_offset
+    })
+serializable.add(TimeScale)
+
 # represent a document, which can contain multiple tracks
 class Document(Model):
-  def __init__(self, tracks=None, 
+  def __init__(self, tracks=None, transport=None, time_scale=None,
                input_patch_bay=None, output_patch_bay=None):
     Model.__init__(self)
+    # tracks
     if (tracks is None):
       tracks = TrackList()
-    # tracks
     self.tracks = tracks
     self.tracks.add_observer(self.on_change)
     # inputs
@@ -620,6 +853,14 @@ class Document(Model):
       output_patch_bay = PatchBay()
     self.output_patch_bay = output_patch_bay
     self.output_patch_bay.add_observer(self.on_output_change)
+    # transport
+    if (transport is None):
+      transport = Transport()
+    self.transport = transport
+    # time scale
+    if (time_scale is None):
+      time_scale = TimeScale()
+    self.time_scale = time_scale
   
   # add a track to the document
   def add_track(self, *args):
@@ -639,6 +880,8 @@ class Document(Model):
   def serialize(self):
     return({ 
       'tracks': self.tracks,
+      'transport': self.transport,
+      'time_scale': self.time_scale,
       'input_patch_bay': self.input_patch_bay,
       'output_patch_bay': self.output_patch_bay
     })

@@ -26,7 +26,6 @@ class DocumentWindow(Gtk.ApplicationWindow):
     self.box.pack_start(self.toolbar, False, False, 0)
     # initialize state
     self.control_surface = None
-    self.transport = None
     self.mixer = None
     self.recorder = None
     self.player = None
@@ -51,7 +50,6 @@ class DocumentWindow(Gtk.ApplicationWindow):
   def detach(self):
     self._unbind_actions()
     # detach from the old document
-    self.transport = None
     self.mixer = None
     self.recorder = None
     self.player = None
@@ -68,21 +66,19 @@ class DocumentWindow(Gtk.ApplicationWindow):
   def attach(self):
     # make a mixer and transport
     self.mixer = controllers.Mixer(self.document.tracks)
-    self.transport = controllers.Transport()
     self.control_surface = inputs.NanoKONTROL2(
-      transport=self.transport, mixer=self.mixer)
+      transport=self._document.transport, mixer=self.mixer)
     # add record/playback controllers
     self.recorder = controllers.Recorder(
-      transport=self.transport,
+      transport=self._document.transport,
       input_patch_bay=self._document.input_patch_bay,
       output_patch_bay=self._document.output_patch_bay)
     self.player = controllers.Player(
-      transport=self.transport,
+      transport=self._document.transport,
       output_patch_bay=self._document.output_patch_bay)
     # make a view for the document
     self.document_view = views.doc.DocumentView(
-      document=self._document,
-      transport=self.transport)
+      document=self._document)
     self.box.pack_end(self.document_view, True, True, 0)
     # bind actions for the new document
     self._bind_actions()
@@ -123,7 +119,7 @@ class DocumentWindow(Gtk.ApplicationWindow):
     self._bind_action(self.undo_action, ViewManager.undo)
     self._bind_action(self.redo_action, ViewManager.redo)
     # transport
-    t = self.transport
+    t = self.document.transport
     self._bind_action(self.back_action, t.skip_back)
     self._bind_action(self.forward_action, t.skip_forward)
     self._bind_action(self.stop_action, t.stop)
@@ -136,7 +132,7 @@ class DocumentWindow(Gtk.ApplicationWindow):
     self._bind_action(self.add_track_action, self.document.add_track)
     self._bind_action(self.add_output_action, self.document_view.add_output)
     # update action state
-    self.document_view.time_scale.add_observer(self.update_actions)
+    self.document.time_scale.add_observer(self.update_actions)
     self.document.tracks.add_observer(self.update_actions)
     ViewManager.add_observer(self.update_actions)
     sampler.LinuxSampler.add_observer(self.update_actions)
@@ -148,7 +144,7 @@ class DocumentWindow(Gtk.ApplicationWindow):
     ViewManager.remove_observer(self.update_actions)
     sampler.LinuxSampler.remove_observer(self.update_actions)
     self.document.tracks.remove_observer(self.update_actions)
-    self.document_view.time_scale.remove_observer(self.update_actions)
+    self.document.time_scale.remove_observer(self.update_actions)
   # bind to an action and remember the binding
   def _bind_action(self, action, callback):
     handler = action.connect('activate', callback)

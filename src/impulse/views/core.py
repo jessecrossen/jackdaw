@@ -620,22 +620,3 @@ class ListView(LayoutView):
   def on_add(self, *args):
     pass
 
-# make a time-to-pixel mapping with observable changes
-class TimeScale(observable.Object):
-  def __init__(self, pixels_per_second=24):
-    observable.Object.__init__(self)
-    self._pixels_per_second = pixels_per_second
-  @property
-  def pixels_per_second(self):
-    return(self._pixels_per_second)
-  @pixels_per_second.setter
-  def pixels_per_second(self, value):
-    if (value != self._pixels_per_second):
-      self._pixels_per_second = float(value)
-      self.on_change()
-  # convenience functions
-  def time_of_x(self, x):
-    return(float(x) / self._pixels_per_second)
-  def x_of_time(self, time):
-    return(float(time) * self._pixels_per_second)
-

@@ -5,7 +5,7 @@ import re
 from gi.repository import GLib, GObject
 
 import core
-from ..common import observable
+from ..common import observable, serializable
 from ..models import doc
 
 # acts as a base class for MIDI input device adapters

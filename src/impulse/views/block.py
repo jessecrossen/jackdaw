@@ -5,7 +5,8 @@ from gi.repository import Gtk, Gdk
 from ..common import observable
 import geom
 import symbols
-from core import DrawableView, ContextMenu, ViewManager, TimeScale
+from core import DrawableView, ContextMenu, ViewManager
+from ..models.doc import TimeScale
 
 # make a view that shows the events in a block
 class BlockView(DrawableView):
