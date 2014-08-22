@@ -4,7 +4,7 @@ import time
 import yaml
 import copy
 
-from gi.repository import GLib
+from gi.repository import GLib, Gio
 
 from ..common import observable, serializable
 
@@ -838,6 +838,8 @@ class Document(Model):
   def __init__(self, tracks=None, transport=None, time_scale=None,
                input_patch_bay=None, output_patch_bay=None):
     Model.__init__(self)
+    # the file to save to
+    self.file = None
     # tracks
     if (tracks is None):
       tracks = TrackList()
@@ -865,7 +867,7 @@ class Document(Model):
   # add a track to the document
   def add_track(self, *args):
     self.tracks.append(Track())
-  
+    
   # connect input adapters when they're routed to something in the patch bay
   def on_input_change(self):
     for adapter in self.input_patch_bay.from_items:
@@ -876,6 +878,18 @@ class Document(Model):
     for adapter in self.output_patch_bay.to_items:
       if (not adapter.is_connected):
         adapter.connect()
+  # save the document to a file
+  def save(self):
+    try:
+      output_stream = self.file.create(Gio.FileCreateFlags.NONE, None)
+    except GLib.GError as e:
+      if (e.code == Gio.IOErrorEnum.EXISTS):
+        output_stream = self.file.replace(
+          None, False, Gio.FileCreateFlags.NONE, None)
+      else:
+        raise
+    output_stream.write(yaml.dump(self), None)
+    output_stream.close(None)
   # document serialization
   def serialize(self):
     return({ 

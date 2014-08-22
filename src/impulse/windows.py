@@ -1,4 +1,7 @@
-import os, sys
+import os
+import sys
+import re
+import yaml
 
 from gi.repository import Gtk, Gdk, Gio
 
@@ -87,6 +90,11 @@ class DocumentWindow(Gtk.ApplicationWindow):
   
   # make actions on the document
   def _make_actions(self):
+    # file actions
+    self.new_action = self.make_action('new', '<Control>n')
+    self.open_action = self.make_action('open', '<Control>o')
+    self.save_action = self.make_action('save', '<Control>s')
+    self.save_as_action = self.make_action('saveAs', '<Control><Shift>s')
     # undo/redo actions
     self.undo_action = self.make_action('undo', '<Control>z')
     self.redo_action = self.make_action('redo', '<Control><Shift>z')
@@ -98,7 +106,7 @@ class DocumentWindow(Gtk.ApplicationWindow):
     self.record_action = self.make_action('transportRecord')
     # track/output actions
     self.add_track_action = self.make_action('addTrack', '<Control>t')
-    self.add_output_action = self.make_action('addOutput', '<Control>o')
+    self.add_output_action = self.make_action('addOutput', '<Control><Shift>o')
     # zoom actions
     self.zoom_in_action = self.make_action('zoomIn', 
       '<Control><Shift>plus')
@@ -115,6 +123,11 @@ class DocumentWindow(Gtk.ApplicationWindow):
     return(action)
   # bind document actions
   def _bind_actions(self):
+    # file actions
+    self._bind_action(self.save_action, self.save)
+    self._bind_action(self.save_as_action, self.save_as)
+    self._bind_action(self.open_action, self.open)
+    self._bind_action(self.new_action, self.new)
     # undo/redo
     self._bind_action(self.undo_action, ViewManager.undo)
     self._bind_action(self.redo_action, ViewManager.redo)
@@ -141,6 +154,7 @@ class DocumentWindow(Gtk.ApplicationWindow):
   def _unbind_actions(self):
     for (action, handler) in self._action_bindings:
       action.disconnect(handler)
+    self._action_bindings = [ ]
     ViewManager.remove_observer(self.update_actions)
     sampler.LinuxSampler.remove_observer(self.update_actions)
     self.document.tracks.remove_observer(self.update_actions)
@@ -191,4 +205,57 @@ class DocumentWindow(Gtk.ApplicationWindow):
     # zoom
     t.add(Gtk.ToolButton(Gtk.STOCK_ZOOM_OUT, action_name='win.zoomOut'))
     t.add(Gtk.ToolButton(Gtk.STOCK_ZOOM_IN, action_name='win.zoomIn'))
-    
+  # prompt for a file
+  def get_file(self, to_save=False):
+    dialog = Gtk.FileChooserDialog(
+      title=(
+        "Save Project As" if to_save else "Open Project"), 
+      action=(
+        Gtk.FileChooserAction.SAVE if to_save else Gtk.FileChooserAction.OPEN),
+      buttons=(
+        Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL,
+        (Gtk.STOCK_SAVE if to_save else Gtk.STOCK_OPEN), Gtk.ResponseType.OK
+      ))
+    f = Gtk.FileFilter()
+    f.set_name("Project Files")
+    f.add_pattern('*.yml')
+    dialog.add_filter(f)
+    f = Gtk.FileFilter()
+    f.set_name("All Files")
+    f.add_pattern('*.*')
+    dialog.add_filter(f)
+    result = dialog.run()
+    f = None
+    if (result == Gtk.ResponseType.OK):
+      f = dialog.get_file()
+      if (to_save):
+        path = f.get_path()
+        m = re.search('[.][^.]+$', path)
+        if (not m):
+          path += '.yml'
+          f = Gio.File.new_for_path(path)
+    dialog.destroy()
+    return(f)
+  # handle file operations
+  def save(self, *args):
+    if (self.document.file is None):
+      self.save_as()
+    else:
+      self.document.save()
+  def save_as(self, *args):
+    f = self.get_file(to_save=True)
+    if (not f): return
+    self.document.file = f
+    self.document.save()
+  def new(self, *args):
+    self.document = doc.Document()
+  def open(self, *args):
+    f = self.get_file(to_save=False)
+    if (not f): return
+    input_stream = open(f.get_path(), 'r')
+    s = input_stream.read()
+    input_stream.close()
+    document = yaml.load(s)
+    if (isinstance(document, doc.Document)):
+      document.file = f
+      self.document = document
