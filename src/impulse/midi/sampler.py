@@ -152,15 +152,15 @@ class Instrument(observable.Object):
 # manage a LinuxSampler process acting as a backend for sample playback
 class LinuxSamplerSingleton(observable.Object):
   def __init__(self, verbose=False,
-      preferred_outputs=('ALSA', 'JACK', 'OSS'),
-      preferred_inputs=('ALSA', 'JACK', 'OSS')):
+      allowed_outputs=('ALSA', 'JACK', 'OSS'),
+      allowed_inputs=('ALSA',)):
     observable.Object.__init__(self)
     self.verbose = verbose
     self.address = '0.0.0.0'
     self.port = '8888'
     self.device_id = None
-    self.preferred_inputs = preferred_inputs
-    self.preferred_outputs = preferred_outputs
+    self.allowed_inputs = allowed_inputs
+    self.allowed_outputs = allowed_outputs
     self._reset()
   # log activity
   def _log(self, message):
@@ -384,12 +384,12 @@ class LinuxSamplerSingleton(observable.Object):
       if (not (len(drivers) > 0)):
         self._warn('No audio output drivers available.')
         return
-      selected = drivers[0]
-      for driver in self.preferred_outputs:
+      for driver in self.allowed_outputs:
         if (driver in drivers):
-          selected = driver
-          break
-      self.call('CREATE AUDIO_OUTPUT_DEVICE %s' % selected, on_connected)
+          self.call('CREATE AUDIO_OUTPUT_DEVICE %s' % driver, on_connected)
+          return
+      self._warn('None of the preferred output drivers (%s) are available.' %
+                  ', '.join(self.allowed_outputs))
     self.call('LIST AVAILABLE_AUDIO_OUTPUT_DRIVERS', on_drivers)
   # set up midi input
   def _connect_input(self):
@@ -421,13 +421,13 @@ class LinuxSamplerSingleton(observable.Object):
       if (not (len(drivers) > 0)):
         self._warn('No MIDI input drivers available.')
         return
-      selected = drivers[0]
-      for driver in self.preferred_inputs:
+      for driver in self.allowed_inputs:
         if (driver in drivers):
-          selected = driver
-          break
-      self.call('GET MIDI_INPUT_DRIVER INFO %s' % selected, 
-        on_driver_info(selected))    
+          self.call('GET MIDI_INPUT_DRIVER INFO %s' % driver, 
+                    on_driver_info(driver))
+          return
+      self._warn('None of the preferred input drivers (%s) are available.' %
+                  ', '.join(self.allowed_inputs))
     self.call('LIST AVAILABLE_MIDI_INPUT_DRIVERS', on_drivers)
   # expand the number of available ports and call the given callback
   def add_port(self, callback=None):
@@ -447,5 +447,5 @@ class LinuxSamplerSingleton(observable.Object):
     return(instrument)
 
 # make a singleton instance of the sampler backend
-LinuxSampler = LinuxSamplerSingleton()
+LinuxSampler = LinuxSamplerSingleton(verbose=False)
 
