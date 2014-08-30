@@ -1,5 +1,4 @@
 import time
-import pypm
 import re
 
 from gi.repository import GLib, GObject

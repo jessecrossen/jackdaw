@@ -4,7 +4,7 @@ import time
 import yaml
 import copy
 
-from gi.repository import GLib, Gio
+from PySide.QtCore import QAbstractEventDispatcher
 
 from ..common import observable, serializable
 
@@ -617,7 +617,7 @@ class Transport(observable.Object):
     self._last_display_update = 0
     self._start_time = None
     # keep a timer that updates when the time is running
-    self._run_timer = None
+    self._run_dispatcher = None
     # the minimum time resolution to send display updates
     self.display_interval = 0.05 # seconds
     # store all time marks
@@ -704,15 +704,16 @@ class Transport(observable.Object):
     # establish the cycle region
     self.update_cycle_bounds()
     # start the update timer
-    if (self._run_timer is None):
-      self._run_timer = GLib.idle_add(self.on_running)
+    if (self._run_dispatcher is None):
+      self._run_dispatcher = QAbstractEventDispatcher.instance()
+      self._run_dispatcher.awake.connect(self.on_running)
   # stop the time moving forward
   def _stop(self):
     self._time = self.time
     self._start_time = None
-    if (self._run_timer is not None):
-      GLib.source_remove(self._run_timer)
-      self._run_timer = None
+    if (self._run_dispatcher is not None):
+      self._run_dispatcher.awake.disconnect(self.on_running)
+      self._run_dispatcher = None
   def on_running(self):
     current_time = self.time
     # do cycling
@@ -838,8 +839,8 @@ class Document(Model):
   def __init__(self, tracks=None, transport=None, time_scale=None,
                input_patch_bay=None, output_patch_bay=None):
     Model.__init__(self)
-    # the file to save to
-    self.file = None
+    # the file path to save to
+    self.path = None
     # tracks
     if (tracks is None):
       tracks = TrackList()
@@ -880,16 +881,9 @@ class Document(Model):
         adapter.connect()
   # save the document to a file
   def save(self):
-    try:
-      output_stream = self.file.create(Gio.FileCreateFlags.NONE, None)
-    except GLib.GError as e:
-      if (e.code == Gio.IOErrorEnum.EXISTS):
-        output_stream = self.file.replace(
-          None, False, Gio.FileCreateFlags.NONE, None)
-      else:
-        raise
-    output_stream.write(yaml.dump(self), None)
-    output_stream.close(None)
+    output_stream = open(self.path, 'w')
+    output_stream.write(yaml.dump(self))
+    output_stream.close()
   # document serialization
   def serialize(self):
     return({ 

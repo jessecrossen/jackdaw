@@ -1,10 +1,10 @@
 import math
 import weakref
 
-from gi.repository import Gtk, Gdk, GLib
+from PySide.QtCore import *
+from PySide.QtGui import *
 
 from ..common import observable
-import geom
 import state
 
 # make a singleton for handling things like selection state
@@ -172,451 +172,498 @@ class ViewManagerSingleton(observable.Object):
 # make a singleton instance
 ViewManager = ViewManagerSingleton()
 
-# make a mixin for transparent backgrounds
-class Transparent(object):
-  def make_transparent(self):
-    style = self.get_style_context()
-    normal_background = style.get_background_color(Gtk.StateFlags.NORMAL)
-    selected_background = style.get_background_color(Gtk.StateFlags.SELECTED)
-    transparent = Gdk.RGBA()
-    transparent.red = normal_background.red
-    transparent.green = normal_background.green
-    transparent.blue = normal_background.blue
-    transparent.alpha = 0.0
-    selected_background.alpha = 0.99
-    self.override_background_color(
-      Gtk.StateFlags.NORMAL, transparent)
-    self.override_background_color(
-      Gtk.StateFlags.SELECTED, selected_background)
-      
-# make a mixin to traverse children and ancestors
-class Traversable(object):
-  # traverse parent widgets and return the nearest with the given attribute
-  def get_parent_with_attribute(self, attr):
-    node = self.get_parent()
-    while (node):
-      if (hasattr(node, attr)):
-        return(node)
-      node = node.get_parent()
-    return(None)
-
-# make a mixin for handling mouse events
-class Interactive(object):
-  # whether a click has been handled for the last down event
-  _click_handled = False
-  # bind mouse events (this should be called in the constructor)
-  def make_interactive(self):
-    # initialize state
-    self._down = None
-    self.dragging = None
-    # keep a dictionary of cursor areas
-    self.cursor_areas = dict()
-    # allow the control to receive focus
-    self.set_can_focus(True)
-    # hook to events
-    self.add_events(Gdk.EventMask.BUTTON_PRESS_MASK |
-                    Gdk.EventMask.POINTER_MOTION_MASK |
-                    Gdk.EventMask.LEAVE_NOTIFY_MASK |
-                    Gdk.EventMask.BUTTON_RELEASE_MASK |
-                    Gdk.EventMask.KEY_PRESS_MASK)
-    self.connect('button-press-event', self.on_button_press)
-    self.connect('motion-notify-event', self.on_pointer_motion)
-    self.connect('leave-notify-event', self.on_leave)
-    self.connect('button-release-event', self.on_button_release)
-    self.connect('key-press-event', self.on_key_press)
-  
-  # handle keyboard events
-  def on_key_press(self, widget, event):
-    result = self.on_key(event.keyval, event.state)
-    return(result)
-  # override this and return True to handle keyboard input
-  def on_key(self, keyval, state):
-    return(False)
-  
-  # get the real coordinates of an event in this widget
-  def get_pointer_coords(self):
-    (win, x, y, state) = self.get_window().get_pointer()
-    return(x, y)
-  
-  # handle mouse events
-  def on_button_press(self, target, event):
-    (x, y) = self.get_pointer_coords()
-    # expose the context menu
-    if (event.button == 3):
-      return(self.on_context(event))
-    # otherwise only register the primary button
-    if (event.button != 1): return(False)
-    self._down = {
-      'x': x,
-      'y': y,
-      'x_root': event.x_root,
-      'y_root': event.y_root,
-      'state': event.state
-    }
-    self.dragging = None
-    Interactive._click_handled = False
-  def on_pointer_motion(self, target, event):
-    (x, y) = self.get_pointer_coords()
-    if (target is not self):
-      (found, x, y) = target.translate_coordinates(self, x, y)
-    if (self._down is None):
-      self.update_cursor(event.x, event.y, event.state)
-      return
-    if (self.dragging is None):
-      dx = abs(x - self._down['x'])
-      dy = abs(y - self._down['y'])
-      if (max(dx, dy) > 6):
-        self.dragging = self.start_drag(
-          self._down['x'], self._down['y'],
-          self._down['state'])
-        if (self.dragging):
-          self.grab_add()
-          # cancel dragging for all parent widgets
-          node = self.get_parent()
-          while(node):
-            if (hasattr(node, 'dragging')):
-              node.dragging = False
-            node = node.get_parent()
-    if (self.dragging):
-      self.on_drag(event.x_root - self._down['x_root'], 
-                   event.y_root - self._down['y_root'], 
-                   event.state)
-      return(True)
-  def on_leave(self, target, event):
-    self.update_cursor(-1000, -1000, 0)
-  def on_button_release(self, target, event):
-    if (self.dragging):
-      self.grab_remove()
-      self.dragging = None
-      self._down = None
-      self.on_drop()
-    elif (self._down):
-      result = None
-      if ((not Interactive._click_handled) and 
-          (event.x >= 0) and (event.x <= self._width) and 
-          (event.y >= 0) and (event.y <= self._height) and 
-          (abs(self._down['x_root'] - event.x_root) <= 6) and
-          (abs(self._down['y_root'] - event.y_root) <= 6)):
-        Interactive._click_handled = self.on_click(
-          event.x, event.y, self._down['state'])
-      self._down = None
-
-  # override this to customize cursor behavior
-  def update_cursor(self, x, y, state):
-    for (area, cursor) in self.cursor_areas.iteritems():
-      if ((x >= area.x) and (x <= area.x + area.width) and
-          (y >= area.y) and (y <= area.y + area.height)):
-        self.get_window().set_cursor(cursor)
-        return
-    self.get_window().set_cursor(None)
-  # override this and return True to pop up a context menu
-  def on_context(self, event):
-    return(False)
-  # override this and return True to handle clicks
-  def on_click(self, x, y, state):
-    return(False)
-  # override this and return True to start handling a drag
-  def start_drag(self, x, y, state):
-    return(False)
-  # override this to update a drag
-  def on_drag(self, dx, dy, state):
-    pass
-  # override this to handle a drop
-  def on_drop(self):
-    pass
-
-# aggregate the mixins for brevity
-class View(Traversable, Transparent, Interactive):
-  pass
-
-# make a base class for views that do their own drawing
-class DrawableView(View, Gtk.DrawingArea):
-  def __init__(self, model=None):
-    # store the model
-    ViewManager.register_view(model, self)
+# make a base class for views
+class View(QWidget):
+  def __init__(self, model, parent=None):
+    QWidget.__init__(self, parent)
     self._model = model
-    if (model):
-      try:
-        self._model.add_observer(self.on_change)
-      except AttributeError: pass
-    # do base class configuration
-    Gtk.DrawingArea.__init__(self)
-    # handle redrawing
-    self.connect('draw', self.on_draw)
-    self.connect('state-changed', self.on_change)
-    # keep track of the size at last redraw
-    self._width = 0
-    self._height = 0
-  # expose the model the view is displaying as a read-only property
-  @property
-  def model(self):
-    return(self._model)
-  # call this to invalidate the view and schedule a redraw
-  def on_change(self, *args):
-    self.queue_draw()
-  # handle redrawing requests
-  def on_draw(self, widget, cr):
-    self._width = self.get_allocated_width()
-    self._height = self.get_allocated_height()    
-    self.redraw(cr, self._width, self._height)
-  # draw the view's contents into the given graphics context
-  def redraw(self, cr, width, height):
-    pass
-
-# make a base class for views that just does layout for other views
-class LayoutView(View, Gtk.Layout):
-  def __init__(self, model):
-    # store the model
-    ViewManager.register_view(model, self)
-    self._model = model
-    try:
-      self._model.add_observer(self.on_change)
-    except AttributeError: pass
-    # do base class configuration
-    Gtk.Layout.__init__(self)
-    # respond to resizing and state changes
-    self.connect('configure-event', self.on_change)
-    self.connect('state-changed', self.on_change)
-    self._layout_scheduled = False
-    # do redrawing of the background
-    self.set_app_paintable(True)
-    self.connect('draw', self.on_draw)
-    # keep track of the size at last layout
-    self._width = 0
-    self._height = 0
-    # initialize storage for view pools
-    self._view_pools = dict()
-  # expose the model the view is displaying as a read-only property
-  @property
-  def model(self):
-    return(self._model)
-  # call this to schedule an update of the view's layout, 
-  #  which is done after a delay to aggregate multiple quick changes
-  def on_change(self, *args):
-    self.queue_draw()
-    if (not self._layout_scheduled):
-      self._layout_scheduled = True
-      GLib.idle_add(self._do_layout)
-  def do_size_allocate(self, allocation):
-    self.set_allocation(allocation)
-    self.set_size(allocation.width, allocation.height)
-    self._do_layout()
-    if self.get_realized():
-      self.get_window().move_resize(allocation.x, allocation.y,
-                                    allocation.width, allocation.height)
-      self.get_bin_window().resize(allocation.width, allocation.height)
-  # update the cached size and run the layout code
-  def _do_layout(self):
-    size = self.get_size()
-    self._width = size[0]
-    self._height = size[1]
-    self.layout(self._width, self._height)
-    self.show_all()
-    self._layout_scheduled = False
-    # returning False makes this a one-shot event
-    return(False)
-  # override this to provide custom layout
-  def layout(self, width, height):
-    pass
-  # handle redrawing requests
-  def on_draw(self, widget, cr):
-    self.redraw(cr, self._width, self._height)
-  # override this to draw a custom background
-  def redraw(self, cr, width, height):
-    pass
-  # traverse parent widgets and return the nearest with the given attribute
-  def get_parent_with_attribute(self, attr):
-    node = self.get_parent()
-    while (node):
-      if (hasattr(node, attr)):
-        return(node)
-      node = node.get_parent()
-    return(None)
-  # get list of views for each of the models in a list, removing any views
-  #  of models that were in the list at last call and creating new views
-  #  by passing the model to a function defined by the new_view_for_model param
-  # NOTE: the list needs to be hashable like ModelList for this to work
-  def allocate_views_for_models(self, models, new_view_for_model):
-    # see if there's an entry in the pool for this list
-    try:
-      old_pool = self._view_pools[models]
-    except KeyError:
-      old_pool = dict()
-    # add a view for each model
-    views = [ ]
-    new_pool = dict()
-    for model in models:
-      try:
-        view = old_pool[model]
-        del old_pool[model]
-      except KeyError:
-        view = new_view_for_model(model)
-        self.add(view)
-      new_pool[model] = view
-      views.append(view)
-    # remove all unused views
-    for view in old_pool.itervalues():
-      self.remove(view)
-    # remember the new pool for next time
-    self._view_pools[models] = new_pool
-    return(views)
-  # get the view associated with a single model from the given list
-  def get_view_for_model(self, models, model):
-    try:
-      pool = self._view_pools[models]
-      return(pool[model])
-    except KeyError:
-      return(None)
-
-# make a base class for model-backed context menus
-class ContextMenu(Gtk.Menu):
-  def __init__(self, model):
-    Gtk.Menu.__init__(self)
-    self._model = model
-    try:
-      self._model.add_observer(self.on_change)
-    except AttributeError: pass
-  # expose the model the menu is presenting options for as a read-only property
-  @property
-  def model(self):
-    return(self._model)
-  # add a menu item and return it
-  def make_item(self, label, callback):
-    item = Gtk.MenuItem(label)
-    item.connect('activate', callback)
-    self.add(item)
-    return(item)
-    
-  # override to update which menu actions are available based on model state
+    self._model.add_observer(self.on_change)
+  # redraw the widget if there's a drawing method defined
+  def paintEvent(self, e):
+    if (hasattr(self, 'redraw')):
+      qp = QPainter()
+      qp.begin(self)
+      self.redraw(qp)
+      qp.end()
+  # update the view when the model changes
   def on_change(self):
-    pass
-    
-    
-# manage the layout of a list of items in one dimension
-class ListLayout(object):
-  def __init__(self, items):
-    self._items = items
-    # the default spacing in pixels between items
-    self.spacing = 0
-  # get the total number of pixels to allocate for am item
-  def size_of_item(self, item):
-    return(100)
-  # convert between items and positions
-  def position_of_item(self, item):
-    p = 0
-    for test_item in self._items:
-      if (test_item is item):
-        return(p)
-      if (p > 0):
-        p += self.spacing
-      p += self.size_of_item(test_item)
-    return(None)
-  def center_of_item(self, item):
-    return(self.position_of_item(item) +
-            (self.size_of_item(item) / 2.0))
-  def item_at_position(self, p):
-    next_p = 0
-    for item in self._items:
-      if (p > 0):
-        next_p += self.spacing
-      next_p += self.size_of_item(item)
-      if (p < next_p):
-        return(item)
-    return(None)
-    
-# show views from a list using a ListLayout
-class ListView(LayoutView):
-  def __init__(self, models, view_class, list_layout):
-    LayoutView.__init__(self, models)
-    self.make_interactive()
-    self.list_layout = list_layout
-    self.view_class = view_class
-    self.drag_to_reorder = True
-    self._dragging_item = None
-    self._last_dy = 0
-    self._show_add_button = False
-    self._add_button = None
-  # return positioning for the given item
-  def x_of_item(self, item):
-    return(0)
-  def width_of_item(self, item):
-    return(self._width)
-  def y_of_item(self, item):
-    return(self.list_layout.position_of_item(item))
-  def height_of_item(self, item):
-    return(self.list_layout.size_of_item(item))
-  # make a view for the given model
-  def view_for_model(self, model):
-    return(self.view_class(model))
-  def layout(self, width, height):
-    views = self.allocate_views_for_models(
-      self._model, self.view_for_model)
-    max_width = -1
-    total_height = 0
-    model = None
-    for view in views:
-      model = view.model
-      r = geom.Rectangle(
-        self.x_of_item(model), self.y_of_item(model),
-        self.width_of_item(model), self.height_of_item(model))
-      view.size_allocate(r)
-      (minimum_size, preferred_size) = view.get_preferred_size()
-      max_width = max(max_width, preferred_size.width)
-      total_height = max(total_height, r.y + r.height)
-    # place the add button
-    if (self.show_add_button):
-      if (not self._add_button):
-        if (type(self.show_add_button) is str):
-          self._add_button = Gtk.ToolButton(Gtk.STOCK_ADD,
-            action_name=self.show_add_button)
-        else:
-          self._add_button = Gtk.ToolButton(Gtk.STOCK_ADD)
-        self._add_button.connect('clicked', self.on_add)
-        self.add(self._add_button)
-        self._add_button.show()
-      self._add_button.set_visible(True)
-      (s, m) = (32, 16)
-      r = geom.Rectangle(
-        min(max(0, width - s - m), width - s), total_height + m, s, s)
-      self._add_button.size_allocate(r)
-    elif (self._add_button):
-      self._add_button.set_visible(False)
-    # request the width of the widest item, if any
-    if (max_width > 0): 
-      self.set_size_request(max_width, -1)
-  def start_drag(self, x, y, state):
-    item = self.list_layout.item_at_position(y)
-    if (item is None): return(False)
-    self._dragging_item = item
-    return(True)
-  def on_drag(self, dx, dy, state):
-    ddy = dy - self._last_dy
-    jump = self.list_layout.size_of_item(self._dragging_item) / 2
-    if (abs(ddy) < jump): return
-    old_index = self._model.index(self._dragging_item)
-    if (ddy < 0):
-      new_index = max(0, old_index - 1)
-    else:
-      new_index = min(old_index + 1, len(self._model) - 1)
-    if (new_index != old_index):
-      new_list = list(self._model)
-      del new_list[old_index]
-      new_list.insert(new_index, self._dragging_item)
-      self._model[0:] = new_list
-      self._last_dy = dy
-  def on_drop(self):
-    self._dragging_item = None
-    self._last_dy = 0
-  # set to show/hide an add button
-  @property
-  def show_add_button(self):
-    return(self._show_add_button)
-  @show_add_button.setter
-  def show_add_button(self, value):
-    if (value != self._show_add_button):
-      self._show_add_button = value
-      self.on_change()
-  # override to handle the add button being clicked
-  def on_add(self, *args):
-    pass
+    if (hasattr(self, 'redraw')):
+      self.repaint()
+  
+#  # get list of views for each of the models in a list, removing any views
+#  #  of models that were in the list at last call and creating new views
+#  #  by passing the model to a function defined by the new_view_for_model param
+#  # NOTE: the list needs to be hashable like ModelList for this to work
+#  def allocate_views_for_models(self, models, new_view_for_model):
+#    # see if there's an entry in the pool for this list
+#    try:
+#      old_pool = self._view_pools[models]
+#    except KeyError:
+#      old_pool = dict()
+#    # add a view for each model
+#    views = [ ]
+#    new_pool = dict()
+#    for model in models:
+#      try:
+#        view = old_pool[model]
+#        del old_pool[model]
+#      except KeyError:
+#        view = new_view_for_model(model)
+#        self.add(view)
+#      new_pool[model] = view
+#      views.append(view)
+#    # remove all unused views
+#    for view in old_pool.itervalues():
+#      self.remove(view)
+#    # remember the new pool for next time
+#    self._view_pools[models] = new_pool
+#    return(views)
+
+## make a mixin for transparent backgrounds
+#class Transparent(object):
+#  def make_transparent(self):
+#    style = self.get_style_context()
+#    normal_background = style.get_background_color(Gtk.StateFlags.NORMAL)
+#    selected_background = style.get_background_color(Gtk.StateFlags.SELECTED)
+#    transparent = Gdk.RGBA()
+#    transparent.red = normal_background.red
+#    transparent.green = normal_background.green
+#    transparent.blue = normal_background.blue
+#    transparent.alpha = 0.0
+#    selected_background.alpha = 0.99
+#    self.override_background_color(
+#      Gtk.StateFlags.NORMAL, transparent)
+#    self.override_background_color(
+#      Gtk.StateFlags.SELECTED, selected_background)
+#      
+## make a mixin to traverse children and ancestors
+#class Traversable(object):
+#  # traverse parent widgets and return the nearest with the given attribute
+#  def get_parent_with_attribute(self, attr):
+#    node = self.get_parent()
+#    while (node):
+#      if (hasattr(node, attr)):
+#        return(node)
+#      node = node.get_parent()
+#    return(None)
+
+## make a mixin for handling mouse events
+#class Interactive(object):
+#  # whether a click has been handled for the last down event
+#  _click_handled = False
+#  # bind mouse events (this should be called in the constructor)
+#  def make_interactive(self):
+#    # initialize state
+#    self._down = None
+#    self.dragging = None
+#    # keep a dictionary of cursor areas
+#    self.cursor_areas = dict()
+#    # allow the control to receive focus
+#    self.set_can_focus(True)
+#    # hook to events
+#    self.add_events(Gdk.EventMask.BUTTON_PRESS_MASK |
+#                    Gdk.EventMask.POINTER_MOTION_MASK |
+#                    Gdk.EventMask.LEAVE_NOTIFY_MASK |
+#                    Gdk.EventMask.BUTTON_RELEASE_MASK |
+#                    Gdk.EventMask.KEY_PRESS_MASK)
+#    self.connect('button-press-event', self.on_button_press)
+#    self.connect('motion-notify-event', self.on_pointer_motion)
+#    self.connect('leave-notify-event', self.on_leave)
+#    self.connect('button-release-event', self.on_button_release)
+#    self.connect('key-press-event', self.on_key_press)
+#  
+#  # handle keyboard events
+#  def on_key_press(self, widget, event):
+#    result = self.on_key(event.keyval, event.state)
+#    return(result)
+#  # override this and return True to handle keyboard input
+#  def on_key(self, keyval, state):
+#    return(False)
+#  
+#  # get the real coordinates of an event in this widget
+#  def get_pointer_coords(self):
+#    (win, x, y, state) = self.get_window().get_pointer()
+#    return(x, y)
+#  
+#  # handle mouse events
+#  def on_button_press(self, target, event):
+#    (x, y) = self.get_pointer_coords()
+#    # expose the context menu
+#    if (event.button == 3):
+#      return(self.on_context(event))
+#    # otherwise only register the primary button
+#    if (event.button != 1): return(False)
+#    self._down = {
+#      'x': x,
+#      'y': y,
+#      'x_root': event.x_root,
+#      'y_root': event.y_root,
+#      'state': event.state
+#    }
+#    self.dragging = None
+#    Interactive._click_handled = False
+#  def on_pointer_motion(self, target, event):
+#    (x, y) = self.get_pointer_coords()
+#    if (target is not self):
+#      (found, x, y) = target.translate_coordinates(self, x, y)
+#    if (self._down is None):
+#      self.update_cursor(event.x, event.y, event.state)
+#      return
+#    if (self.dragging is None):
+#      dx = abs(x - self._down['x'])
+#      dy = abs(y - self._down['y'])
+#      if (max(dx, dy) > 6):
+#        self.dragging = self.start_drag(
+#          self._down['x'], self._down['y'],
+#          self._down['state'])
+#        if (self.dragging):
+#          self.grab_add()
+#          # cancel dragging for all parent widgets
+#          node = self.get_parent()
+#          while(node):
+#            if (hasattr(node, 'dragging')):
+#              node.dragging = False
+#            node = node.get_parent()
+#    if (self.dragging):
+#      self.on_drag(event.x_root - self._down['x_root'], 
+#                   event.y_root - self._down['y_root'], 
+#                   event.state)
+#      return(True)
+#  def on_leave(self, target, event):
+#    self.update_cursor(-1000, -1000, 0)
+#  def on_button_release(self, target, event):
+#    if (self.dragging):
+#      self.grab_remove()
+#      self.dragging = None
+#      self._down = None
+#      self.on_drop()
+#    elif (self._down):
+#      result = None
+#      if ((not Interactive._click_handled) and 
+#          (event.x >= 0) and (event.x <= self._width) and 
+#          (event.y >= 0) and (event.y <= self._height) and 
+#          (abs(self._down['x_root'] - event.x_root) <= 6) and
+#          (abs(self._down['y_root'] - event.y_root) <= 6)):
+#        Interactive._click_handled = self.on_click(
+#          event.x, event.y, self._down['state'])
+#      self._down = None
+
+#  # override this to customize cursor behavior
+#  def update_cursor(self, x, y, state):
+#    for (area, cursor) in self.cursor_areas.iteritems():
+#      if ((x >= area.x) and (x <= area.x + area.width) and
+#          (y >= area.y) and (y <= area.y + area.height)):
+#        self.get_window().set_cursor(cursor)
+#        return
+#    self.get_window().set_cursor(None)
+#  # override this and return True to pop up a context menu
+#  def on_context(self, event):
+#    return(False)
+#  # override this and return True to handle clicks
+#  def on_click(self, x, y, state):
+#    return(False)
+#  # override this and return True to start handling a drag
+#  def start_drag(self, x, y, state):
+#    return(False)
+#  # override this to update a drag
+#  def on_drag(self, dx, dy, state):
+#    pass
+#  # override this to handle a drop
+#  def on_drop(self):
+#    pass
+
+## aggregate the mixins for brevity
+#class View(Traversable, Transparent, Interactive):
+#  pass
+
+## make a base class for views that do their own drawing
+#class DrawableView(View, Gtk.DrawingArea):
+#  def __init__(self, model=None):
+#    # store the model
+#    ViewManager.register_view(model, self)
+#    self._model = model
+#    if (model):
+#      try:
+#        self._model.add_observer(self.on_change)
+#      except AttributeError: pass
+#    # do base class configuration
+#    Gtk.DrawingArea.__init__(self)
+#    # handle redrawing
+#    self.connect('draw', self.on_draw)
+#    self.connect('state-changed', self.on_change)
+#    # keep track of the size at last redraw
+#    self._width = 0
+#    self._height = 0
+#  # expose the model the view is displaying as a read-only property
+#  @property
+#  def model(self):
+#    return(self._model)
+#  # call this to invalidate the view and schedule a redraw
+#  def on_change(self, *args):
+#    self.queue_draw()
+#  # handle redrawing requests
+#  def on_draw(self, widget, cr):
+#    self._width = self.get_allocated_width()
+#    self._height = self.get_allocated_height()    
+#    self.redraw(cr, self._width, self._height)
+#  # draw the view's contents into the given graphics context
+#  def redraw(self, cr, width, height):
+#    pass
+
+## make a base class for views that just does layout for other views
+#class LayoutView(View, Gtk.Layout):
+#  def __init__(self, model):
+#    # store the model
+#    ViewManager.register_view(model, self)
+#    self._model = model
+#    try:
+#      self._model.add_observer(self.on_change)
+#    except AttributeError: pass
+#    # do base class configuration
+#    Gtk.Layout.__init__(self)
+#    # respond to resizing and state changes
+#    self.connect('configure-event', self.on_change)
+#    self.connect('state-changed', self.on_change)
+#    self._layout_scheduled = False
+#    # do redrawing of the background
+#    self.set_app_paintable(True)
+#    self.connect('draw', self.on_draw)
+#    # keep track of the size at last layout
+#    self._width = 0
+#    self._height = 0
+#    # initialize storage for view pools
+#    self._view_pools = dict()
+#  # expose the model the view is displaying as a read-only property
+#  @property
+#  def model(self):
+#    return(self._model)
+#  # call this to schedule an update of the view's layout, 
+#  #  which is done after a delay to aggregate multiple quick changes
+#  def on_change(self, *args):
+#    self.queue_draw()
+#    if (not self._layout_scheduled):
+#      self._layout_scheduled = True
+#      GLib.idle_add(self._do_layout)
+#  def do_size_allocate(self, allocation):
+#    self.set_allocation(allocation)
+#    self.set_size(allocation.width, allocation.height)
+#    self._do_layout()
+#    if self.get_realized():
+#      self.get_window().move_resize(allocation.x, allocation.y,
+#                                    allocation.width, allocation.height)
+#      self.get_bin_window().resize(allocation.width, allocation.height)
+#  # update the cached size and run the layout code
+#  def _do_layout(self):
+#    size = self.get_size()
+#    self._width = size[0]
+#    self._height = size[1]
+#    self.layout(self._width, self._height)
+#    self.show_all()
+#    self._layout_scheduled = False
+#    # returning False makes this a one-shot event
+#    return(False)
+#  # override this to provide custom layout
+#  def layout(self, width, height):
+#    pass
+#  # handle redrawing requests
+#  def on_draw(self, widget, cr):
+#    self.redraw(cr, self._width, self._height)
+#  # override this to draw a custom background
+#  def redraw(self, cr, width, height):
+#    pass
+#  # traverse parent widgets and return the nearest with the given attribute
+#  def get_parent_with_attribute(self, attr):
+#    node = self.get_parent()
+#    while (node):
+#      if (hasattr(node, attr)):
+#        return(node)
+#      node = node.get_parent()
+#    return(None)
+#  # get list of views for each of the models in a list, removing any views
+#  #  of models that were in the list at last call and creating new views
+#  #  by passing the model to a function defined by the new_view_for_model param
+#  # NOTE: the list needs to be hashable like ModelList for this to work
+#  def allocate_views_for_models(self, models, new_view_for_model):
+#    # see if there's an entry in the pool for this list
+#    try:
+#      old_pool = self._view_pools[models]
+#    except KeyError:
+#      old_pool = dict()
+#    # add a view for each model
+#    views = [ ]
+#    new_pool = dict()
+#    for model in models:
+#      try:
+#        view = old_pool[model]
+#        del old_pool[model]
+#      except KeyError:
+#        view = new_view_for_model(model)
+#        self.add(view)
+#      new_pool[model] = view
+#      views.append(view)
+#    # remove all unused views
+#    for view in old_pool.itervalues():
+#      self.remove(view)
+#    # remember the new pool for next time
+#    self._view_pools[models] = new_pool
+#    return(views)
+#  # get the view associated with a single model from the given list
+#  def get_view_for_model(self, models, model):
+#    try:
+#      pool = self._view_pools[models]
+#      return(pool[model])
+#    except KeyError:
+#      return(None)
+
+## make a base class for model-backed context menus
+#class ContextMenu(Gtk.Menu):
+#  def __init__(self, model):
+#    Gtk.Menu.__init__(self)
+#    self._model = model
+#    try:
+#      self._model.add_observer(self.on_change)
+#    except AttributeError: pass
+#  # expose the model the menu is presenting options for as a read-only property
+#  @property
+#  def model(self):
+#    return(self._model)
+#  # add a menu item and return it
+#  def make_item(self, label, callback):
+#    item = Gtk.MenuItem(label)
+#    item.connect('activate', callback)
+#    self.add(item)
+#    return(item)
+#    
+#  # override to update which menu actions are available based on model state
+#  def on_change(self):
+#    pass
+#    
+#    
+## manage the layout of a list of items in one dimension
+#class ListLayout(object):
+#  def __init__(self, items):
+#    self._items = items
+#    # the default spacing in pixels between items
+#    self.spacing = 0
+#  # get the total number of pixels to allocate for am item
+#  def size_of_item(self, item):
+#    return(100)
+#  # convert between items and positions
+#  def position_of_item(self, item):
+#    p = 0
+#    for test_item in self._items:
+#      if (test_item is item):
+#        return(p)
+#      if (p > 0):
+#        p += self.spacing
+#      p += self.size_of_item(test_item)
+#    return(None)
+#  def center_of_item(self, item):
+#    return(self.position_of_item(item) +
+#            (self.size_of_item(item) / 2.0))
+#  def item_at_position(self, p):
+#    next_p = 0
+#    for item in self._items:
+#      if (p > 0):
+#        next_p += self.spacing
+#      next_p += self.size_of_item(item)
+#      if (p < next_p):
+#        return(item)
+#    return(None)
+#    
+## show views from a list using a ListLayout
+#class ListView(LayoutView):
+#  def __init__(self, models, view_class, list_layout):
+#    LayoutView.__init__(self, models)
+#    self.make_interactive()
+#    self.list_layout = list_layout
+#    self.view_class = view_class
+#    self.drag_to_reorder = True
+#    self._dragging_item = None
+#    self._last_dy = 0
+#    self._show_add_button = False
+#    self._add_button = None
+#  # return positioning for the given item
+#  def x_of_item(self, item):
+#    return(0)
+#  def width_of_item(self, item):
+#    return(self._width)
+#  def y_of_item(self, item):
+#    return(self.list_layout.position_of_item(item))
+#  def height_of_item(self, item):
+#    return(self.list_layout.size_of_item(item))
+#  # make a view for the given model
+#  def view_for_model(self, model):
+#    return(self.view_class(model))
+#  def layout(self, width, height):
+#    views = self.allocate_views_for_models(
+#      self._model, self.view_for_model)
+#    max_width = -1
+#    total_height = 0
+#    model = None
+#    for view in views:
+#      model = view.model
+#      r = geom.Rectangle(
+#        self.x_of_item(model), self.y_of_item(model),
+#        self.width_of_item(model), self.height_of_item(model))
+#      view.size_allocate(r)
+#      (minimum_size, preferred_size) = view.get_preferred_size()
+#      max_width = max(max_width, preferred_size.width)
+#      total_height = max(total_height, r.y + r.height)
+#    # place the add button
+#    if (self.show_add_button):
+#      if (not self._add_button):
+#        if (type(self.show_add_button) is str):
+#          self._add_button = Gtk.ToolButton(Gtk.STOCK_ADD,
+#            action_name=self.show_add_button)
+#        else:
+#          self._add_button = Gtk.ToolButton(Gtk.STOCK_ADD)
+#        self._add_button.connect('clicked', self.on_add)
+#        self.add(self._add_button)
+#        self._add_button.show()
+#      self._add_button.set_visible(True)
+#      (s, m) = (32, 16)
+#      r = geom.Rectangle(
+#        min(max(0, width - s - m), width - s), total_height + m, s, s)
+#      self._add_button.size_allocate(r)
+#    elif (self._add_button):
+#      self._add_button.set_visible(False)
+#    # request the width of the widest item, if any
+#    if (max_width > 0): 
+#      self.set_size_request(max_width, -1)
+#  def start_drag(self, x, y, state):
+#    item = self.list_layout.item_at_position(y)
+#    if (item is None): return(False)
+#    self._dragging_item = item
+#    return(True)
+#  def on_drag(self, dx, dy, state):
+#    ddy = dy - self._last_dy
+#    jump = self.list_layout.size_of_item(self._dragging_item) / 2
+#    if (abs(ddy) < jump): return
+#    old_index = self._model.index(self._dragging_item)
+#    if (ddy < 0):
+#      new_index = max(0, old_index - 1)
+#    else:
+#      new_index = min(old_index + 1, len(self._model) - 1)
+#    if (new_index != old_index):
+#      new_list = list(self._model)
+#      del new_list[old_index]
+#      new_list.insert(new_index, self._dragging_item)
+#      self._model[0:] = new_list
+#      self._last_dy = dy
+#  def on_drop(self):
+#    self._dragging_item = None
+#    self._last_dy = 0
+#  # set to show/hide an add button
+#  @property
+#  def show_add_button(self):
+#    return(self._show_add_button)
+#  @show_add_button.setter
+#  def show_add_button(self, value):
+#    if (value != self._show_add_button):
+#      self._show_add_button = value
+#      self.on_change()
+#  # override to handle the add button being clicked
+#  def on_add(self, *args):
+#    pass
 

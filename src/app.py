@@ -2,7 +2,8 @@
 
 import sys
 
-from gi.repository import Gtk, Gdk, Gio
+from PySide.QtCore import *
+from PySide.QtGui import *
 
 from impulse import windows
 from impulse.models import doc
@@ -28,23 +29,14 @@ def dummy_document():
   d.tracks.append(t2)
   return(d)
 
-class App(Gtk.Application):
+class App(QApplication):
   def __init__(self):
-    Gtk.Application.__init__(self)
-    self._window = None
+    QApplication.__init__(self, sys.argv)
+    self._window = windows.DocumentWindow(self)
+    self._window.show()
+    self._window.document = dummy_document()
     # start the sampler engine
-    sampler.LinuxSampler.start()
-  
-  def do_startup(self):
-    Gtk.Application.do_startup(self)
-  
-  def do_activate(self):
-    Gtk.Application.do_activate(self)
-    if not self._window:
-      self._window = windows.DocumentWindow(self)
-      self._window.document = dummy_document()
-      self.add_window(self._window)
-    self._window.present()
+    #sampler.LinuxSampler.start()
 
 app = App()
-app.run(sys.argv)
+sys.exit(app.exec_())

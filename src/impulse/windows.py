@@ -3,38 +3,31 @@ import sys
 import re
 import yaml
 
-from gi.repository import Gtk, Gdk, Gio
+from PySide.QtCore import *
+from PySide.QtGui import *
 
 from models import doc, controllers
-import views.track
+#import views.track
 import views.doc
 from views.core import ViewManager
 from midi import inputs, sampler
 
-class DocumentWindow(Gtk.ApplicationWindow):
-  def __init__(self, app):
-    Gtk.ApplicationWindow.__init__(self, application=app,
-                                         title="Impulse")
-    self._document = None
-    # bind to the application
-    self.app = app
-    # set default size
-    self.set_default_size(800, 600)
-    # make a toolbar
-    self._make_actions()
-    self._make_toolbar()
-    # make some widgets for the main content
-    self.box = Gtk.Box.new(Gtk.Orientation.VERTICAL, 0)
-    self.add(self.box)
-    self.box.pack_start(self.toolbar, False, False, 0)
+class DocumentWindow(QMainWindow):
+  def __init__(self, app=None):
+    QMainWindow.__init__(self)
+    self._app = app
+    self.setMinimumSize(QSize(800, 600))
+    self.setWindowTitle('New Document')
     # initialize state
     self.control_surface = None
     self.mixer = None
     self.recorder = None
     self.player = None
-    # start with an empty document
+    # start with no document
+    self._document = None
     self.document_view = None
-    self.document = doc.Document()
+    # build the menu and toolbar
+    self._makeMenus()
     
   @property
   def document(self):
@@ -49,9 +42,8 @@ class DocumentWindow(Gtk.ApplicationWindow):
     if (value is not None):
       self._document = value
       self.attach()
-  # detach from the current document
+      
   def detach(self):
-    self._unbind_actions()
     # detach from the old document
     self.mixer = None
     self.recorder = None
@@ -59,203 +51,260 @@ class DocumentWindow(Gtk.ApplicationWindow):
     if (self.control_surface):
       self.control_surface.disconnect()
     self.control_surface = None
-    # kill the document view
+    # remove the document view
     if (self.document_view is not None):
-      self.document_view.destroy()
+      self.setCentralWidget(QWidget(self))
       self.document_view = None
     # dump the undo stack and clear the selection
     ViewManager.reset()
-  # attach to a new document
   def attach(self):
     # make a mixer and transport
     self.mixer = controllers.Mixer(self.document.tracks)
     self.control_surface = inputs.NanoKONTROL2(
-      transport=self._document.transport, mixer=self.mixer)
+      transport=self.document.transport, mixer=self.mixer)
     # add record/playback controllers
     self.recorder = controllers.Recorder(
-      transport=self._document.transport,
-      input_patch_bay=self._document.input_patch_bay,
-      output_patch_bay=self._document.output_patch_bay)
+      transport=self.document.transport,
+      input_patch_bay=self.document.input_patch_bay,
+      output_patch_bay=self.document.output_patch_bay)
     self.player = controllers.Player(
-      transport=self._document.transport,
-      output_patch_bay=self._document.output_patch_bay)
+      transport=self.document.transport,
+      output_patch_bay=self.document.output_patch_bay)
     # make a view for the document
-    self.document_view = views.doc.DocumentView(
-      document=self._document)
-    self.box.pack_end(self.document_view, True, True, 0)
-    # bind actions for the new document
-    self._bind_actions()
-    # show the document view
-    self.show_all()
-  
-  # make actions on the document
-  def _make_actions(self):
-    # file actions
-    self.new_action = self.make_action('new', '<Control>n')
-    self.open_action = self.make_action('open', '<Control>o')
-    self.save_action = self.make_action('save', '<Control>s')
-    self.save_as_action = self.make_action('saveAs', '<Control><Shift>s')
-    # undo/redo actions
-    self.undo_action = self.make_action('undo', '<Control>z')
-    self.redo_action = self.make_action('redo', '<Control><Shift>z')
-    # transport actions
-    self.back_action = self.make_action('transportBack')
-    self.forward_action = self.make_action('transportForward')
-    self.stop_action = self.make_action('transportStop')
-    self.play_action = self.make_action('transportPlay')
-    self.record_action = self.make_action('transportRecord')
-    # track/output actions
-    self.add_track_action = self.make_action('addTrack', '<Control>t')
-    self.add_output_action = self.make_action('addOutput', '<Control><Shift>o')
-    # zoom actions
-    self.zoom_in_action = self.make_action('zoomIn', 
-      '<Control><Shift>plus')
-    self.zoom_out_action = self.make_action('zoomOut', 
-      '<Control><Shift>underscore')
-    # keep a list of action bindings so we can unbind them later
-    self._action_bindings = [ ]
-  # make an action with an optional accelerator
-  def make_action(self, name, accel=None):
-    action = Gio.SimpleAction.new(name, None)
-    if (accel):
-      self.app.add_accelerator(accel, 'win.'+name, None)
-    self.add_action(action)
-    return(action)
-  # bind document actions
-  def _bind_actions(self):
-    # file actions
-    self._bind_action(self.save_action, self.save)
-    self._bind_action(self.save_as_action, self.save_as)
-    self._bind_action(self.open_action, self.open)
-    self._bind_action(self.new_action, self.new)
-    # undo/redo
-    self._bind_action(self.undo_action, ViewManager.undo)
-    self._bind_action(self.redo_action, ViewManager.redo)
-    # transport
-    t = self.document.transport
-    self._bind_action(self.back_action, t.skip_back)
-    self._bind_action(self.forward_action, t.skip_forward)
-    self._bind_action(self.stop_action, t.stop)
-    self._bind_action(self.play_action, t.play)
-    self._bind_action(self.record_action, t.record)
-    # zoom
-    self._bind_action(self.zoom_in_action, self.document_view.zoom_in)
-    self._bind_action(self.zoom_out_action, self.document_view.zoom_out)
-    # track/output
-    self._bind_action(self.add_track_action, self.document.add_track)
-    self._bind_action(self.add_output_action, self.document_view.add_output)
-    # update action state
+    self.document_view = views.doc.DocumentView(parent=self,
+      document=self.document)
+    # add the view
+    self.setCentralWidget(self.document_view)
+    # update actions when relevant object change
     self.document.time_scale.add_observer(self.update_actions)
     self.document.tracks.add_observer(self.update_actions)
-    ViewManager.add_observer(self.update_actions)
-    sampler.LinuxSampler.add_observer(self.update_actions)
     self.update_actions()
-  # unbind all actions
-  def _unbind_actions(self):
-    for (action, handler) in self._action_bindings:
-      action.disconnect(handler)
-    self._action_bindings = [ ]
-    ViewManager.remove_observer(self.update_actions)
-    sampler.LinuxSampler.remove_observer(self.update_actions)
-    self.document.tracks.remove_observer(self.update_actions)
-    self.document.time_scale.remove_observer(self.update_actions)
-  # bind to an action and remember the binding
-  def _bind_action(self, action, callback):
-    handler = action.connect('activate', callback)
-    self._action_bindings.append((action, handler))
-  # reflect changes to models in the action buttons
-  def update_actions(self):
-    self.undo_action.set_enabled(ViewManager.can_undo)
-    self.redo_action.set_enabled(ViewManager.can_redo)
-    self.zoom_in_action.set_enabled(self.document_view.can_zoom_in)
-    self.zoom_out_action.set_enabled(self.document_view.can_zoom_out)
-    # only allow recording if a track is armed
-    track_armed = False
-    for track in self.document.tracks:
-      if (track.arm):
-        track_armed = True
-        break
-    self.record_action.set_enabled(track_armed)
-    # only allow adding instruments if the sampler is ready
-    self.add_output_action.set_enabled(
-      (sampler.LinuxSampler.ready) and 
-      (sampler.LinuxSampler.input_connected) and 
-      (sampler.LinuxSampler.output_connected))
-  # make a toolbar with document actions
-  def _make_toolbar(self):
-    # make a toolbar
-    t = Gtk.Toolbar.new()
-    self.toolbar = t
-    # transport actions
-    t.add(Gtk.ToolButton(Gtk.STOCK_MEDIA_REWIND, 
-                         action_name='win.transportBack'))
-    t.add(Gtk.ToolButton(Gtk.STOCK_MEDIA_FORWARD, 
-                         action_name='win.transportForward'))
-    t.add(Gtk.ToolButton(Gtk.STOCK_MEDIA_STOP, 
-                         action_name='win.transportStop'))
-    t.add(Gtk.ToolButton(Gtk.STOCK_MEDIA_PLAY, 
-                         action_name='win.transportPlay'))
-    t.add(Gtk.ToolButton(Gtk.STOCK_MEDIA_RECORD, 
-                         action_name='win.transportRecord'))
-    t.add(Gtk.SeparatorToolItem())
-    # undo/redo
-    t.add(Gtk.ToolButton(Gtk.STOCK_UNDO, action_name='win.undo'))
-    t.add(Gtk.ToolButton(Gtk.STOCK_REDO, action_name='win.redo'))
-    t.add(Gtk.SeparatorToolItem())
-    # zoom
-    t.add(Gtk.ToolButton(Gtk.STOCK_ZOOM_OUT, action_name='win.zoomOut'))
-    t.add(Gtk.ToolButton(Gtk.STOCK_ZOOM_IN, action_name='win.zoomIn'))
-  # prompt for a file
-  def get_file(self, to_save=False):
-    dialog = Gtk.FileChooserDialog(
-      title=(
-        "Save Project As" if to_save else "Open Project"), 
-      action=(
-        Gtk.FileChooserAction.SAVE if to_save else Gtk.FileChooserAction.OPEN),
-      buttons=(
-        Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL,
-        (Gtk.STOCK_SAVE if to_save else Gtk.STOCK_OPEN), Gtk.ResponseType.OK
-      ))
-    f = Gtk.FileFilter()
-    f.set_name("Project Files")
-    f.add_pattern('*.yml')
-    dialog.add_filter(f)
-    f = Gtk.FileFilter()
-    f.set_name("All Files")
-    f.add_pattern('*.*')
-    dialog.add_filter(f)
-    result = dialog.run()
-    f = None
-    if (result == Gtk.ResponseType.OK):
-      f = dialog.get_file()
-      if (to_save):
-        path = f.get_path()
-        m = re.search('[.][^.]+$', path)
-        if (not m):
-          path += '.yml'
-          f = Gio.File.new_for_path(path)
-    dialog.destroy()
-    return(f)
-  # handle file operations
-  def save(self, *args):
-    if (self.document.file is None):
-      self.save_as()
-    else:
-      self.document.save()
-  def save_as(self, *args):
-    f = self.get_file(to_save=True)
-    if (not f): return
-    self.document.file = f
-    self.document.save()
-  def new(self, *args):
+  
+  # build the application menu and toolbar
+  def _makeMenus(self):
+    menubar = self.menuBar()
+    
+    # file menu
+    file_menu = menubar.addMenu('&File')
+    # new
+    new_action = QAction(QIcon.fromTheme('document-new'), '&New', self)
+    new_action.setShortcut('Ctrl+O')
+    new_action.setStatusTip('Open a document')
+    new_action.triggered.connect(self.file_new)
+    file_menu.addAction(new_action)
+    # open
+    open_action = QAction(QIcon.fromTheme('document-open'), '&Open', self)
+    open_action.setShortcut('Ctrl+O')
+    open_action.setStatusTip('Open a document')
+    open_action.triggered.connect(self.file_open)
+    file_menu.addAction(open_action)
+    # save
+    save_action = QAction(QIcon.fromTheme('document-save'), '&Save', self)
+    save_action.setShortcut('Ctrl+S')
+    save_action.setStatusTip('Save the document')
+    save_action.triggered.connect(self.file_save)
+    file_menu.addAction(save_action)
+    # save as
+    save_as_action = QAction(QIcon.fromTheme('document-save'), 'Save &As', self)
+    save_as_action.setStatusTip('Save the document to a different file')
+    save_as_action.triggered.connect(self.file_save_as)
+    file_menu.addAction(save_as_action)
+    # ---
+    file_menu.addSeparator()
+    # quit
+    quit_action = QAction(QIcon.fromTheme('application-exit'), '&Quit', self)
+    quit_action.setShortcut('Ctrl+Q')
+    quit_action.setStatusTip('Quit application')
+    quit_action.triggered.connect(self.close)
+    file_menu.addAction(quit_action)
+    
+    # edit menu
+    edit_menu = menubar.addMenu('&Edit')
+    # undo
+    self.undo_action = QAction(QIcon.fromTheme('edit-undo'), '&Undo', self)
+    self.undo_action.setShortcut('Ctrl+Z')
+    self.undo_action.setStatusTip('Undo the last action')
+    self.undo_action.triggered.connect(self.edit_undo)
+    edit_menu.addAction(self.undo_action)
+    # redo
+    self.redo_action = QAction(QIcon.fromTheme('edit-redo'), '&Redo', self)
+    self.redo_action.setShortcut('Ctrl+Shift+Z')
+    self.redo_action.setStatusTip('Redo the last action that was undone')
+    self.redo_action.triggered.connect(self.edit_redo)
+    edit_menu.addAction(self.redo_action)
+    
+    # transport menu
+    transport_menu = menubar.addMenu('&Transport')
+    # go to start
+    self.beginning_action = QAction(QIcon.fromTheme('media-skip-backward'), 'Jump to &Beginning', self)
+    self.beginning_action.setShortcut('Home')
+    self.beginning_action.setStatusTip('Jump back to the beginning of the project')
+    self.beginning_action.triggered.connect(self.transport_beginning)
+    transport_menu.addAction(self.beginning_action)
+    # go to end
+    self.end_action = QAction(QIcon.fromTheme('media-skip-forward'), 'Jump to &End', self)
+    self.end_action.setShortcut('End')
+    self.end_action.setStatusTip('Jump forward to the end of the project')
+    self.end_action.triggered.connect(self.transport_end)
+    transport_menu.addAction(self.end_action)
+    # back
+    self.back_action = QAction(QIcon.fromTheme('media-seek-backward'), 'Bac&k', self)
+    self.back_action.setShortcut('PgUp')
+    self.back_action.setStatusTip('Skip backward in time')
+    self.back_action.triggered.connect(self.transport_back)
+    transport_menu.addAction(self.back_action)
+    # forward
+    self.forward_action = QAction(QIcon.fromTheme('media-seek-forward'), '&Forward', self)
+    self.forward_action.setShortcut('PgDown')
+    self.forward_action.setStatusTip('Skip forward in time')
+    self.forward_action.triggered.connect(self.transport_forward)
+    transport_menu.addAction(self.forward_action)
+    # ---
+    transport_menu.addSeparator()
+    # stop
+    self.stop_action = QAction(QIcon.fromTheme('media-playback-stop'), '&Stop', self)
+    self.stop_action.setStatusTip('Stop playback or recording')
+    self.stop_action.triggered.connect(self.transport_stop)
+    transport_menu.addAction(self.stop_action)
+    # play
+    self.play_action = QAction(QIcon.fromTheme('media-playback-start'), '&Play', self)
+    self.play_action.setStatusTip('Start playback')
+    self.play_action.triggered.connect(self.transport_play)
+    transport_menu.addAction(self.play_action)
+    # record
+    self.record_action = QAction(QIcon.fromTheme('media-record'), '&Record', self)
+    self.record_action.setStatusTip('Start recording')
+    self.record_action.triggered.connect(self.transport_record)
+    transport_menu.addAction(self.record_action)
+    # ---
+    transport_menu.addSeparator()
+    # zoom in
+    self.zoom_in_action = QAction(QIcon.fromTheme('zoom-in'), 'Zoom &In', self)
+    self.zoom_in_action.setShortcut('Ctrl+Shift+Plus')
+    self.zoom_in_action.setStatusTip('Zoom in')
+    self.zoom_in_action.triggered.connect(self.transport_zoom_in)
+    transport_menu.addAction(self.zoom_in_action)
+    # zoom out
+    self.zoom_out_action = QAction(QIcon.fromTheme('zoom-out'), 'Zoom &Out', self)
+    self.zoom_out_action.setShortcut('Ctrl+Shift+Minus')
+    self.zoom_out_action.setStatusTip('Zoom out')
+    self.zoom_out_action.triggered.connect(self.transport_zoom_out)
+    transport_menu.addAction(self.zoom_out_action)
+    
+    # toolbar
+    self.toolbar = self.addToolBar('Main')
+    self.toolbar.addAction(self.undo_action)
+    self.toolbar.addAction(self.redo_action)
+    self.toolbar.addSeparator()
+    self.toolbar.addAction(self.back_action)
+    self.toolbar.addAction(self.forward_action)
+    self.toolbar.addAction(self.stop_action)
+    self.toolbar.addAction(self.play_action)
+    self.toolbar.addAction(self.record_action)
+    self.toolbar.addSeparator()
+    self.toolbar.addAction(self.zoom_out_action)
+    self.toolbar.addAction(self.zoom_in_action)
+    # give actions their initial states
+    ViewManager.add_observer(self.update_actions)
+    self.update_actions()
+    
+  # start a new document
+  def file_new(self):
     self.document = doc.Document()
-  def open(self, *args):
-    f = self.get_file(to_save=False)
-    if (not f): return
-    input_stream = open(f.get_path(), 'r')
+  # open an existing document
+  def file_open(self):
+    (path, group) = QFileDialog.getOpenFileName(self,
+      "Open Project", "~", "Project Files (*.yml);;All Files (*.*)")
+    if (len(path) == 0): return
+    input_stream = open(path, 'r')
+    if (not input_stream): return
     s = input_stream.read()
     input_stream.close()
     document = yaml.load(s)
     if (isinstance(document, doc.Document)):
-      document.file = f
+      document.path = path
       self.document = document
+  # save the document
+  def file_save(self):
+    if (not self.document): return
+    if (not self.document.path):
+      self.saveAs()
+    else:
+      self.document.save()
+  # save the document with a different file name
+  def file_save_as(self):
+    (path, group) = QFileDialog.getSaveFileName(self,
+        "Save Project", "~", "Project Files (*.yml);;All Files (*.*)")
+    if (len(path) == 0): return
+    self.document.path = path
+    self.document.save()
+  
+  # undo
+  def edit_undo(self):
+    ViewManager.undo()
+  # redo
+  def edit_redo(self):
+    ViewManager.redo()
+  
+  # transport actions
+  def transport_beginning(self):
+    if (self.document):
+      self.document.transport.time = 0.0
+  def transport_end(self):
+    if (self.document):
+      self.document.transport.time = self.document.tracks.duration
+  def transport_back(self):
+    if (self.document):
+      self.document.transport.skip_back()
+  def transport_forward(self):
+    if (self.document):
+      self.document.transport.skip_forward()
+  def transport_play(self):
+    if (self.document):
+      self.document.transport.play()
+  def transport_record(self):
+    if (self.document):
+      self.document.transport.record()
+  def transport_stop(self):
+    if (self.document):
+      self.document.transport.stop()
+  def transport_zoom_in(self):
+    if (self.document_view):
+      self.document_view.zoom_in()
+  def transport_zoom_out(self):
+    if (self.document):
+      self.document_view.zoom_out()
+      
+  # reflect changes to models in the action buttons
+  def update_actions(self):
+    # disable undo/redo at the ends of the stack
+    self.undo_action.setEnabled(ViewManager.can_undo)
+    self.redo_action.setEnabled(ViewManager.can_redo)
+    # only allow transport actions if we have a document
+    self.beginning_action.setEnabled(self.document is not None)
+    self.end_action.setEnabled(self.document is not None)
+    self.back_action.setEnabled(self.document is not None)
+    self.forward_action.setEnabled(self.document is not None)
+    self.stop_action.setEnabled(self.document is not None)
+    self.play_action.setEnabled(self.document is not None)
+    # only allow recording if a track is armed
+    track_armed = False
+    if (self.document):
+      for track in self.document.tracks:
+        if (track.arm):
+          track_armed = True
+          break
+    self.record_action.setEnabled(track_armed)
+    # disable zoom actions at the outer limits
+    self.zoom_in_action.setEnabled(
+      (self.document_view is not None) and (self.document_view.can_zoom_in))
+    self.zoom_out_action.setEnabled(
+      (self.document_view is not None) and (self.document_view.can_zoom_out))
+    
+#    # only allow adding instruments if the sampler is ready
+#    self.add_output_action.set_enabled(
+#      (sampler.LinuxSampler.ready) and 
+#      (sampler.LinuxSampler.input_connected) and 
+#      (sampler.LinuxSampler.output_connected))
+
+
