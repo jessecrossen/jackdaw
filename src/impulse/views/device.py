@@ -3,8 +3,6 @@
 import math
 import cairo
 
-from gi.repository import Gtk, Gdk
-
 import geom
 import symbols
 from core import DrawableView, LayoutView, ViewManager

@@ -173,11 +173,14 @@ class ViewManagerSingleton(observable.Object):
 ViewManager = ViewManagerSingleton()
 
 # make a base class for views
-class View(QWidget):
+class ModelView(QWidget):
   def __init__(self, model, parent=None):
     QWidget.__init__(self, parent)
     self._model = model
     self._model.add_observer(self.on_change)
+  @property
+  def model(self):
+    return(self._model)
   # redraw the widget if there's a drawing method defined
   def paintEvent(self, e):
     if (hasattr(self, 'redraw')):
@@ -189,6 +192,71 @@ class View(QWidget):
   def on_change(self):
     if (hasattr(self, 'redraw')):
       self.repaint()
+  
+# make a layout class for lists of items
+class ModelListLayout(QLayout):
+  def __init__(self, model_list, view_class=ModelView):
+    QLayout.__init__(self)
+    self._view_class = view_class
+    self._model_list = model_list
+    self._model_list.add_observer(self.on_change)
+    self._items = list()
+    self.views = list()
+    self._view_map = dict()
+  def on_change(self):
+    if (self.update_views()):
+      self.do_layout()
+  def update_views(self):
+    old = set(self._view_map.keys())
+    new = set()
+    views = list()
+    for model in self._model_list:
+      if (model in self._view_map):
+        view = self._view_map[model]
+        old.remove(model)
+      else:
+        view = self.get_view_for_model(model)
+        self._view_map[model] = view
+        self.addWidget(view)
+        new.add(view)
+      views.append(view)
+    for model in old:
+      view = self._view_map[model]
+      del self._view_map[model]
+      try:
+        self.removeWidget(view)
+      except AttributeError: pass
+      view.destroy()
+    self.views = views
+    # redo layout if the items have changed
+    return((len(old) > 0) or (len(new) > 0))
+  # manage the item list
+  def addItem(self, item):
+    self._items.append(item)
+  def count(self):
+    return(len(self._items))
+  def itemAt(self, index):
+    if ((index >= 0) and (index < len(self._items))):
+      return(self._items[index])
+    else:
+      return(None)
+  def takeAt(self, index):
+    if ((index >= 0) and (index < len(self._items))):
+      return(self._items.pop(index))
+    else:
+      return(None)
+  # update layout    
+  def setGeometry(self, rect):
+    QLayout.setGeometry(self, rect)
+    if (len(self.views) != len(self._model_list)):
+      self.update_views()
+    self.do_layout()
+  # override this to do custom view creation
+  def get_view_for_model(self, model):
+    return(self._view_class(model))
+  # override this for custom layout
+  def do_layout(self):
+    pass
   
 #  # get list of views for each of the models in a list, removing any views
 #  #  of models that were in the list at last call and creating new views

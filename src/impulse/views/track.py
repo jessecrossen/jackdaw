@@ -5,27 +5,64 @@ from PySide.QtCore import *
 from PySide.QtGui import *
 
 #import symbols
-from core import View, ViewManager
+from core import ModelView, ModelListLayout, ViewManager
 from ..models.doc import TimeScale
-#import block
+import block
 
-class TrackView(View):
+# do layout of list items by time
+class TrackLayout(ModelListLayout):
+  def __init__(self, track, time_scale, margin=1):
+    ModelListLayout.__init__(self, track, view_class=block.BlockView)
+    self._margin = margin
+    self.time_scale = time_scale
+    self.time_scale.add_observer(self.on_time_scale_change)
+  @property
+  def track(self):
+    return(self._model_list)
+  # update the layout when the scale changes
+  def on_time_scale_change(self):
+    self.do_layout()
+  # recommend a size
+  def sizeHint(self):
+    return(self.minimumSize())
+  def minimumSize(self):
+    return(QSize(
+      self.time_scale.x_of_time(self.track.duration) + (self._margin * 2),
+      80))
+  # get the x coordinate for a given time
+  def x_of_time(self, time):
+    try:
+      return(self._margin + self.time_scale.x_of_time(time))
+    except ZeroDivisionError:
+      return(0)
+  # lay out items by time and duration
+  def do_layout(self):
+    rect = self.geometry()
+    for view in self.views:
+      model = view.model
+      x1 = rect.x() + self.x_of_time(model.time) - self._margin
+      x2 = rect.x() + self.x_of_time(model.time + model.duration) + self._margin
+      view.setGeometry(QRect(x1, rect.y(), x2 - x1, rect.height()))
+
+class TrackView(ModelView):
   def __init__(self, track, time_scale=None, parent=None):
-    View.__init__(self, model=track, parent=parent)
+    ModelView.__init__(self, model=track, parent=parent)
     if (time_scale is None):
       time_scale = TimeScale()
     self.time_scale = time_scale
     self.time_scale.add_observer(self.on_change)
+    # add a layout for the blocks
+    self.layout = TrackLayout(
+      track, time_scale=self.time_scale)
+    self.setLayout(self.layout)
+  @property
+  def track(self):
+    return(self._model)
 
   def redraw(self, qp):
     pen = QPen(QColor(20, 20, 20), 1, Qt.SolidLine)
     qp.setPen(pen)
     qp.drawLine(0, 0, 100, 100)
-
-  def sizeHint(self):
-    return(QSize(100, 100))
-  def minimumSizeHint(self):
-    return(QSize(50, 50))
 
 #class TrackView(LayoutView):
 #  def __init__(self, track, time_scale=None):

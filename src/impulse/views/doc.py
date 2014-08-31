@@ -11,7 +11,7 @@ class DocumentView(QWidget):
     QWidget.__init__(self, parent)
     self._document = document
     
-    # tv = track.TrackView(track=document.tracks[0], time_scale=self.document.time_scale, parent=self)
+    tv = track.TrackView(track=document.tracks[0], time_scale=self.document.time_scale, parent=self)
     
     
   @property

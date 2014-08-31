@@ -1,8 +1,6 @@
 import cairo
 import math
 
-from core import geom
-
 RADIUS = 4
 BRACKET_WIDTH = (2 * RADIUS)
 BRACKET_HEIGHT = (8 * RADIUS)

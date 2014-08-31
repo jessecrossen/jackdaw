@@ -7,10 +7,9 @@ from PySide.QtCore import *
 from PySide.QtGui import *
 
 from models import doc, controllers
-#import views.track
 import views.doc
 from views.core import ViewManager
-from midi import inputs, sampler
+# from midi import inputs, sampler
 
 class DocumentWindow(QMainWindow):
   def __init__(self, app=None):
@@ -60,8 +59,8 @@ class DocumentWindow(QMainWindow):
   def attach(self):
     # make a mixer and transport
     self.mixer = controllers.Mixer(self.document.tracks)
-    self.control_surface = inputs.NanoKONTROL2(
-      transport=self.document.transport, mixer=self.mixer)
+#    self.control_surface = inputs.NanoKONTROL2(
+#      transport=self.document.transport, mixer=self.mixer)
     # add record/playback controllers
     self.recorder = controllers.Recorder(
       transport=self.document.transport,

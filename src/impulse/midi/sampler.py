@@ -7,8 +7,6 @@ import fcntl
 import atexit
 import socket
 
-from gi.repository import GLib, Gio
-
 import core
 import outputs
 from ..common import observable

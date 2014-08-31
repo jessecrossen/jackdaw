@@ -2,8 +2,6 @@ import math
 import time
 import alsamidi
 
-from gi.repository import GLib
-
 from ..common import observable
 from ..models import doc
 

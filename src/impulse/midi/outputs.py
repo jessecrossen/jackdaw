@@ -1,8 +1,6 @@
 import time
 import re
 
-from gi.repository import GLib, GObject
-
 import core
 from ..common import observable, serializable
 from ..models import doc

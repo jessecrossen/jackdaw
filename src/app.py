@@ -7,7 +7,7 @@ from PySide.QtGui import *
 
 from impulse import windows
 from impulse.models import doc
-from impulse.midi import sampler
+# from impulse.midi import sampler
 
 def dummy_document():
   d = doc.Document()

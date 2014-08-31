@@ -3,8 +3,6 @@ import alsamidi
 import re
 import yaml
 
-from gi.repository import GLib, GObject
-
 from ..common import observable, serializable
 
 # device serialization
