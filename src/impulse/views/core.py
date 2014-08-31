@@ -178,21 +178,39 @@ class ModelView(QWidget):
     QWidget.__init__(self, parent)
     self._model = model
     self._model.add_observer(self.on_change)
+    self._palette = QPalette()
   @property
   def model(self):
     return(self._model)
+  @property
+  def palette(self):
+    return(self._palette)
+  @palette.setter
+  def palette(self, value):
+    self._palette = value
+    self.on_change()
   # redraw the widget if there's a drawing method defined
   def paintEvent(self, e):
     if (hasattr(self, 'redraw')):
       qp = QPainter()
       qp.begin(self)
-      self.redraw(qp)
+      qp.setRenderHint(QPainter.Antialiasing, True)
+      qp.setRenderHint(QPainter.TextAntialiasing, True)
+      g = self.geometry()
+      self.redraw(qp, g.width(), g.height())
       qp.end()
   # update the view when the model changes
   def on_change(self):
     if (hasattr(self, 'redraw')):
       self.repaint()
-  
+
+# add selectability to a model view
+class SelectableModelView(ModelView):
+  def __init__(self, model, parent=None):
+    ModelView.__init__(self, model, parent)
+  def mousePressEvent(self, event):
+    self.model.selected = not self.model.selected
+
 # make a layout class for lists of items
 class ModelListLayout(QLayout):
   def __init__(self, model_list, view_class=ModelView):

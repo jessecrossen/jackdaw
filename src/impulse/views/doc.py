@@ -11,8 +11,11 @@ class DocumentView(QWidget):
     QWidget.__init__(self, parent)
     self._document = document
     
-    tv = track.TrackView(track=document.tracks[0], time_scale=self.document.time_scale, parent=self)
-    
+    self.layout = QVBoxLayout()
+    self.layout.addWidget(track.TrackView(track=document.tracks[0], 
+            view_scale=self.document.view_scale))
+    self.layout.addStretch(1)
+    self.setLayout(self.layout)
     
   @property
   def document(self):
@@ -21,7 +24,7 @@ class DocumentView(QWidget):
   # control track list zoom
   ZOOMS = (8, 16, 24, 32, 48, 64, 96, 128)
   def _zoom_index(self):
-    pps = self._document.time_scale.pixels_per_second
+    pps = self._document.view_scale.pixels_per_second
     closest = None
     closest_dist = None
     for i in range(0, len(self.ZOOMS)):
@@ -34,21 +37,21 @@ class DocumentView(QWidget):
   def _apply_zoom_delta(self, delta):
     index = self._zoom_index()
     if (index is None): return
-    pps = self._document.time_scale.pixels_per_second
+    pps = self._document.view_scale.pixels_per_second
     new_pps = self.ZOOMS[index]
     if (new_pps == pps):
       new_pps = self.ZOOMS[index + delta]
-    self._document.time_scale.pixels_per_second = new_pps
+    self._document.view_scale.pixels_per_second = new_pps
   def zoom_in(self, *args):
     self._apply_zoom_delta(1)
   def zoom_out(self, *args):
     self._apply_zoom_delta(-1)
   @property
   def can_zoom_in(self):
-    return(self._document.time_scale.pixels_per_second < self.ZOOMS[-1])
+    return(self._document.view_scale.pixels_per_second < self.ZOOMS[-1])
   @property
   def can_zoom_out(self):
-    return(self._document.time_scale.pixels_per_second > self.ZOOMS[0])
+    return(self._document.view_scale.pixels_per_second > self.ZOOMS[0])
 
 #class DocumentView(Gtk.Frame):
 #  def __init__(self, document):

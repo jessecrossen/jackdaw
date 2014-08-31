@@ -75,7 +75,7 @@ class DocumentWindow(QMainWindow):
     # add the view
     self.setCentralWidget(self.document_view)
     # update actions when relevant object change
-    self.document.time_scale.add_observer(self.update_actions)
+    self.document.view_scale.add_observer(self.update_actions)
     self.document.tracks.add_observer(self.update_actions)
     self.update_actions()
   

@@ -5,19 +5,113 @@ from PySide.QtGui import *
 
 from ..common import observable
 # import symbols
-from core import ModelView, ViewManager
-from ..models.doc import TimeScale
+import core
+from ..models.doc import ViewScale
 
-class BlockView(ModelView):
-  def __init__(self, block, parent=None):
-    ModelView.__init__(self, block, parent)
-  def redraw(self, qp):
-    r = self.geometry()
-    width = r.width()
-    height = r.height()
-    pen = QPen(QColor(20, 20, 20), 2, Qt.SolidLine)
-    qp.setPen(pen)
-    qp.drawLine(0, 0, width, height)
+# do layout for events in a block
+class EventsLayout(core.ModelListLayout):
+  def __init__(self, events, view_scale, margin=1):
+    core.ModelListLayout.__init__(self, events)
+    self._margin = margin
+    self.view_scale = view_scale
+    self.view_scale.add_observer(self.do_layout)
+    self._pitch_source = None
+  @property
+  def events(self):
+    return(self._model_list)
+  # the list of pitches to display can be sourced from the event list 
+  #  or can be set externally, as when displayed as part of a track
+  @property
+  def pitches(self):
+    if (self._pitch_source != None):
+      return(self._pitch_source.pitches)
+    return(self.events.pitches)
+  def set_pitch_source(self, value):
+    if (self._pitch_source != value):
+      if (self._pitch_source):
+        self._pitch_source.remove_observer(self.on_change)
+      self._pitch_source = value
+      if (self._pitch_source):
+        self._pitch_source.add_observer(self.on_change)
+      self.on_change()
+  # get the x coordinate for a given time
+  def x_of_time(self, time):
+    try:
+      return(self._margin + self.view_scale.x_of_time(time))
+    except ZeroDivisionError:
+      return(0)
+  # get a view for the given event
+  def get_view_for_model(self, model):
+    return(NoteView(model))
+  # lay out events by time and duration
+  def do_layout(self):
+    rect = self.geometry()
+    # map pitches to coordinates for fast lookup
+    pitch_height = self.view_scale.pitch_height
+    y_of_pitch = dict()
+    i = 0
+    for pitch in self.pitches:
+      y_of_pitch[pitch] = i * pitch_height
+      i += 1
+    for view in self.views:
+      model = view.model
+      try:
+        y = y_of_pitch[model.pitch]
+      except IndexError: continue
+      x1 = rect.x() + self.x_of_time(model.time)
+      x2 = rect.x() + self.x_of_time(model.time + model.duration)
+      # give the note a minimum width
+      w = max(NoteView.RADIUS * 2, x2 - x1)
+      view.setGeometry(QRect(x1, y, w, pitch_height))
+
+# represent a block of events on a track
+class BlockView(core.SelectableModelView):
+  def __init__(self, block, view_scale, track=None, parent=None):
+    core.SelectableModelView.__init__(self, block, parent)
+    self.view_scale = view_scale
+    self.view_scale.add_observer(self.on_change)
+    self._track = track
+    # add a layout for the block's events
+    self.layout = EventsLayout(
+      block.events, view_scale=self.view_scale)
+    self.layout.set_pitch_source(self.track)
+    self.setLayout(self.layout)
+  @property
+  def block(self):
+    return(self._model)
+  @property
+  def track(self):
+    return(self._track)
+  def redraw(self, qp, width, height):
+    selected = self.block.selected
+    if (selected):
+      qp.setBrush(self.palette.brush(
+        QPalette.Normal, QPalette.Highlight))
+      qp.setPen(Qt.NoPen)
+      qp.drawRect(0, 0, width, height)
+
+# represent a note event in a block
+class NoteView(core.SelectableModelView):
+  RADIUS = 3
+  def __init__(self, note, parent=None):
+    core.SelectableModelView.__init__(self, note, parent)
+  @property
+  def note(self):
+    return(self._model)
+  def redraw(self, qp, width, height):
+    selected = self.note.selected
+    role = QPalette.Highlight if selected else QPalette.WindowText
+    color = self.palette.color(QPalette.Normal, role)
+    # dim notes to show velocity, unless the note is selected
+    velocity = 1.0
+    try:
+      velocity = self.note.velocity
+    except AttributeError: pass
+    if ((velocity < 1.0) and (not selected)):
+      color.setAlphaF(velocity)
+    qp.setBrush(QBrush(color))
+    qp.setPen(Qt.NoPen)
+    qp.drawRoundedRect(0, 0, width, height, self.RADIUS, self.RADIUS)
 
 ## make a view that shows the events in a block
 #class BlockView(DrawableView):

@@ -6,35 +6,35 @@ from PySide.QtGui import *
 
 #import symbols
 from core import ModelView, ModelListLayout, ViewManager
-from ..models.doc import TimeScale
+from ..models.doc import ViewScale
 import block
 
 # do layout of list items by time
 class TrackLayout(ModelListLayout):
-  def __init__(self, track, time_scale, margin=1):
+  def __init__(self, track, view_scale, margin=1):
     ModelListLayout.__init__(self, track, view_class=block.BlockView)
     self._margin = margin
-    self.time_scale = time_scale
-    self.time_scale.add_observer(self.on_time_scale_change)
+    self.view_scale = view_scale
+    self.view_scale.add_observer(self.do_layout)
   @property
   def track(self):
     return(self._model_list)
-  # update the layout when the scale changes
-  def on_time_scale_change(self):
-    self.do_layout()
   # recommend a size
   def sizeHint(self):
     return(self.minimumSize())
   def minimumSize(self):
     return(QSize(
-      self.time_scale.x_of_time(self.track.duration) + (self._margin * 2),
-      80))
+      int(self.view_scale.x_of_time(self.track.duration) + (self._margin * 2)),
+      int(self.view_scale.pitch_height * len(self.track.pitches))))
   # get the x coordinate for a given time
   def x_of_time(self, time):
-    try:
-      return(self._margin + self.time_scale.x_of_time(time))
-    except ZeroDivisionError:
-      return(0)
+    return(self._margin + 
+      self.view_scale.x_of_time(time - self.view_scale.time_offset))
+  # get a block view for the model
+  def get_view_for_model(self, model):
+    return(block.BlockView(model, 
+      track=self.track, 
+      view_scale=self.view_scale))
   # lay out items by time and duration
   def do_layout(self):
     rect = self.geometry()
@@ -45,24 +45,25 @@ class TrackLayout(ModelListLayout):
       view.setGeometry(QRect(x1, rect.y(), x2 - x1, rect.height()))
 
 class TrackView(ModelView):
-  def __init__(self, track, time_scale=None, parent=None):
+  def __init__(self, track, view_scale=None, parent=None):
     ModelView.__init__(self, model=track, parent=parent)
-    if (time_scale is None):
-      time_scale = TimeScale()
-    self.time_scale = time_scale
-    self.time_scale.add_observer(self.on_change)
+    if (view_scale is None):
+      view_scale = ViewScale()
+    self.view_scale = view_scale
+    self.view_scale.add_observer(self.on_change)
     # add a layout for the blocks
     self.layout = TrackLayout(
-      track, time_scale=self.time_scale)
+      track, view_scale=self.view_scale)
     self.setLayout(self.layout)
+  
   @property
   def track(self):
     return(self._model)
 
-  def redraw(self, qp):
+  def redraw(self, qp, width, height):
     pen = QPen(QColor(20, 20, 20), 1, Qt.SolidLine)
     qp.setPen(pen)
-    qp.drawLine(0, 0, 100, 100)
+    qp.drawLine(0, 0, width, height)
 
 #class TrackView(LayoutView):
 #  def __init__(self, track, time_scale=None):

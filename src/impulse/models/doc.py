@@ -12,8 +12,19 @@ from ..common import observable, serializable
 class Model(observable.Object):
   def __init__(self):
     observable.Object.__init__(self)
+    # handle selection state
+    self._selected = False
     # initialize cached data attributes  
     self.invalidate()
+  # allow selection/deselection
+  @property
+  def selected(self):
+    return(self._selected)
+  @selected.setter
+  def selected(self, value):
+    if (value != self._selected):
+      self._selected = value
+      self.on_change()
   # invalidate cached data when the model changes
   def on_change(self):
     self.invalidate()
@@ -796,12 +807,13 @@ class Transport(observable.Object):
     })
 serializable.add(Transport)
 
-# make a time-to-pixel mapping with observable changes
-class TimeScale(observable.Object):
-  def __init__(self, pixels_per_second=24, time_offset=0.0):
+# make a units-to-pixels mapping with observable changes
+class ViewScale(observable.Object):
+  def __init__(self, pixels_per_second=24, pitch_height=16, time_offset=0.0):
     observable.Object.__init__(self)
     self._pixels_per_second = pixels_per_second
     self._time_offset = time_offset
+    self._pitch_height = pitch_height
   @property
   def pixels_per_second(self):
     return(self._pixels_per_second)
@@ -809,6 +821,14 @@ class TimeScale(observable.Object):
   def pixels_per_second(self, value):
     if (value != self._pixels_per_second):
       self._pixels_per_second = float(value)
+      self.on_change()
+  @property
+  def pitch_height(self):
+    return(self._pitch_height)
+  @pitch_height.setter
+  def pitch_height(self, value):
+    if (value != self._pitch_height):
+      self._pitch_height = float(value)
       self.on_change()
   @property
   def time_offset(self):
@@ -830,13 +850,14 @@ class TimeScale(observable.Object):
   def serialize(self):
     return({
       'pixels_per_second': self.pixels_per_second,
-      'time_offset': self.time_offset
+      'time_offset': self.time_offset,
+      'pitch_height': self.pitch_height
     })
-serializable.add(TimeScale)
+serializable.add(ViewScale)
 
 # represent a document, which can contain multiple tracks
 class Document(Model):
-  def __init__(self, tracks=None, transport=None, time_scale=None,
+  def __init__(self, tracks=None, transport=None, view_scale=None,
                input_patch_bay=None, output_patch_bay=None):
     Model.__init__(self)
     # the file path to save to
@@ -861,9 +882,9 @@ class Document(Model):
       transport = Transport()
     self.transport = transport
     # time scale
-    if (time_scale is None):
-      time_scale = TimeScale()
-    self.time_scale = time_scale
+    if (view_scale is None):
+      view_scale = ViewScale()
+    self.view_scale = view_scale
   
   # add a track to the document
   def add_track(self, *args):
@@ -889,7 +910,7 @@ class Document(Model):
     return({ 
       'tracks': self.tracks,
       'transport': self.transport,
-      'time_scale': self.time_scale,
+      'view_scale': self.view_scale,
       'input_patch_bay': self.input_patch_bay,
       'output_patch_bay': self.output_patch_bay
     })
