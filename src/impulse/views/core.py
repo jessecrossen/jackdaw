@@ -204,10 +204,8 @@ class ModelView(QWidget):
     if (hasattr(self, 'redraw')):
       self.repaint()
 
-# add selectability to a model view
-class SelectableModelView(ModelView):
-  def __init__(self, model, parent=None):
-    ModelView.__init__(self, model, parent)
+# a mixin to add selectability to a model view
+class Selectable(object):
   def mousePressEvent(self, event):
     self.model.selected = not self.model.selected
 

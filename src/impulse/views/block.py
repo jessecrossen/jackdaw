@@ -61,13 +61,13 @@ class EventsLayout(core.ModelListLayout):
       x1 = rect.x() + self.x_of_time(model.time)
       x2 = rect.x() + self.x_of_time(model.time + model.duration)
       # give the note a minimum width
-      w = max(NoteView.RADIUS * 2, x2 - x1)
+      w = max(pitch_height / 2, x2 - x1)
       view.setGeometry(QRect(x1, y, w, pitch_height))
 
 # represent a block of events on a track
-class BlockView(core.SelectableModelView):
+class BlockView(core.Selectable, core.ModelView):
   def __init__(self, block, view_scale, track=None, parent=None):
-    core.SelectableModelView.__init__(self, block, parent)
+    core.ModelView.__init__(self, block, parent)
     self.view_scale = view_scale
     self.view_scale.add_observer(self.on_change)
     self._track = track
@@ -91,10 +91,10 @@ class BlockView(core.SelectableModelView):
       qp.drawRect(0, 0, width, height)
 
 # represent a note event in a block
-class NoteView(core.SelectableModelView):
-  RADIUS = 3
+class NoteView(core.Selectable, core.ModelView):
+  RADIUS = 2
   def __init__(self, note, parent=None):
-    core.SelectableModelView.__init__(self, note, parent)
+    core.ModelView.__init__(self, note, parent)
   @property
   def note(self):
     return(self._model)
