@@ -8,13 +8,24 @@ from ..common import observable
 import core
 from ..models.doc import ViewScale
 
-# do layout for events in a block
-class EventsLayout(core.ModelListLayout):
-  def __init__(self, events, view_scale, margin=1):
-    core.ModelListLayout.__init__(self, events)
-    self._margin = margin
+# make a mixin for laying out timed elements using a view scale
+class TimedLayout(object):
+  def __init__(self, view_scale, margin=None):
     self.view_scale = view_scale
-    self.view_scale.add_observer(self.do_layout)
+    self.view_scale.add_observer(self.invalidate)
+    self._margin = margin if (margin is not None) else 1
+  # get the x coordinate for a given time
+  def x_of_time(self, time):
+    try:
+      return(self._margin + self.view_scale.x_of_time(time))
+    except ZeroDivisionError:
+      return(0)
+
+# do layout for events in a block
+class EventsLayout(TimedLayout, core.ModelListLayout):
+  def __init__(self, events, view_scale, margin=None):
+    core.ModelListLayout.__init__(self, events)
+    TimedLayout.__init__(self, view_scale, margin)
     self._pitch_source = None
   @property
   def events(self):
@@ -34,12 +45,6 @@ class EventsLayout(core.ModelListLayout):
       if (self._pitch_source):
         self._pitch_source.add_observer(self.on_change)
       self.on_change()
-  # get the x coordinate for a given time
-  def x_of_time(self, time):
-    try:
-      return(self._margin + self.view_scale.x_of_time(time))
-    except ZeroDivisionError:
-      return(0)
   # get a view for the given event
   def get_view_for_model(self, model):
     return(NoteView(model))
@@ -61,8 +66,37 @@ class EventsLayout(core.ModelListLayout):
       x1 = rect.x() + self.x_of_time(model.time)
       x2 = rect.x() + self.x_of_time(model.time + model.duration)
       # give the note a minimum width
-      w = max(pitch_height / 2, x2 - x1)
+      w = max(NoteView.RADIUS * 2, x2 - x1)
+      w = max(pitch_height / 2, w)
       view.setGeometry(QRect(x1, y, w, pitch_height))
+
+# do layout for a block's start, end, and repeat points
+class BlockPlaceholderLayout(TimedLayout, core.ListLayout):
+  CAP_WIDTH = 10
+  REPEAT_WIDTH = 12
+  def __init__(self, block, view_scale, margin=None):
+    core.ListLayout.__init__(self)
+    TimedLayout.__init__(self, view_scale, margin)
+    self.block = block
+    self.repeat_view = BlockRepeatView(block.repeat)
+    block.repeat.add_observer(self.invalidate)
+    self.start_view = BlockStartView(block.start)
+    self.end_view = BlockEndView(block.end)
+    self.addWidget(self.repeat_view)
+    self.addWidget(self.start_view)
+    self.addWidget(self.end_view)
+  def setGeometry(self, rect):
+    QLayout.setGeometry(self, rect)
+    self.do_layout()
+  def do_layout(self):
+    r = self.geometry()
+    self.start_view.setGeometry(QRect(
+      r.x(), r.y(), self.CAP_WIDTH, r.height()))
+    self.end_view.setGeometry(QRect(
+      r.right() - self.CAP_WIDTH, r.y(), self.CAP_WIDTH, r.height()))
+    x = self.x_of_time(self.repeat_view.model.time) + 1
+    self.repeat_view.setGeometry(QRect(
+      x - self.REPEAT_WIDTH, r.y(), self.REPEAT_WIDTH, r.height()))
 
 # represent a block of events on a track
 class BlockView(core.Selectable, core.ModelView):
@@ -71,11 +105,20 @@ class BlockView(core.Selectable, core.ModelView):
     self.view_scale = view_scale
     self.view_scale.add_observer(self.on_change)
     self._track = track
+    # make a master layout
+    self.layout = core.OverlayLayout()
     # add a layout for the block's events
-    self.layout = EventsLayout(
-      block.events, view_scale=self.view_scale)
-    self.layout.set_pitch_source(self.track)
+    self.events_layout = EventsLayout(block.events, 
+      view_scale=self.view_scale)
+    self.events_layout.set_pitch_source(self.track)
+    self.layout.addItem(self.events_layout)
+    # add a layout for the block's start, end, and repeat length
+    self.placeholder_layout = BlockPlaceholderLayout(self.block, 
+      view_scale=self.view_scale)
+    self.layout.addItem(self.placeholder_layout)
+    # activate the layout
     self.setLayout(self.layout)
+    
   @property
   def block(self):
     return(self._model)
@@ -87,7 +130,6 @@ class BlockView(core.Selectable, core.ModelView):
     if (selected):
       qp.setBrush(self.palette.brush(
         QPalette.Normal, QPalette.Highlight))
-      qp.setPen(Qt.NoPen)
       qp.drawRect(0, 0, width, height)
 
 # represent a note event in a block
@@ -102,16 +144,58 @@ class NoteView(core.Selectable, core.ModelView):
     selected = self.note.selected
     role = QPalette.Highlight if selected else QPalette.WindowText
     color = self.palette.color(QPalette.Normal, role)
-    # dim notes to show velocity, unless the note is selected
+    # dim notes to show velocity
     velocity = 1.0
     try:
       velocity = self.note.velocity
     except AttributeError: pass
-    if ((velocity < 1.0) and (not selected)):
-      color.setAlphaF(velocity)
+    if (velocity < 1.0):
+      color.setAlphaF(0.1 + (0.9 * velocity))
     qp.setBrush(QBrush(color))
-    qp.setPen(Qt.NoPen)
     qp.drawRoundedRect(0, 0, width, height, self.RADIUS, self.RADIUS)
+
+# represent the start of a block
+class BlockStartView(core.Selectable, core.ModelView):
+  WIDTH = 6
+  def __init__(self, model, parent=None):
+    core.ModelView.__init__(self, model, parent)
+  def redraw(self, qp, width, height):
+    qp.setBrush(self.brush())
+    w = min(self.WIDTH, width)
+    qp.drawPolygon(QPolygon([
+      QPoint(0, 0), QPoint(w, 0),
+      QPoint(w, 1), QPoint(2, 2),
+      QPoint(2, height - 2), QPoint(w, height - 1),
+      QPoint(w, height), QPoint(0, height)
+    ]))
+# represent the end of a block
+class BlockEndView(core.Selectable, core.ModelView):
+  WIDTH = 6
+  def __init__(self, model, parent=None):
+    core.ModelView.__init__(self, model, parent)
+  def redraw(self, qp, width, height):
+    qp.setBrush(self.brush())
+    w = min(self.WIDTH, width)
+    x = width - w
+    qp.drawPolygon(QPolygon([
+      QPoint(x, 0), QPoint(width, 0),
+      QPoint(width, height), QPoint(x, height),
+      QPoint(x, height - 1), QPoint(width - 2, height - 2),
+      QPoint(width - 2, 2), QPoint(x, 1)
+    ]))
+# represent the repeat length of a block
+class BlockRepeatView(core.Selectable, core.ModelView):
+  def __init__(self, model, parent=None):
+    core.ModelView.__init__(self, model, parent)
+  def redraw(self, qp, width, height):
+    qp.setBrush(self.brush())
+    qp.drawRect(width - 2, 0, 2, height)
+    qp.drawRect(width - 5, 0, 2, height)
+    x = width - 9
+    y = round(height / 2)
+    r = 1.5
+    qp.drawEllipse(QPointF(x, y - 5), r, r)
+    qp.drawEllipse(QPointF(x, y + 5), r, r)
 
 ## make a view that shows the events in a block
 #class BlockView(DrawableView):

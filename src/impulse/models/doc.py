@@ -29,13 +29,22 @@ class SelectionSingleton(observable.Object):
     self.deselect_children(model)
     # select the model
     self._models.add(model)
-    model._selected = True
+    if (not model._selected):
+      model._selected = True
+      model.on_change()
   # remove a model from the selection
   def deselect(self, model):
     try:
       self._models.remove(model)
     except KeyError: pass
-    model._selected = False
+    if (model._selected):
+      model._selected = False
+      model.on_change()
+  # deselect all selected models
+  def deselect_all(self):
+    models = set(self._models)
+    for model in models:
+      self.deselect(model)
   # remove all children of a model from the selection
   def deselect_children(self, model):
     if (isinstance(model, ModelList)):
@@ -87,7 +96,11 @@ class Model(Selectable, observable.Object):
   def invalidate(self):
     pass
   # return if the model contains the given model in one of its properties
-  def contains_model(self, model):
+  def contains_model(self, model, visited=None):
+    if (visited is None):
+      visited = set()
+    if (self in visited): return
+    visited.add(self)
     for key in dir(self):
       # skip private stuff
       if (key[0] == '_'): continue
@@ -95,7 +108,7 @@ class Model(Selectable, observable.Object):
       if (value is model):
         return(True)
       try:
-        if (value.contains_model(model)):
+        if (value.contains_model(model, visited)):
           return(True)
       except AttributeError: continue
 
@@ -114,7 +127,11 @@ class ModelList(Selectable, observable.List):
   def invalidate(self):
     pass
   # return whether the list or one of its items contains the given model
-  def contains_model(self, model):
+  def contains_model(self, model, visited=None):
+    if (visited is None):
+      visited = set()
+    if (self in visited): return
+    visited.add(self)
     if (model in self):
       return(True)
     for item in self:
@@ -250,6 +267,53 @@ class EventList(ModelList):
     })
 serializable.add(EventList)
 
+# a placeholder model for manipulating the beginning of a block's events
+class BlockStart(Model):
+  def __init__(self, block):
+    Model.__init__(self)
+    self._block = block
+  @property
+  def time(self):
+    return(self._block.time)
+  @time.setter
+  def time(self, value):
+    duration = max(0.0, 
+      (self._block.time + self._block.events.duration) - value)
+    if (value != self._block.events.duration):
+      delta = self._block.events.duration - duration
+      for event in self._block.events:
+        event.time -= delta
+      self._block.events.duration = duration
+      self._block.time += delta
+# a placeholder model for manipulating the duration of a block
+class BlockEnd(Model):
+  def __init__(self, block):
+    Model.__init__(self)
+    self._block = block
+  @property
+  def time(self):
+    return(self._block.time + self._block.duration)
+  @time.setter
+  def time(self, value):
+    duration = max(0.0, value - self._block.time)
+    if (duration != self._block.duration):
+      self._block.duration = duration
+      self.on_change()
+# a placeholder model for manipulating the repeat length of a block's events
+class BlockRepeat(Model):
+  def __init__(self, block):
+    Model.__init__(self)
+    self._block = block
+  @property
+  def time(self):
+    return(self._block.time + self._block.events.duration)
+  @time.setter
+  def time(self, value):
+    duration = max(0.0, value - self._block.time)
+    if (duration != self._block.events.duratio):
+      self._block.events.duration = duration
+      self.on_change()
+
 # represents a placement of an event list on a timeline with its own duration
 # the event list is truncated or repeated to fill the duration
 class Block(Model):
@@ -259,6 +323,10 @@ class Block(Model):
     self._events.add_observer(self.on_change)
     self._time = time
     self._duration = duration
+    # make placeholders for manipulating the block
+    self._start = BlockStart(self)
+    self._end = BlockEnd(self)
+    self._repeat = BlockRepeat(self)
   # the events in the block
   @property
   def events(self):
@@ -269,6 +337,16 @@ class Block(Model):
     self._events = value
     self._events.add_observer(self.on_change)
     self.on_change()
+  # expose placeholders as properties
+  @property
+  def start(self):
+    return(self._start)
+  @property
+  def end(self):
+    return(self._end)
+  @property
+  def repeat(self):
+    return(self._repeat)
   # the time relative to the beginning of its container when the block 
   #  begins playing (in seconds)
   @property
