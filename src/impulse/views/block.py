@@ -30,6 +30,13 @@ class EventsLayout(TimedLayout, core.ModelListLayout):
   @property
   def events(self):
     return(self._model_list)
+  # suggest a size for the events
+  def sizeHint(self):
+    return(self.minimumSize())
+  def minimumSize(self):
+    return(QSize(
+      self.view_scale.x_of_time(self.events.duration + (2 * self._margin)),
+      len(self.pitches) * self.view_scale.pitch_height))
   # the list of pitches to display can be sourced from the event list 
   #  or can be set externally, as when displayed as part of a track
   @property
@@ -98,6 +105,37 @@ class BlockPlaceholderLayout(TimedLayout, core.ListLayout):
     self.repeat_view.setGeometry(QRect(
       x - self.REPEAT_WIDTH, r.y(), self.REPEAT_WIDTH, r.height()))
 
+# do layout of the multiple repeats in a block
+class BlockRepeatLayout(TimedLayout, core.ListLayout):
+  def __init__(self, block, view_scale, margin=None):
+    core.ListLayout.__init__(self)
+    TimedLayout.__init__(self, view_scale, margin)
+    self._block = block
+    self.block.add_observer(self.update_repeats)
+    self.update_repeats()
+  @property
+  def block(self):
+    return(self._block)
+  # make sure we have the right number of repeats to cover the block
+  def update_repeats(self):
+    repeats = int(math.ceil(self.block.duration / self.block.events.duration))
+    while(len(self._items) < repeats):
+      self.addLayout(EventsLayout(self.block.events, 
+        view_scale=self.view_scale, margin=0))
+    while(len(self._items) > repeats):
+      self.takeAt(self.count() - 1)
+  def setGeometry(self, rect):
+    QLayout.setGeometry(self, rect)
+    self.do_layout()
+  def do_layout(self):
+    r = self.geometry()
+    time = 0.0
+    duration = self.block.events.duration
+    for item in self._items:
+      item.setGeometry(QRect(self.x_of_time(time), r.y(), 
+        self.view_scale.x_of_time(duration), r.height()))
+      time += duration
+
 # represent a block of events on a track
 class BlockView(core.Selectable, core.ModelView):
   def __init__(self, block, view_scale, track=None, parent=None):
@@ -108,14 +146,13 @@ class BlockView(core.Selectable, core.ModelView):
     # make a master layout
     self.layout = core.OverlayLayout()
     # add a layout for the block's events
-    self.events_layout = EventsLayout(block.events, 
+    self.repeat_layout = BlockRepeatLayout(self.block, 
       view_scale=self.view_scale)
-    self.events_layout.set_pitch_source(self.track)
-    self.layout.addItem(self.events_layout)
+    self.layout.addLayout(self.repeat_layout)
     # add a layout for the block's start, end, and repeat length
     self.placeholder_layout = BlockPlaceholderLayout(self.block, 
       view_scale=self.view_scale)
-    self.layout.addItem(self.placeholder_layout)
+    self.layout.addLayout(self.placeholder_layout)
     # activate the layout
     self.setLayout(self.layout)
     

@@ -86,6 +86,10 @@ class ListLayout(QLayout):
       return(item)
     else:
       return(None)
+  # allow layouts to be added as well as widgets
+  def addLayout(self, layout):
+    self.addChildLayout(layout)
+    self.addItem(layout)
 
 # make a layout class that overlays layouts or widgets on top of eachother
 class OverlayLayout(ListLayout):
