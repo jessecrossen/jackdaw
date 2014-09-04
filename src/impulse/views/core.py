@@ -201,6 +201,8 @@ class ListLayout(QLayout):
     self._items = list()
   def addItem(self, item):
     self._items.append(item)
+    if (isinstance(item, QLayout)):
+      self.addChildLayout(item)
     self.invalidate()
   def count(self):
     return(len(self._items))
@@ -212,15 +214,17 @@ class ListLayout(QLayout):
   def takeAt(self, index):
     if ((index >= 0) and (index < len(self._items))):
       item = self._items.pop(index)
+      # remove the parent of child layouts
+      if (isinstance(item, QLayout)):
+        item.setParent(None)
       self.invalidate()
       return(item)
     else:
       return(None)
   # allow layouts to be added as well as widgets
   def addLayout(self, layout):
-    self.addChildLayout(layout)
     self.addItem(layout)
-  # destroy the layout and all widget in it
+  # destroy the layout and all widgets in it
   def destroy(self):
     while(self.count()):
       child = self.takeAt(0)
