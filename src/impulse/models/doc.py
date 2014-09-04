@@ -91,7 +91,7 @@ class Model(Selectable, observable.Object):
   # invalidate cached data when the model changes
   def on_change(self):
     self.invalidate()
-    observable.Observable.on_change(self)
+    observable.Object.on_change(self)
   # override to invalidate cached data
   def invalidate(self):
     pass
@@ -122,7 +122,7 @@ class ModelList(Selectable, observable.List):
   # invalidate cached data when the model changes
   def on_change(self):
     self.invalidate()
-    observable.Observable.on_change(self)
+    observable.Object.on_change(self)
   # override to invalidate cached data
   def invalidate(self):
     pass
@@ -281,10 +281,19 @@ class BlockStart(Model):
       (self._block.time + self._block.events.duration) - value)
     if (value != self._block.events.duration):
       delta = self._block.events.duration - duration
+      min_event_time = None
       for event in self._block.events:
-        event.time -= delta
-      self._block.events.duration = duration
-      self._block.time += delta
+        if ((min_event_time is None) or (event.time < min_event_time)):
+          min_event_time = event.time
+      if ((delta > 0) and (delta > min_event_time)):
+        delta = min_event_time
+      if (delta != 0.0):
+        for event in self._block.events:
+          event.time -= delta
+        self._block.events.duration -= delta
+        self._block.time += delta
+        self._block.duration -= delta
+        
 # a placeholder model for manipulating the duration of a block
 class BlockEnd(Model):
   def __init__(self, block):
@@ -306,12 +315,12 @@ class BlockRepeat(Model):
     self._block = block
   @property
   def time(self):
-    return(self._block.time + self._block.events.duration)
+    return(self._block.events.duration)
   @time.setter
   def time(self, value):
-    duration = max(0.0, value - self._block.time)
-    if (duration != self._block.events.duratio):
-      self._block.events.duration = duration
+    value = max(0.0, value)
+    if (value != self._block.events.duration):
+      self._block.events.duration = value
       self.on_change()
 
 # represents a placement of an event list on a timeline with its own duration
@@ -717,18 +726,18 @@ class PatchBay(observable.Object):
       else:
         added.add(c)
     for (from_what, to_what) in removed:
-      self.disconnect(from_what, to_what)
+      self.unpatch(from_what, to_what)
     for (from_what, to_what) in added:
-      self.connect(from_what, to_what)
+      self.patch(from_what, to_what)
   # make a connection between two objects
-  def connect(self, from_what, to_what):
+  def patch(self, from_what, to_what):
     connection = (from_what, to_what)
     if (connection not in self._connections):
       self._connections.add((from_what, to_what))
       self._update_maps()
       self.on_change()
   # break a connection between two objects
-  def disconnect(self, from_what, to_what):
+  def unpatch(self, from_what, to_what):
     connection = (from_what, to_what)
     if (connection in self._connections):
       self._connections.remove(connection)
@@ -872,13 +881,13 @@ class Transport(observable.Object):
     # start the update timer
     if (self._run_dispatcher is None):
       self._run_dispatcher = QAbstractEventDispatcher.instance()
-      self._run_dispatcher.awake.connect(self.on_running)
+      self._run_dispatcher.awake.patch(self.on_running)
   # stop the time moving forward
   def _stop(self):
     self._time = self.time
     self._start_time = None
     if (self._run_dispatcher is not None):
-      self._run_dispatcher.awake.disconnect(self.on_running)
+      self._run_dispatcher.awake.unpatch(self.on_running)
       self._run_dispatcher = None
   def on_running(self):
     current_time = self.time
@@ -1049,12 +1058,12 @@ class Document(Model):
   def on_input_change(self):
     for adapter in self.input_patch_bay.from_items:
       if (not adapter.is_connected):
-        adapter.connect()
+        adapter.patch()
   # connect output adapters when there's something routed to them
   def on_output_change(self):
     for adapter in self.output_patch_bay.to_items:
       if (not adapter.is_connected):
-        adapter.connect()
+        adapter.patch()
   # save the document to a file
   def save(self):
     output_stream = open(self.path, 'w')

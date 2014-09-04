@@ -9,13 +9,16 @@ from core import ModelView, ModelListLayout, ViewManager
 from ..models.doc import ViewScale
 import block
 
-# do layout of list items by time
+# do layout of blocks by time
 class TrackLayout(ModelListLayout):
   def __init__(self, track, view_scale, margin=1):
     ModelListLayout.__init__(self, track, view_class=block.BlockView)
     self._margin = margin
     self.view_scale = view_scale
-    self.view_scale.add_observer(self.do_layout)
+    self.view_scale.add_observer(self.invalidate)
+  def destroy(self):
+    self.remove_observer(self.invalidate)
+    ModelListLayout.destroy(self)
   @property
   def track(self):
     return(self._model_list)
@@ -50,7 +53,6 @@ class TrackView(ModelView):
     if (view_scale is None):
       view_scale = ViewScale()
     self.view_scale = view_scale
-    self.view_scale.add_observer(self.on_change)
     # add a layout for the blocks
     self.layout = TrackLayout(
       track, view_scale=self.view_scale)

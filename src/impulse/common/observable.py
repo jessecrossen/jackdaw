@@ -1,99 +1,102 @@
 import unittest
 
-# a mixin to provide basic observer functionality
-class Observable(object):
-  # add/remove a callback to be called when the object changes
-  def add_observer(self, callback):
-    try:
-      self._observers.add(callback)
-    except AttributeError:
-      self._observers = set((callback,))
-  def remove_observer(self, callback):
-    try:
-      self._observers.remove(callback)
-    except AttributeError:
-      self._observers = set()
-    except KeyError:
-      pass
-  # call this to notify all listeners that the object changed
-  def on_change(self):
-    try:
-      observers = self._observers
-    except AttributeError:
-      observers = self._observers = set()
-    observers = set(observers)
-    for callback in observers:
-      callback()
+from PySide.QtCore import QObject, Signal
 
 # make an object which can report changes to itself
-class Object(Observable, object):
-  pass
+class Object(QObject):
+  changed = Signal()
+  def __init__(self):
+    QObject.__init__(self)
+  def add_observer(self, slot):
+    self.changed.connect(slot)
+  def remove_observer(self, slot):
+    self.changed.disconnect(slot)
+  def on_change(self):
+    self.changed.emit()
 
 # make a list which can report changes to itself or its members
-class List(Observable, list):
+class List(Object):
+  def __init__(self, seq=()):
+    Object.__init__(self)
+    self._items = list(seq)
+    for item in self._items:
+      self._add_item(item)
   # make this hashable so it can receive callbacks
   def __hash__(self):
     return(id(self))
+  # proxy read-only list methods
+  def __len__(self):
+    return(len(self._items))
+  def __getitem__(self, key):
+    return(self._items.__getitem__(key))
+  def __getslice__(self, i, j):
+    return(self._items.__getslice__(i, j))
+  def __contains__(self, x):
+    return(self._items.__contains__(x))
+  def __iter__(self):
+    return(self._items.__iter__())
+  def count(self, x):
+    return(self._items.count(x))
   # proxy list methods to detect changes
   def __setitem__(self, key, item):
     try:
-      old_item = list.__getitem__(self, key)
+      old_item = self._items.__getitem__(key)
       self._remove_item(old_item)
     except KeyError:
       pass
-    list.__setitem__(self, key, item)
+    self._items.__setitem__(key, item)
     self._add_item(item)
     self.on_change()
   def __setslice__(self, i, j, new_items):
-    old_slice = list.__getslice__(self, i, j)
+    old_slice = self._items.__getslice__(i, j)
     if (old_slice):
       for item in old_slice:
         self._remove_item(item)
-    list.__setslice__(self, i, j, new_items)
+    self._items.__setslice__(i, j, new_items)
     for item in new_items:
       self._add_item(item)
     self.on_change()
   def __delitem__(self, key):
-    self._remove_item(list.__getitem__(self, key))
-    list.__delitem__(self, key)
+    self._remove_item(self._items.__getitem__(key))
+    self._items.__delitem__(key)
     self.on_change()
   def __delslice__(self, i, j):
-    old_slice = list.__getslice__(self, i, j)
+    old_slice = self._items.__getslice__(i, j)
     if (old_slice):
       for item in old_slice:
         self._remove_item(item)
-    list.__delslice__(self, i, j)
+    self._items.__delslice__(i, j)
     self.on_change()
   def append(self, item):
-    list.append(self, item)
+    self._items.append(item)
     self._add_item(item)
     self.on_change()
   def pop(self, i=None):
     if (i == None):
-      item = list.pop(self)
+      item = self._items.pop()
     else:
-      item = list.pop(self, i)
+      item = self._items.pop(i)
     self._remove_item(item)
     self.on_change()
     return(item)
   def extend (self, new_items):
     for item in new_items:
       self._add_item(item)
-    list.extend(self, new_items)
+    self._items.extend(new_items)
     self.on_change()
   def insert (self, i, item):
-    list.insert(self, i, item)
+    self._items.insert(i, item)
     self._add_item(item)
     self.on_change()
   def remove(self, item):
-    list.remove(self, item)
+    self._items.remove(item)
     self._remove_item(item)
     self.on_change()
   def reverse(self):
-    list.reverse(self)
+    self._items.reverse()
     self.on_change()
   def sort(self, **kwargs):
-    list.sort(self, **kwargs)
+    self._items.sort(**kwargs)
     self.on_change()
   # handle models being added and removed from the list
   def _add_item(self, item):
@@ -105,46 +108,47 @@ class List(Observable, list):
       item.remove_observer(self.on_change)
     except AttributeError: pass
 
-# make an observable list that exposes the members of another list 
-#  after passing them through a series of filtering functions
-class FilteredList(Observable, list):
-  # the class must be initialized with a source list whose contents to filter
-  def __init__(self, source, filters=()):
-    list.__init__(self)
-    self._source = source
-    self._source.add_observer(self.update)
-    self._filters = filters
-  # make this hashable so it can receive callbacks
-  def __hash__(self):
-    return(id(self))
-  # expose the source list as a read-only property
-  @property
-  def source(self):
-    return(self._source)
-  # expose the list of filters as a property, which can be set to a tuple
-  #  containing a series of filter functions, each of which accepts a sequence
-  #  and returns a filtered sequence
-  @property
-  def filters(self):
-    return(self._filters)
-  @filters.setter
-  def filters(self, sequence):
-    self._filters = tuple(sequence)
-    self.update()
-  # update the contents of the list based on changes 
-  #  to the source list or filters
-  def update(self):
-    # apply filters
-    contents = self._source
-    for func in self._filters:
-      contents = func(contents)
-    # replace contents and report a change
-    self[0:] = contents
-    self.on_change()
+## make an observable list that exposes the members of another list 
+##  after passing them through a series of filtering functions
+#class FilteredList(Object):
+#  # the class must be initialized with a source list whose contents to filter
+#  def __init__(self, source, filters=()):
+#    Object.__init__(self)
+#    self._source = source
+#    self._source.add_observer(self.update)
+#    self._filters = filters
+#  # make this hashable so it can receive callbacks
+#  def __hash__(self):
+#    return(id(self))
+#  # expose the source list as a read-only property
+#  @property
+#  def source(self):
+#    return(self._source)
+#  # expose the list of filters as a property, which can be set to a tuple
+#  #  containing a series of filter functions, each of which accepts a sequence
+#  #  and returns a filtered sequence
+#  @property
+#  def filters(self):
+#    return(self._filters)
+#  @filters.setter
+#  def filters(self, sequence):
+#    self._filters = tuple(sequence)
+#    self.update()
+#  # update the contents of the list based on changes 
+#  #  to the source list or filters
+#  def update(self):
+#    # apply filters
+#    contents = self._source
+#    for func in self._filters:
+#      contents = func(contents)
+#    # replace contents and report a change
+#    self[0:] = contents
+#    self.on_change()
 
 # make an object that exposes observable attributes for another object
-class AttributeProxy(Observable, object):
+class AttributeProxy(Object):
   def __init__(self, target, from_name=None, to_name=None):
+    Object.__init__(self)
     self._target = target
     self._attribute_map = dict()
     self.proxy_attribute(from_name, to_name)
@@ -195,14 +199,6 @@ class TestObject(unittest.TestCase):
     self.obj.remove_observer(self.on_change)
     self.obj.on_change()
     self.assertEqual(self.changes, 1)
-  def test_double_listener(self):
-    self.obj.add_observer(self.on_change)
-    self.obj.add_observer(self.on_change)
-    self.obj.on_change()
-    self.assertEqual(self.changes, 1)
-    self.obj.remove_observer(self.on_change)
-    self.obj.on_change()
-    self.assertEqual(self.changes, 1)
     
 class TestList(unittest.TestCase):
   def setUp(self):
@@ -220,14 +216,6 @@ class TestList(unittest.TestCase):
     self.list.on_change()
     self.assertEqual(self.changes, 0)
   def test_listener(self):
-    self.list.add_observer(self.on_change)
-    self.list.on_change()
-    self.assertEqual(self.changes, 1)
-    self.list.remove_observer(self.on_change)
-    self.list.on_change()
-    self.assertEqual(self.changes, 1)
-  def test_double_listener(self):
-    self.list.add_observer(self.on_change)
     self.list.add_observer(self.on_change)
     self.list.on_change()
     self.assertEqual(self.changes, 1)
@@ -354,39 +342,6 @@ class TestList(unittest.TestCase):
     self.itemA.on_change()
     self.itemB.on_change()
     self.assertEqual(self.changes, 3)
-
-class TestFilteredList(unittest.TestCase):
-  def setUp(self):
-    self.itemA = Object()
-    self.itemB = Object()
-    self.list = List()
-    self.flist = FilteredList(self.list)
-    self.changes = 0
-  def on_change(self):
-    self.changes += 1
-  def test_unfiltered(self):
-    self.flist.add_observer(self.on_change)
-    self.list.append(self.itemA)
-    self.assertEqual(self.changes, 1)
-    self.assertIn(self.itemA, self.flist)
-    self.itemA.on_change()
-    self.assertEqual(self.changes, 2)
-  def test_filtered(self):
-    self.flist.add_observer(self.on_change)
-    self.flist.filters = [ lambda s: (s[:-1]) ]
-    self.assertEqual(self.changes, 1)
-    self.list.extend((self.itemA, self.itemB))
-    self.assertEqual(self.changes, 2)
-    self.assertIn(self.itemA, self.flist)
-    self.assertNotIn(self.itemB, self.flist)
-    self.itemA.on_change()
-    self.assertEqual(self.changes, 3)
-    self.itemB.on_change()
-    self.assertEqual(self.changes, 4)
-    self.list.remove(self.itemB)
-    self.assertNotIn(self.itemA, self.flist)
-    self.assertNotIn(self.itemB, self.flist)
-    self.assertEqual(self.changes, 5)
 
 # run tests if this script is invoked by itself
 if __name__ == '__main__':

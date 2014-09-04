@@ -14,6 +14,8 @@ class TimedLayout(object):
     self.view_scale = view_scale
     self.view_scale.add_observer(self.invalidate)
     self._margin = margin if (margin is not None) else 1
+  def destroy(self):
+    self.view_scale.remove_observer(self.invalidate)
   # get the x coordinate for a given time
   def x_of_time(self, time):
     try:
@@ -23,10 +25,16 @@ class TimedLayout(object):
 
 # do layout for events in a block
 class EventsLayout(TimedLayout, core.ModelListLayout):
-  def __init__(self, events, view_scale, margin=None):
+  def __init__(self, events, view_scale, pitch_source=None, margin=None):
     core.ModelListLayout.__init__(self, events)
     TimedLayout.__init__(self, view_scale, margin)
     self._pitch_source = None
+    self.set_pitch_source(pitch_source)
+  def destroy(self):  
+    if (self._pitch_source):
+      self._pitch_source.remove_observer(self.on_change)
+    core.ModelListLayout.destroy(self)
+    TimedLayout.destroy(self)
   @property
   def events(self):
     return(self._model_list)
@@ -92,6 +100,10 @@ class BlockPlaceholderLayout(TimedLayout, core.ListLayout):
     self.addWidget(self.repeat_view)
     self.addWidget(self.start_view)
     self.addWidget(self.end_view)
+  def destroy(self):
+    self.repeat.remove_observer(self.invalidate)
+    core.ListLayout.destroy(self)
+    TimedLayout.destroy(self)
   def setGeometry(self, rect):
     QLayout.setGeometry(self, rect)
     self.do_layout()
@@ -100,30 +112,40 @@ class BlockPlaceholderLayout(TimedLayout, core.ListLayout):
     self.start_view.setGeometry(QRect(
       r.x(), r.y(), self.CAP_WIDTH, r.height()))
     self.end_view.setGeometry(QRect(
-      r.right() - self.CAP_WIDTH, r.y(), self.CAP_WIDTH, r.height()))
+      r.right() - self.CAP_WIDTH + 1, r.y(), self.CAP_WIDTH, r.height()))
     x = self.x_of_time(self.repeat_view.model.time) + 1
     self.repeat_view.setGeometry(QRect(
       x - self.REPEAT_WIDTH, r.y(), self.REPEAT_WIDTH, r.height()))
+    self.repeat_view.setVisible(x < r.width() - 1)
 
 # do layout of the multiple repeats in a block
 class BlockRepeatLayout(TimedLayout, core.ListLayout):
-  def __init__(self, block, view_scale, margin=None):
+  def __init__(self, block, view_scale, track=None, margin=None):
     core.ListLayout.__init__(self)
     TimedLayout.__init__(self, view_scale, margin)
     self._block = block
+    self._track = track
     self.block.add_observer(self.update_repeats)
     self.update_repeats()
+  def destroy(self):
+    self.block.remove_observer(self.update_repeats)
+    core.ListLayout.destroy(self)
+    TimedLayout.destroy(self)
   @property
   def block(self):
     return(self._block)
   # make sure we have the right number of repeats to cover the block
   def update_repeats(self):
-    repeats = int(math.ceil(self.block.duration / self.block.events.duration))
+    repeats = max(1, int(
+      math.ceil(self.block.duration / self.block.events.duration)))
     while(len(self._items) < repeats):
       self.addLayout(EventsLayout(self.block.events, 
-        view_scale=self.view_scale, margin=0))
-    while(len(self._items) > repeats):
-      self.takeAt(self.count() - 1)
+        view_scale=self.view_scale, 
+        pitch_source=self._track,
+        margin=0))
+    while(len(self._items) > repeats + 1):
+      removed = self.takeAt(self.count() - 1)
+      removed.destroy()
   def setGeometry(self, rect):
     QLayout.setGeometry(self, rect)
     self.do_layout()
@@ -137,9 +159,10 @@ class BlockRepeatLayout(TimedLayout, core.ListLayout):
       time += duration
 
 # represent a block of events on a track
-class BlockView(core.Selectable, core.ModelView):
+class BlockView(core.TimeDraggable, core.ModelView):
   def __init__(self, block, view_scale, track=None, parent=None):
     core.ModelView.__init__(self, block, parent)
+    core.TimeDraggable.__init__(self)
     self.view_scale = view_scale
     self.view_scale.add_observer(self.on_change)
     self._track = track
@@ -147,6 +170,7 @@ class BlockView(core.Selectable, core.ModelView):
     self.layout = core.OverlayLayout()
     # add a layout for the block's events
     self.repeat_layout = BlockRepeatLayout(self.block, 
+      track=track,
       view_scale=self.view_scale)
     self.layout.addLayout(self.repeat_layout)
     # add a layout for the block's start, end, and repeat length
@@ -155,7 +179,9 @@ class BlockView(core.Selectable, core.ModelView):
     self.layout.addLayout(self.placeholder_layout)
     # activate the layout
     self.setLayout(self.layout)
-    
+  def destroy(self):
+    self.view_scale.remove_observer(self.on_change)
+    core.ModelView.destroy(self)
   @property
   def block(self):
     return(self._model)
@@ -170,10 +196,12 @@ class BlockView(core.Selectable, core.ModelView):
       qp.drawRect(0, 0, width, height)
 
 # represent a note event in a block
-class NoteView(core.Selectable, core.ModelView):
+class NoteView(core.TimeDraggable, core.PitchDraggable, core.ModelView):
   RADIUS = 2
   def __init__(self, note, parent=None):
     core.ModelView.__init__(self, note, parent)
+    core.TimeDraggable.__init__(self)
+    core.PitchDraggable.__init__(self)
   @property
   def note(self):
     return(self._model)
@@ -192,9 +220,10 @@ class NoteView(core.Selectable, core.ModelView):
     qp.drawRoundedRect(0, 0, width, height, self.RADIUS, self.RADIUS)
 
 # represent the start of a block
-class BlockStartView(core.Selectable, core.ModelView):
+class BlockStartView(core.TimeDraggable, core.ModelView):
   WIDTH = 6
   def __init__(self, model, parent=None):
+    core.TimeDraggable.__init__(self)
     core.ModelView.__init__(self, model, parent)
   def redraw(self, qp, width, height):
     qp.setBrush(self.brush())
@@ -206,9 +235,10 @@ class BlockStartView(core.Selectable, core.ModelView):
       QPoint(w, height), QPoint(0, height)
     ]))
 # represent the end of a block
-class BlockEndView(core.Selectable, core.ModelView):
+class BlockEndView(core.TimeDraggable, core.ModelView):
   WIDTH = 6
   def __init__(self, model, parent=None):
+    core.TimeDraggable.__init__(self)
     core.ModelView.__init__(self, model, parent)
   def redraw(self, qp, width, height):
     qp.setBrush(self.brush())
@@ -221,8 +251,9 @@ class BlockEndView(core.Selectable, core.ModelView):
       QPoint(width - 2, 2), QPoint(x, 1)
     ]))
 # represent the repeat length of a block
-class BlockRepeatView(core.Selectable, core.ModelView):
+class BlockRepeatView(core.TimeDraggable, core.ModelView):
   def __init__(self, model, parent=None):
+    core.TimeDraggable.__init__(self)
     core.ModelView.__init__(self, model, parent)
   def redraw(self, qp, width, height):
     qp.setBrush(self.brush())
