@@ -75,9 +75,6 @@ class TrackListView(ModelView):
   @property
   def track(self):
     return(self._model)
-  # clear the selection when clicked
-  def mouseReleaseEvent(self, event):
-    doc.Selection.deselect_all()
 
 # do layout of blocks by time
 class TrackLayout(ModelListLayout):

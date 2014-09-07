@@ -3,6 +3,7 @@ from PySide.QtGui import *
 
 import core
 import track
+from ..models import doc
 #import device
 #from ..midi import inputs, outputs, sampler
 
@@ -20,6 +21,11 @@ class DocumentView(QWidget):
   @property
   def document(self):
     return(self._document)
+    
+  # clear the selection when clicked
+  def mouseReleaseEvent(self, event):
+    if (event.modifiers() == 0):
+      doc.Selection.deselect_all()
     
   # control track list zoom
   ZOOMS = (8, 16, 24, 32, 48, 64, 96, 128)
