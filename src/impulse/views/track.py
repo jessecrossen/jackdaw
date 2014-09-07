@@ -50,7 +50,8 @@ class TrackListLayout(QGridLayout):
   # set the model to place at the given row index
   def set_row_model(self, row, track):
     self.clear_row(row)
-    self.addWidget(TrackView(track, view_scale=self.view_scale), row, 0)
+    self.addWidget(PitchKeyView(track, view_scale=self.view_scale), row, 0)
+    self.addWidget(TrackView(track, view_scale=self.view_scale), row, 1)
   # remove all views at the given row
   def clear_row(self, row):
     rows = self.rowCount()
@@ -75,10 +76,6 @@ class TrackListView(ModelView):
   @property
   def track(self):
     return(self._model)
-  # make the background light like a text widget
-  def redraw(self, qp, width, height):
-    qp.setBrush(QBrush(self.palette.color(QPalette.Normal, QPalette.Base)))
-    qp.drawRect(0, 0, width, height)
 
 # do layout of blocks by time
 class TrackLayout(ModelListLayout):
@@ -128,10 +125,59 @@ class TrackView(ModelView):
     self.layout = TrackLayout(
       track, view_scale=self.view_scale)
     self.setLayout(self.layout)
-  
   @property
   def track(self):
     return(self._model)
+
+# do layout for the pitches of a track
+class PitchKeyLayout(QVBoxLayout):
+  def __init__(self, track, view_scale, parent=None):
+    QVBoxLayout.__init__(self, parent)
+    self.view_scale = view_scale
+    # attach to the track
+    self._track = track
+    self._track.add_observer(self.on_change)
+    self.setSpacing(0)
+    self.setContentsMargins(0, 0, 0, 0)
+    self.update_views()
+  @property
+  def track(self):
+    return(self._track)
+  def on_change(self):
+    self.update_views()
+  def update_views(self):
+    if (not self._track): return
+    i = 0
+    for pitch in reversed(self._track.pitches):
+      item = self.itemAt(i)
+      if (item is None):
+        label = QLabel()
+        label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        self.addWidget(label)
+      else:
+        label = item.widget()
+      label.setText(self._track.name_of_pitch(pitch))
+      label.setFixedHeight(self.view_scale.pitch_height)
+      i += 1
+    count = self.count()
+    unused = list()
+    if (i < count):
+      for j in range(i, count):
+        unused.append(self.itemAt(j).widget())
+    for widget in unused:
+       self.removeWidget(widget)
+       widget.setParent(None)
+# show names for the pitches on a track
+class PitchKeyView(ModelView):
+  def __init__(self, track, view_scale=None, parent=None):
+    ModelView.__init__(self, model=track, parent=parent)
+    if (view_scale is None):
+      view_scale = ViewScale()
+    self.view_scale = view_scale
+    # add a layout for the pitches
+    self.layout = PitchKeyLayout(
+      track, view_scale=self.view_scale)
+    self.setLayout(self.layout)
 
 ## display pitch names for a track
 #class PitchKeyView(LayoutView):

@@ -162,7 +162,7 @@ class TimeDraggable(Selectable):
         if (hasattr(model, 'events')):
           model = model.events
       except AttributeError: pass
-      else:      
+      else:
         if ((hasattr(model, 'divisions')) and 
             (hasattr(model, 'duration')) and 
             (model.divisions > 1)):
@@ -233,7 +233,7 @@ class PitchDraggable(Selectable):
       node = node.parentWidget()
   def on_drag_y(self, event, delta_y):
     if (not self._drag_view_scale): return
-    sign = 1 if delta_y > 0 else -1
+    sign = -1 if delta_y > 0 else 1
     delta_pitch = sign * int(
       math.floor(abs(delta_y) / self._drag_view_scale.pitch_height))
     for model in doc.Selection.models:

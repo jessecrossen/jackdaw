@@ -196,7 +196,9 @@ class BlockView(core.TimeDraggable, core.ModelView):
     if (selected):
       qp.setBrush(self.palette.brush(
         QPalette.Normal, QPalette.Highlight))
-      qp.drawRect(0, 0, width, height)
+    else:
+      qp.setBrush(QBrush(self.palette.color(QPalette.Normal, QPalette.Base)))
+    qp.drawRect(0, 0, width, height)
     # draw lines for divisions, if there are any
     color = self.palette.color(QPalette.Normal, QPalette.WindowText)
     color.setAlphaF(0.05)

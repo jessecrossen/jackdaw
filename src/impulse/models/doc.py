@@ -159,6 +159,7 @@ class Note(Model):
     return(self._time)
   @time.setter
   def time(self, value):
+    value = max(0.0, value)
     if (self._time != value):
       self._time = value
       self.on_change()
@@ -363,6 +364,7 @@ class Block(Model):
     return(self._time)
   @time.setter
   def time(self, value):
+    value = max(0.0, value)
     if (self._time != value):
       self._time = value
       self.on_change()
@@ -518,7 +520,8 @@ class Track(ModelList):
 
   # names of the cyclical pitch classes starting at MIDI note 0
   PITCH_CLASS_NAMES = ( 
-    'C', 'D♭', 'D', 'E♭', 'E', 'F', 'F♯', 'G', 'A♭', 'A', 'B♭', 'B' )
+    u'C', u'D♭', u'D', u'E♭', u'E', u'F', 
+    u'F♯', u'G', u'A♭', u'A', u'B♭', u'B' )
 
   def __init__(self, blocks=(), duration=60, 
                      solo=False, mute=False, arm=False,
