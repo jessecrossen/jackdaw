@@ -52,6 +52,7 @@ class TrackListLayout(QGridLayout):
     self.clear_row(row)
     self.addWidget(PitchKeyView(track, view_scale=self.view_scale), row, 0)
     self.addWidget(TrackView(track, view_scale=self.view_scale), row, 1)
+    self.setColumnStretch(1, 1)
   # remove all views at the given row
   def clear_row(self, row):
     rows = self.rowCount()
@@ -129,6 +130,51 @@ class TrackView(ModelView):
   def track(self):
     return(self._model)
 
+# show a label for a pitch on the track
+class PitchNameView(QLineEdit):
+  def __init__(self, track, pitch, parent=None):
+    QLineEdit.__init__(self, parent)
+    # link to the track and index
+    self._track = track
+    self._pitch = None
+    self.pitch = pitch
+    # draw with no frame and a transparent background
+    self.setFrame(False)
+    p = self.palette()
+    p.setBrush(QPalette.Base, Qt.NoBrush)
+    self.setPalette(p)
+    self.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+    self.textEdited.connect(self.on_edited)
+    self.editingFinished.connect(self.on_edit_finished)
+  @property
+  def pitch(self):
+    return(self._pitch)
+  @pitch.setter
+  def pitch(self, value):
+    if (value != self._pitch):
+      self._pitch = value
+      self._update_name()
+  def _update_name(self):
+    self.setText(self._track.name_of_pitch(self._pitch))
+  def on_edited(self, text):
+    if (len(text) > 0):
+      self._track.pitch_names[self._pitch] = text
+    else:
+      try:
+        del self._track.pitch_names[self._pitch]
+      except KeyError: pass
+    self._track.on_change()
+    self.updateGeometry()
+  def on_edit_finished(self):
+    self._update_name()
+  def sizeHint(self):
+    return(self.minimumSizeHint())
+  def minimumSizeHint(self):
+    s = QLineEdit.sizeHint(self)
+    fm = QFontMetrics(self.font())
+    s.setWidth(fm.width('  '+self.text()))
+    return(s)
+
 # do layout for the pitches of a track
 class PitchKeyLayout(QVBoxLayout):
   def __init__(self, track, view_scale, parent=None):
@@ -148,16 +194,19 @@ class PitchKeyLayout(QVBoxLayout):
   def update_views(self):
     if (not self._track): return
     i = 0
+    last = None
     for pitch in reversed(self._track.pitches):
       item = self.itemAt(i)
       if (item is None):
-        label = QLabel()
-        label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        self.addWidget(label)
+        name_view = PitchNameView(self._track, pitch)
+        self.addWidget(name_view)
       else:
-        label = item.widget()
-      label.setText(self._track.name_of_pitch(pitch))
-      label.setFixedHeight(self.view_scale.pitch_height)
+        name_view = item.widget()
+      name_view.pitch = pitch
+      name_view.setFixedHeight(self.view_scale.pitch_height)
+      if ((self.parentWidget() is not None) and (last is not None)):
+        QWidget.setTabOrder(last, name_view)
+      last = name_view
       i += 1
     count = self.count()
     unused = list()
