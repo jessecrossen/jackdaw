@@ -152,6 +152,23 @@ class TimeDraggable(Selectable):
         return(node.view_scale)
       node = node.parentWidget()
     return(None)
+  # get the interval of time to jump when shift is pressed
+  def _get_time_jump(self, delta_time):
+    sign = 1.0 if delta_time >= 0 else -1.0
+    node = self
+    while(node):
+      try:
+        model = node.model
+        if (hasattr(model, 'events')):
+          model = model.events
+      except AttributeError: pass
+      else:      
+        if ((hasattr(model, 'divisions')) and 
+            (hasattr(model, 'duration')) and 
+            (model.divisions > 1)):
+          return(sign * (float(model.duration) / float(model.divisions)))
+      node = node.parent()
+    return(delta_time * 10.0)
   def on_drag_start_x(self, event):  
     # select the model if it isn't selected
     if (not self.model.selected):
@@ -185,7 +202,7 @@ class TimeDraggable(Selectable):
       delta_time *= -1
     # make a bigger jump when the shift key is down
     if (event.modifiers() == Qt.ShiftModifier):
-      delta_time *= 10.0
+      delta_time = self._get_time_jump(delta_time)
     # apply to the selection
     for model in doc.Selection.models:
       model.time += delta_time

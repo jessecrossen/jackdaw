@@ -60,7 +60,7 @@ class TrackListLayout(QGridLayout):
       item = self.itemAtPosition(row, col)
       if (item is not None):
         self.removeItem(item)
-
+  
 # make a view that displays a list of tracks
 class TrackListView(ModelView):
   def __init__(self, tracks, view_scale=None, parent=None):
@@ -75,6 +75,10 @@ class TrackListView(ModelView):
   @property
   def track(self):
     return(self._model)
+  # make the background light like a text widget
+  def redraw(self, qp, width, height):
+    qp.setBrush(QBrush(self.palette.color(QPalette.Normal, QPalette.Base)))
+    qp.drawRect(0, 0, width, height)
 
 # do layout of blocks by time
 class TrackLayout(ModelListLayout):
@@ -128,11 +132,6 @@ class TrackView(ModelView):
   @property
   def track(self):
     return(self._model)
-
-  def redraw(self, qp, width, height):
-    pen = QPen(QColor(20, 20, 20), 1, Qt.SolidLine)
-    qp.setPen(pen)
-    qp.drawLine(0, 0, width, height)
 
 ## display pitch names for a track
 #class PitchKeyView(LayoutView):

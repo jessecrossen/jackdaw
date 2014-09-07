@@ -160,22 +160,25 @@ class BlockRepeatLayout(TimedLayout, core.ListLayout):
 
 # represent a block of events on a track
 class BlockView(core.TimeDraggable, core.ModelView):
-  def __init__(self, block, view_scale, track=None, parent=None):
+  def __init__(self, block, view_scale, track=None, parent=None, margin=1):
     core.ModelView.__init__(self, block, parent)
     core.TimeDraggable.__init__(self)
     self.view_scale = view_scale
     self.view_scale.add_observer(self.on_change)
     self._track = track
+    self._margin = margin
     # make a master layout
     self.layout = core.OverlayLayout()
     # add a layout for the block's events
     self.repeat_layout = BlockRepeatLayout(self.block, 
       track=track,
-      view_scale=self.view_scale)
+      view_scale=self.view_scale,
+      margin=self._margin)
     self.layout.addLayout(self.repeat_layout)
     # add a layout for the block's start, end, and repeat length
     self.placeholder_layout = BlockPlaceholderLayout(self.block, 
-      view_scale=self.view_scale)
+      view_scale=self.view_scale,
+      margin=self._margin)
     self.layout.addLayout(self.placeholder_layout)
     # activate the layout
     self.setLayout(self.layout)
@@ -194,6 +197,20 @@ class BlockView(core.TimeDraggable, core.ModelView):
       qp.setBrush(self.palette.brush(
         QPalette.Normal, QPalette.Highlight))
       qp.drawRect(0, 0, width, height)
+    # draw lines for divisions, if there are any
+    color = self.palette.color(QPalette.Normal, QPalette.WindowText)
+    color.setAlphaF(0.05)
+    qp.setPen(QPen(color))
+    events = self.block.events
+    if (events.divisions > 1):
+      div_time = float(events.duration) / float(events.divisions)
+      # if the space between divisions is too small, don't show them
+      if (self.view_scale.x_of_time(div_time) >= 4):
+        t = 0.0
+        while ((div_time > 0) and (t < self.block.duration)):
+          t += div_time
+          x = self._margin + round(self.view_scale.x_of_time(t))
+          qp.drawLine(x, 0, x, height)
 
 # represent a note event in a block
 class NoteView(core.TimeDraggable, core.PitchDraggable, core.ModelView):
@@ -256,7 +273,7 @@ class BlockRepeatView(core.TimeDraggable, core.ModelView):
     core.ModelView.__init__(self, model, parent)
     core.TimeDraggable.__init__(self)
   def redraw(self, qp, width, height):
-    qp.setBrush(self.brush())
+    qp.setBrush(self.brush(0.25))
     qp.drawRect(width - 2, 0, 2, height)
     qp.drawRect(width - 5, 0, 2, height)
     x = width - 9
