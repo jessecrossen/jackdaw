@@ -12,7 +12,7 @@ class DocumentView(QWidget):
     self._document = document
     
     self.layout = QVBoxLayout()
-    self.layout.addWidget(track.TrackView(track=document.tracks[0], 
+    self.layout.addWidget(track.TrackListView(tracks=document.tracks, 
             view_scale=self.document.view_scale))
     self.layout.addStretch(1)
     self.setLayout(self.layout)

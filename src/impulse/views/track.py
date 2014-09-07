@@ -7,7 +7,77 @@ from PySide.QtGui import *
 #import symbols
 from core import ModelView, ModelListLayout, ViewManager
 from ..models.doc import ViewScale
+from ..models import doc
 import block
+
+# do layout of tracks
+class TrackListLayout(QGridLayout):
+  def __init__(self, tracks, parent=None, view_scale=None):
+    QGridLayout.__init__(self, parent)
+    if (view_scale is None):
+      view_scale = ViewScale()
+    self.view_scale = view_scale
+    # attach to the list of models
+    self._model_list = tracks
+    self._model_list.add_observer(self.on_change)
+    self.update_views()
+  @property
+  def tracks(self):
+    return(self._model_list)
+  def on_change(self):
+    self.update_views()
+  def update_views(self):
+    if (not self._model_list): return
+    # update views for each row
+    row = 0
+    for model in self._model_list:
+      row_model = self.get_row_model(row)
+      if (row_model is not model):
+        self.set_row_model(row, model)
+      row += 1
+    # clear any remaining rows
+    rows = self.rowCount()
+    if (row < rows - 1):
+      for empty_row in range(row, rows):
+        self.clear_row(empty_row)
+  # get the model that's been placed at the given row index
+  def get_row_model(self, row):
+    row_item = self.itemAtPosition(row, 0)
+    if (row_item is None): return(None)
+    row_view = row_item.widget()
+    if (row_view is None): return(None)
+    return(row_view.model)
+  # set the model to place at the given row index
+  def set_row_model(self, row, track):
+    self.clear_row(row)
+    self.addWidget(TrackView(track, view_scale=self.view_scale), row, 0)
+  # remove all views at the given row
+  def clear_row(self, row):
+    rows = self.rowCount()
+    if (row >= rows): return
+    cols = self.columnCount()
+    for col in range(0, cols):
+      item = self.itemAtPosition(row, col)
+      if (item is not None):
+        self.removeItem(item)
+
+# make a view that displays a list of tracks
+class TrackListView(ModelView):
+  def __init__(self, tracks, view_scale=None, parent=None):
+    ModelView.__init__(self, model=tracks, parent=parent)
+    if (view_scale is None):
+      view_scale = ViewScale()
+    self.view_scale = view_scale
+    # add a layout for the tracks
+    self.layout = TrackListLayout(
+      tracks, view_scale=self.view_scale)
+    self.setLayout(self.layout)  
+  @property
+  def track(self):
+    return(self._model)
+  # clear the selection when clicked
+  def mouseReleaseEvent(self, event):
+    doc.Selection.deselect_all()
 
 # do layout of blocks by time
 class TrackLayout(ModelListLayout):
@@ -17,7 +87,7 @@ class TrackLayout(ModelListLayout):
     self.view_scale = view_scale
     self.view_scale.add_observer(self.invalidate)
   def destroy(self):
-    self.remove_observer(self.invalidate)
+    self.view_scale.remove_observer(self.invalidate)
     ModelListLayout.destroy(self)
   @property
   def track(self):
