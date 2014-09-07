@@ -70,7 +70,7 @@ class EventsLayout(TimedLayout, core.ModelListLayout):
     pitch_height = self.view_scale.pitch_height
     y_of_pitch = dict()
     i = 0
-    for pitch in self.pitches:
+    for pitch in reversed(self.pitches):
       y_of_pitch[pitch] = i * pitch_height
       i += 1
     for view in self.views:
@@ -223,8 +223,8 @@ class NoteView(core.TimeDraggable, core.PitchDraggable, core.ModelView):
 class BlockStartView(core.TimeDraggable, core.ModelView):
   WIDTH = 6
   def __init__(self, model, parent=None):
-    core.TimeDraggable.__init__(self)
     core.ModelView.__init__(self, model, parent)
+    core.TimeDraggable.__init__(self)
   def redraw(self, qp, width, height):
     qp.setBrush(self.brush())
     w = min(self.WIDTH, width)
@@ -238,8 +238,8 @@ class BlockStartView(core.TimeDraggable, core.ModelView):
 class BlockEndView(core.TimeDraggable, core.ModelView):
   WIDTH = 6
   def __init__(self, model, parent=None):
-    core.TimeDraggable.__init__(self)
     core.ModelView.__init__(self, model, parent)
+    core.TimeDraggable.__init__(self)
   def redraw(self, qp, width, height):
     qp.setBrush(self.brush())
     w = min(self.WIDTH, width)
@@ -253,8 +253,8 @@ class BlockEndView(core.TimeDraggable, core.ModelView):
 # represent the repeat length of a block
 class BlockRepeatView(core.TimeDraggable, core.ModelView):
   def __init__(self, model, parent=None):
-    core.TimeDraggable.__init__(self)
     core.ModelView.__init__(self, model, parent)
+    core.TimeDraggable.__init__(self)
   def redraw(self, qp, width, height):
     qp.setBrush(self.brush())
     qp.drawRect(width - 2, 0, 2, height)

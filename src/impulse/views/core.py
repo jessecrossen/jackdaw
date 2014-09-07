@@ -61,7 +61,9 @@ class Interactive(object):
     self._dragging = False
     self._drag_start_x = None
     self._drag_start_y = None
-  # handle mouse down
+    # accept keyboard focus
+    self.setFocusPolicy(Qt.ClickFocus)
+  # handle mouse events
   def mousePressEvent(self, event):
     self._dragging = False
     self._drag_start_x = event.globalX()
@@ -105,6 +107,20 @@ class Interactive(object):
     pass
   def on_drag_end_y(self, event):
     pass
+  # handle keyboard events
+  def keyPressEvent(self, event):
+    # route arrow keys
+    if ((event.key() == Qt.Key_Left) or (event.key() == Qt.Key_Right)):
+      self.on_key_x(event);
+    elif ((event.key() == Qt.Key_Up) or (event.key() == Qt.Key_Down)):
+      self.on_key_y(event)
+    else:
+      event.ignore()
+  # override these to handle arrow key axes separately
+  def on_key_x(self, event):
+    pass
+  def on_key_y(self, event):
+    pass
 
 # a mixin to add selectability to an interactive view
 class Selectable(Interactive):
@@ -128,6 +144,14 @@ class TimeDraggable(Selectable):
     Selectable.__init__(self)
     self._drag_start_times = dict()
     self._drag_view_scale = None
+  # get a scale to use for converting pixels to time
+  def _get_view_scale(self):
+    node = self
+    while (node):
+      if (hasattr(node, 'view_scale')):
+        return(node.view_scale)
+      node = node.parentWidget()
+    return(None)
   def on_drag_start_x(self, event):  
     # select the model if it isn't selected
     if (not self.model.selected):
@@ -139,13 +163,8 @@ class TimeDraggable(Selectable):
       try:
         self._drag_start_times[model] = model.time
       except AttributeError: continue
-    # get a scale to use for converting pixels to time
-    node = self
-    while (node):
-      if (hasattr(node, 'view_scale')):
-        self._drag_view_scale = node.view_scale
-        break
-      node = node.parentWidget()
+    # get a scale for dragging
+    self._drag_view_scale = self._get_view_scale()
   def on_drag_x(self, event, delta_x):
     if (not self._drag_view_scale): return
     delta_time = self._drag_view_scale.time_of_x(delta_x)
@@ -156,6 +175,20 @@ class TimeDraggable(Selectable):
   def on_drag_end_x(self, event):
     self._drag_start_times = dict()
     self._drag_view_scale = None
+  # handle keypresses
+  def on_key_x(self, event):
+    scale = self._get_view_scale()
+    if (scale is None): return
+    # get the time difference equivalent to one pixel
+    delta_time = scale.time_of_x(1.0)
+    if (event.key() == Qt.Key_Left):
+      delta_time *= -1
+    # make a bigger jump when the shift key is down
+    if (event.modifiers() == Qt.ShiftModifier):
+      delta_time *= 10.0
+    # apply to the selection
+    for model in doc.Selection.models:
+      model.time += delta_time
 
 # a mixin to allow a view's pitch to be dragged vertically
 class PitchDraggable(Selectable):
@@ -193,6 +226,18 @@ class PitchDraggable(Selectable):
   def on_drag_end_y(self, event):
     self._drag_start_pitches = dict()
     self._drag_view_scale = None
+  # handle keypresses
+  def on_key_y(self, event):
+    # get the time difference equivalent to one pixel
+    delta_pitch = 1
+    if (event.key() == Qt.Key_Down):
+      delta_pitch *= -1
+    # make a bigger jump when the shift key is down
+    if (event.modifiers() == Qt.ShiftModifier):
+      delta_pitch *= 12
+    # apply to the selection
+    for model in doc.Selection.models:
+      model.pitch += delta_pitch
 
 # make a layout class with basic array management
 class ListLayout(QLayout):
