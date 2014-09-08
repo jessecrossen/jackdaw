@@ -13,19 +13,16 @@ class DocumentView(QWidget):
     self._document = document
     
     self.layout = QVBoxLayout()
-    self.layout.addWidget(track.TrackListView(tracks=document.tracks, 
+    self.layout.addWidget(track.TrackListView(
+            tracks=document.tracks,
+            transport=document.transport, 
             view_scale=self.document.view_scale))
-    self.layout.addStretch(1)
+    #self.layout.addStretch(1)
     self.setLayout(self.layout)
     
   @property
   def document(self):
     return(self._document)
-    
-  # clear the selection when clicked
-  def mouseReleaseEvent(self, event):
-    if (event.modifiers() == 0):
-      doc.Selection.deselect_all()
     
   # control track list zoom
   ZOOMS = (8, 16, 24, 32, 48, 64, 96, 128)

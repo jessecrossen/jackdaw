@@ -12,15 +12,28 @@ import block
 
 # do layout of tracks
 class TrackListLayout(QGridLayout):
-  def __init__(self, tracks, parent=None, view_scale=None):
+  def __init__(self, tracks, transport, parent=None, view_scale=None, margin=1):
     QGridLayout.__init__(self, parent)
     if (view_scale is None):
       view_scale = ViewScale()
     self.view_scale = view_scale
+    self._margin = margin
+    self.transport = transport
     # attach to the list of models
     self._model_list = tracks
     self._model_list.add_observer(self.on_change)
     self.update_views()
+    # make views to go behind and in front of the tracks
+    self.back_view = TrackListBackView(self.tracks, 
+      transport=self.transport,
+      view_scale=self.view_scale,
+      margin=margin)
+    self.addWidget(self.back_view)
+    self.front_view = TrackListFrontView(self.tracks, 
+      transport=self.transport,
+      view_scale=self.view_scale,
+      margin=margin)
+    self.addWidget(self.front_view)
   @property
   def tracks(self):
     return(self._model_list)
@@ -40,6 +53,8 @@ class TrackListLayout(QGridLayout):
     if (row < rows - 1):
       for empty_row in range(row, rows):
         self.clear_row(empty_row)
+    # add stretch at the end so the tracks have a fixed height
+    self.setRowStretch(rows, 1)
   # get the model that's been placed at the given row index
   def get_row_model(self, row):
     row_item = self.itemAtPosition(row, 0)
@@ -51,8 +66,11 @@ class TrackListLayout(QGridLayout):
   def set_row_model(self, row, track):
     self.clear_row(row)
     self.addWidget(PitchKeyView(track, view_scale=self.view_scale), row, 0)
-    self.addWidget(TrackView(track, view_scale=self.view_scale), row, 1)
+    self.addWidget(TrackView(track, 
+      view_scale=self.view_scale, 
+      margin=self._margin), row, 1)
     self.setColumnStretch(1, 1)
+    self.setRowStretch(row, 0)
   # remove all views at the given row
   def clear_row(self, row):
     rows = self.rowCount()
@@ -62,18 +80,64 @@ class TrackListLayout(QGridLayout):
       item = self.itemAtPosition(row, col)
       if (item is not None):
         self.removeItem(item)
-  
+  # do layout of back and front views
+  def setGeometry(self, r):
+    QGridLayout.setGeometry(self, r)
+    trackColumn = self.cellRect(0, 1)
+    trackColumn.setHeight(r.height())
+    if (trackColumn is not None):
+      self.back_view.setGeometry(trackColumn)
+      self.back_view.lower()
+      self.front_view.setGeometry(trackColumn)
+      self.front_view.raise_()
+
+# make a view to act as a background for a track list
+class TrackListBackView(ModelView):
+  def __init__(self, tracks, transport, view_scale=None, parent=None, margin=1):
+    ModelView.__init__(self, model=tracks, parent=parent)
+    self.view_scale = view_scale
+    self.view_scale.add_observer(self.on_change)
+    self.transport = transport
+    self.transport.add_observer(self.on_change)
+    self._margin = margin
+  # clear the selection when clicked
+  def mouseReleaseEvent(self, event):
+    if (event.modifiers() == 0):
+      doc.Selection.deselect_all()
+# make a view to act as an overlay for a track list
+class TrackListFrontView(ModelView):
+  def __init__(self, tracks, transport, view_scale=None, parent=None, margin=1):
+    ModelView.__init__(self, model=tracks, parent=parent)
+    self.view_scale = view_scale
+    self.view_scale.add_observer(self.on_change)
+    self.transport = transport
+    self.transport.add_observer(self.on_change)
+    self._margin = margin
+    # this needs to be transparent for mouse events so it doesn't eat clicks
+    #  on the document itself
+    self.setAttribute(Qt.WA_TransparentForMouseEvents)
+  def redraw(self, qp, width, height):
+    x = self._margin + self.view_scale.x_of_time(self.transport.time)
+    qp.setBrush(self.brush(0.10))
+    qp.drawRect(0, 0, x, height)
+    pen = QPen(QColor(255, 0, 0))
+    pen.setWidth(2)
+    qp.setPen(pen)
+    qp.drawLine(x, 0, x, height)
+    
 # make a view that displays a list of tracks
 class TrackListView(ModelView):
-  def __init__(self, tracks, view_scale=None, parent=None):
+  def __init__(self, tracks, transport, view_scale=None, parent=None):
     ModelView.__init__(self, model=tracks, parent=parent)
     if (view_scale is None):
       view_scale = ViewScale()
     self.view_scale = view_scale
+    self.transport = transport
     # add a layout for the tracks
-    self.layout = TrackListLayout(
-      tracks, view_scale=self.view_scale)
-    self.setLayout(self.layout)  
+    self.layout = TrackListLayout(tracks, 
+      transport=self.transport, 
+      view_scale=self.view_scale)
+    self.setLayout(self.layout)
   @property
   def track(self):
     return(self._model)
@@ -117,14 +181,15 @@ class TrackLayout(ModelListLayout):
       view.setGeometry(QRect(x1, rect.y(), x2 - x1, rect.height()))
 
 class TrackView(ModelView):
-  def __init__(self, track, view_scale=None, parent=None):
+  def __init__(self, track, view_scale=None, parent=None, margin=1):
     ModelView.__init__(self, model=track, parent=parent)
     if (view_scale is None):
       view_scale = ViewScale()
     self.view_scale = view_scale
     # add a layout for the blocks
-    self.layout = TrackLayout(
-      track, view_scale=self.view_scale)
+    self.layout = TrackLayout(track, 
+      view_scale=self.view_scale, 
+      margin=margin)
     self.setLayout(self.layout)
   @property
   def track(self):
@@ -186,6 +251,8 @@ class PitchKeyLayout(QVBoxLayout):
     self.setSpacing(0)
     self.setContentsMargins(0, 0, 0, 0)
     self.update_views()
+    # add some stretch at the end so the labels have a truly fixed height
+    self.addStretch(1)
   @property
   def track(self):
     return(self._track)
@@ -197,9 +264,9 @@ class PitchKeyLayout(QVBoxLayout):
     last = None
     for pitch in reversed(self._track.pitches):
       item = self.itemAt(i)
-      if (item is None):
+      if ((item is None) or (item.widget() is None)):
         name_view = PitchNameView(self._track, pitch)
-        self.addWidget(name_view)
+        self.insertWidget(i, name_view)
       else:
         name_view = item.widget()
       name_view.pitch = pitch
@@ -212,7 +279,9 @@ class PitchKeyLayout(QVBoxLayout):
     unused = list()
     if (i < count):
       for j in range(i, count):
-        unused.append(self.itemAt(j).widget())
+        widget = self.itemAt(j).widget()
+        if (widget):
+          unused.append(widget)
     for widget in unused:
        self.removeWidget(widget)
        widget.setParent(None)

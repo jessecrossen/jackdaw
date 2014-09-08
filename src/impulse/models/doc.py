@@ -4,7 +4,7 @@ import time
 import yaml
 import copy
 
-from PySide.QtCore import QAbstractEventDispatcher
+from PySide.QtCore import QAbstractAnimation, Signal
 
 from ..common import observable, serializable
 
@@ -782,12 +782,22 @@ class PatchBay(observable.Object):
 serializable.add(PatchBay)
 
 # a transport to keep track of timepoints, playback, and recording
-class Transport(observable.Object):
+class Transport(QAbstractAnimation):
+  # make this observable
+  changed = Signal()
+  def add_observer(self, slot):
+    self.changed.connect(slot)
+  def remove_observer(self, slot):
+    self.changed.disconnect(slot)
+  def on_change(self):
+    self.changed.emit()
+  # regular init stuff
   def __init__(self, time=0.0, cycling=False, marks=None):
-    observable.Object.__init__(self)
+    QAbstractAnimation.__init__(self)
     # set up internal state
     self._playing = False
     self._recording = False
+    self._running = None
     self._cycling = cycling
     # store the time
     self._time = time
@@ -810,6 +820,9 @@ class Transport(observable.Object):
     self.cycle_end_time = None
     # the amount to change time by when the skip buttons are pressed
     self.skip_delta = 1.0 # seconds
+  # make the duration indeterminite so it keeps running as long as needed
+  def duration(self):
+    return(-1)
   # add methods for easy button binding
   def play(self, *args):
     self.playing = True
@@ -829,9 +842,9 @@ class Transport(observable.Object):
       self.recording = False
       self._playing = value
       if (self.playing):
-        self._run()
+        self.start()
       else:
-        self._stop()
+        self.pause()
       self.on_change()
   # whether record mode is on
   @property
@@ -844,9 +857,9 @@ class Transport(observable.Object):
       self.playing = False
       self._recording = value
       if (self.recording):
-        self._run()
+        self.start()
       else:
-        self._stop()
+        self.pause()
       self.on_change()
   # whether cycle mode is on
   @property
@@ -862,57 +875,52 @@ class Transport(observable.Object):
   # get the current timepoint of the transport
   @property
   def time(self):
-    t = self._time
-    if (self._start_time is not None):
-      t += time.clock() - self._start_time
+    return(float(self.currentTime()) / 1000.0)
     return(t)
   @time.setter
   def time(self, t):
     # don't allow the time to be set while recording
     if (self._recording): return
     self._time = max(0.0, t)
-    if (self._start_time is not None):
-      self._start_time = time.clock()
+    self.setCurrentTime(int(round(t * 1000)))
     self.update_cycle_bounds()
     self.on_change()
   # start the time moving forward
-  def _run(self):
-    self._start_time = time.clock()
-    self._last_played_to = self._time
+  def start(self):
+    self._last_played_to = self.time
     # establish the cycle region
     self.update_cycle_bounds()
     # start the update timer
-    if (self._run_dispatcher is None):
-      self._run_dispatcher = QAbstractEventDispatcher.instance()
-      self._run_dispatcher.awake.patch(self.on_running)
-  # stop the time moving forward
-  def _stop(self):
-    self._time = self.time
-    self._start_time = None
-    if (self._run_dispatcher is not None):
-      self._run_dispatcher.awake.unpatch(self.on_running)
-      self._run_dispatcher = None
-  def on_running(self):
-    current_time = self.time
-    # do cycling
-    if ((self.cycling) and (self._cycle_end_time is not None) and 
-        (current_time > self._cycle_end_time)):
-      # only play up to the cycle end time
-      self.on_play_to(self._cycle_end_time)
-      # bounce back to the start, maintaining any interval we went past the end
-      self._last_played_to = self._cycle_start_time
-      current_time = (self._cycle_start_time + 
-        (current_time - self._cycle_end_time))
-      self.time = current_time
-    # play up to the current time
-    self.on_play_to(current_time)
-    # notify for a display update if the minimum interval has passed
-    abs_time = time.clock()
-    elapsed = abs_time - self._last_display_update
-    if (elapsed >= self.display_interval):
+    if (self._running is None):
+      QAbstractAnimation.start(self, QAbstractAnimation.KeepWhenStopped)
+    else:
+      self.resume()
+    self._running = True
+  def pause(self):
+    self._running = False
+    QAbstractAnimation.pause(self)
+  def updateCurrentTime(self, t):
+    if (self._running): 
+      current_time = self.time
+      # do cycling
+      if ((self.cycling) and (self._cycle_end_time is not None) and 
+          (current_time > self._cycle_end_time)):
+        # only play up to the cycle end time
+        self.on_play_to(self._cycle_end_time)
+        # bounce back to the start, maintaining any interval we went past the end
+        self._last_played_to = self._cycle_start_time
+        current_time = (self._cycle_start_time + 
+          (current_time - self._cycle_end_time))
+        self.time = current_time
+      # play up to the current time
+      self.on_play_to(current_time)
+      # notify for a display update if the minimum interval has passed
+      elapsed = current_time - self._last_display_update
+      if (abs(elapsed) >= self.display_interval):
+        self.on_change()
+        self._last_display_update = current_time
+    else:
       self.on_change()
-      self._last_display_update = abs_time
-    return(True)
   # handle the playback of the span after and including self._last_played_to
   #  and up to but not including the given time
   def on_play_to(self, end_time):
