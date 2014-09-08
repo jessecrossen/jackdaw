@@ -101,7 +101,7 @@ class TrackListFrontView(ModelView):
     x = self._margin + self.view_scale.x_of_time(self.transport.time)
     qp.setBrush(self.brush(0.10))
     qp.drawRect(0, 0, x, height)
-    pen = QPen(QColor(255, 0, 0))
+    pen = QPen(QColor(255, 0, 0, 128))
     pen.setWidth(2)
     qp.setPen(pen)
     qp.drawLine(x, 0, x, height)

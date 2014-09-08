@@ -88,6 +88,7 @@ class Interactive(object):
   def mouseReleaseEvent(self, event):
     if (self._dragging):
       self.on_drag_end(event)
+      self._dragging = False
     else:
       self.on_click(event)
   # override these to handle mouse events in general
@@ -181,7 +182,6 @@ class BoxSelectable(Interactive, ModelView):
       while (node.parentWidget()):
         node = node.parentWidget()  
       self._box_widget = SelectionBox(node)
-      self._box_widget.raise_()
     else:
       Interactive.mousePressEvent(self, event)
   def mouseMoveEvent(self, event):
@@ -196,18 +196,18 @@ class BoxSelectable(Interactive, ModelView):
       self._box_widget.setGeometry(
         self.map_rect(self._box_rect, self, widget_parent))
       self._box_widget.show()
+      self._box_widget.raise_()
     else:
       Interactive.mouseMoveEvent(self, event)
   def mouseReleaseEvent(self, event):
-    cancel_default = False
     r = self._box_rect
     self._box_rect = None
+    self._box_origin = None
     if (self._box_widget):
       self._box_widget.setParent(None)
       self._box_widget.destroy()
       self._box_widget = None
     if (r):
-      r = r.normalized()
       min_dim = min(r.width(), r.height())
       if (min_dim >= 6):
         self.select_box(event, r)
