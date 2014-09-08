@@ -159,29 +159,30 @@ class BlockRepeatLayout(TimedLayout, core.ListLayout):
       time += duration
 
 # represent a block of events on a track
-class BlockView(core.TimeDraggable, core.ModelView):
+class BlockView(core.BoxSelectable, core.TimeDraggable, core.ModelView):
   def __init__(self, block, view_scale, track=None, parent=None, margin=1):
     core.ModelView.__init__(self, block, parent)
     core.TimeDraggable.__init__(self)
+    core.BoxSelectable.__init__(self)
     self.view_scale = view_scale
     self.view_scale.add_observer(self.on_change)
     self._track = track
     self._margin = margin
     # make a master layout
-    self.layout = core.OverlayLayout()
+    layout = core.OverlayLayout()
     # add a layout for the block's events
     self.repeat_layout = BlockRepeatLayout(self.block, 
       track=track,
       view_scale=self.view_scale,
       margin=self._margin)
-    self.layout.addLayout(self.repeat_layout)
+    layout.addLayout(self.repeat_layout)
     # add a layout for the block's start, end, and repeat length
     self.placeholder_layout = BlockPlaceholderLayout(self.block, 
       view_scale=self.view_scale,
       margin=self._margin)
-    self.layout.addLayout(self.placeholder_layout)
+    layout.addLayout(self.placeholder_layout)
     # activate the layout
-    self.setLayout(self.layout)
+    self.setLayout(layout)
   def destroy(self):
     self.view_scale.remove_observer(self.on_change)
     core.ModelView.destroy(self)
@@ -191,6 +192,7 @@ class BlockView(core.TimeDraggable, core.ModelView):
   @property
   def track(self):
     return(self._track)
+
   def redraw(self, qp, width, height):
     selected = self.block.selected
     if (selected):

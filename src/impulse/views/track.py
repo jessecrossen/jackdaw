@@ -6,6 +6,7 @@ from PySide.QtGui import *
 
 #import symbols
 from core import ModelView, ModelListLayout, ViewManager
+import core
 from ..models.doc import ViewScale
 from ..models import doc
 import block
@@ -23,12 +24,7 @@ class TrackListLayout(QGridLayout):
     self._model_list = tracks
     self._model_list.add_observer(self.on_change)
     self.update_views()
-    # make views to go behind and in front of the tracks
-    self.back_view = TrackListBackView(self.tracks, 
-      transport=self.transport,
-      view_scale=self.view_scale,
-      margin=margin)
-    self.addWidget(self.back_view)
+    # make a view to go in front of the tracks
     self.front_view = TrackListFrontView(self.tracks, 
       transport=self.transport,
       view_scale=self.view_scale,
@@ -86,24 +82,9 @@ class TrackListLayout(QGridLayout):
     trackColumn = self.cellRect(0, 1)
     trackColumn.setHeight(r.height())
     if (trackColumn is not None):
-      self.back_view.setGeometry(trackColumn)
-      self.back_view.lower()
       self.front_view.setGeometry(trackColumn)
       self.front_view.raise_()
 
-# make a view to act as a background for a track list
-class TrackListBackView(ModelView):
-  def __init__(self, tracks, transport, view_scale=None, parent=None, margin=1):
-    ModelView.__init__(self, model=tracks, parent=parent)
-    self.view_scale = view_scale
-    self.view_scale.add_observer(self.on_change)
-    self.transport = transport
-    self.transport.add_observer(self.on_change)
-    self._margin = margin
-  # clear the selection when clicked
-  def mouseReleaseEvent(self, event):
-    if (event.modifiers() == 0):
-      doc.Selection.deselect_all()
 # make a view to act as an overlay for a track list
 class TrackListFrontView(ModelView):
   def __init__(self, tracks, transport, view_scale=None, parent=None, margin=1):
@@ -126,18 +107,24 @@ class TrackListFrontView(ModelView):
     qp.drawLine(x, 0, x, height)
     
 # make a view that displays a list of tracks
-class TrackListView(ModelView):
+class TrackListView(core.BoxSelectable, core.Interactive, ModelView):
   def __init__(self, tracks, transport, view_scale=None, parent=None):
     ModelView.__init__(self, model=tracks, parent=parent)
+    core.Interactive.__init__(self)
+    core.BoxSelectable.__init__(self)
     if (view_scale is None):
       view_scale = ViewScale()
     self.view_scale = view_scale
     self.transport = transport
     # add a layout for the tracks
-    self.layout = TrackListLayout(tracks, 
+    self.setLayout(TrackListLayout(tracks, 
       transport=self.transport, 
-      view_scale=self.view_scale)
-    self.setLayout(self.layout)
+      view_scale=self.view_scale))
+  
+  # clear the selection when clicked
+  def on_click(self, event):
+    if (event.modifiers() == 0):
+      doc.Selection.deselect_all()
   @property
   def track(self):
     return(self._model)
@@ -187,10 +174,9 @@ class TrackView(ModelView):
       view_scale = ViewScale()
     self.view_scale = view_scale
     # add a layout for the blocks
-    self.layout = TrackLayout(track, 
+    self.setLayout(TrackLayout(track, 
       view_scale=self.view_scale, 
-      margin=margin)
-    self.setLayout(self.layout)
+      margin=margin))
   @property
   def track(self):
     return(self._model)
@@ -293,9 +279,7 @@ class PitchKeyView(ModelView):
       view_scale = ViewScale()
     self.view_scale = view_scale
     # add a layout for the pitches
-    self.layout = PitchKeyLayout(
-      track, view_scale=self.view_scale)
-    self.setLayout(self.layout)
+    self.setLayout(PitchKeyLayout(track, view_scale=self.view_scale))
 
 ## display pitch names for a track
 #class PitchKeyView(LayoutView):

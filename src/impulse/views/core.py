@@ -45,6 +45,14 @@ class ModelView(QWidget):
     if (alpha < 1.0):
       color.setAlphaF(alpha)
     return(QBrush(color))
+  # get a pen based on the model's selection state
+  def pen(self, alpha=1.0):
+    selected = self.model.selected
+    role = QPalette.Highlight if selected else QPalette.WindowText
+    color = self.palette.color(QPalette.Normal, role)
+    if (alpha < 1.0):
+      color.setAlphaF(alpha)
+    return(QPen(color))
   # update the view when the model changes
   def on_change(self):
     if (hasattr(self, 'redraw')):
@@ -122,6 +130,108 @@ class Interactive(object):
   def on_key_y(self, event):
     pass
 
+# make a widget to draw a selection box
+class SelectionBox(QWidget):
+  def paintEvent(self, e):
+    qp = QPainter()
+    qp.begin(self)
+    pen = QPen(QColor(0, 0, 0, 128))
+    pen.setWidth(2)
+    pen.setDashPattern((2, 3))
+    qp.setPen(pen)
+    qp.setBrush(Qt.NoBrush)
+    g = self.geometry()
+    qp.drawRect(1, 1, g.width() - 2, g.height() - 2)
+    qp.end()
+
+# make a view allow block selection
+class BoxSelectable(Interactive, ModelView):
+  def __init__(self):
+    self._box_origin = None
+    self._box_rect = None
+    self._box_widget = None
+  def map_rect(self, r, source, dest):
+    tl = r.topLeft()
+    br = r.bottomRight()
+    tl = dest.mapFromGlobal(source.mapToGlobal(tl))
+    br = dest.mapFromGlobal(source.mapToGlobal(br))
+    r = QRect(tl.x(), tl.y(), br.x() - tl.x(), br.y() - tl.y())
+    return(r.normalized())
+  def mousePressEvent(self, event):
+    if (not self.model.selected):
+      self._box_origin = QPoint(event.x(), event.y())
+      self._box_rect = QRect(event.x(), event.y(), 0, 0)
+      node = self
+      while (node.parentWidget()):
+        node = node.parentWidget()  
+      self._box_widget = SelectionBox(node)
+      self._box_widget.raise_()
+    else:
+      Interactive.mousePressEvent(self, event)
+  def mouseMoveEvent(self, event):
+    if (self._box_rect is not None):
+      origin = self._box_origin
+      r = QRect(origin.x(), origin.y(),
+        event.x() - origin.x(), event.y() - origin.y()).normalized()
+      g = self.geometry()
+      r = r.intersected(QRect(-5, -5, g.width() + 10, g.height() + 10))
+      self._box_rect = r
+      widget_parent = self._box_widget.parentWidget()
+      self._box_widget.setGeometry(
+        self.map_rect(self._box_rect, self, widget_parent))
+      self._box_widget.show()
+    else:
+      Interactive.mouseMoveEvent(self, event)
+  def mouseReleaseEvent(self, event):
+    cancel_default = False
+    r = self._box_rect
+    self._box_rect = None
+    if (self._box_widget):
+      self._box_widget.setParent(None)
+      self._box_widget.destroy()
+      self._box_widget = None
+    if (r):
+      r = r.normalized()
+      min_dim = min(r.width(), r.height())
+      if (min_dim >= 6):
+        self.select_box(event, r)
+        return
+    Interactive.mouseReleaseEvent(self, event)
+  def select_box(self, event, r):
+    modifiers = event.modifiers()
+    if ((modifiers != Qt.ShiftModifier) and 
+        (modifiers != Qt.ControlModifier)):
+      doc.Selection.deselect_all()
+    self._select_children_in_box(self, None, r, modifiers, set())
+  def _select_children_in_box(self, widget, layout, r, modifiers, visited):
+    if (layout is None):
+      layout = widget.layout()
+    if (layout is None): return
+    for i in range(0, layout.count()):
+      item = layout.itemAt(i)
+      if (item is None): continue
+      child_layout = item.layout()
+      child_widget = item.widget()
+      if (child_layout is not None):
+        self._select_children_in_box(widget, child_layout, r, 
+                                      modifiers, visited)
+      elif (child_widget is not None):
+        g = child_widget.geometry()
+        if (r.intersects(g)):
+          if ((isinstance(child_widget, Selectable)) and 
+              (r.contains(g))):
+            if (child_widget.model in visited): continue
+            visited.add(child_widget.model)
+            if (modifiers == Qt.ControlModifier):
+              child_widget.model.selected = not child_widget.model.selected
+            else:
+              child_widget.model.selected = True
+            if (child_widget.model.selected):
+              child_widget.setFocus()
+          else:
+            cr = self.map_rect(r, widget, child_widget)
+            self._select_children_in_box(child_widget, None, cr, 
+                                          modifiers, visited)
 # a mixin to add selectability to an interactive view
 class Selectable(Interactive):
   def __init__(self):
