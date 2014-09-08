@@ -144,7 +144,23 @@ class SelectionBox(QWidget):
     qp.drawRect(1, 1, g.width() - 2, g.height() - 2)
     qp.end()
 
-# make a view allow block selection
+# a mixin to add selectability to an interactive view
+class Selectable(Interactive):
+  def __init__(self):
+    Interactive.__init__(self)
+  def on_click(self, event):
+    if (event.modifiers() == Qt.ShiftModifier):
+      self.model.selected = True
+    elif (event.modifiers() == Qt.ControlModifier):
+      self.model.selected = not self.model.selected
+    else:
+      if (self.model.selected):
+        event.ignore()
+        return
+      doc.Selection.deselect_all()
+      self.model.selected = True
+
+# make a view allow box selection by dragging
 class BoxSelectable(Interactive, ModelView):
   def __init__(self):
     self._box_origin = None
@@ -232,21 +248,6 @@ class BoxSelectable(Interactive, ModelView):
             cr = self.map_rect(r, widget, child_widget)
             self._select_children_in_box(child_widget, None, cr, 
                                           modifiers, visited)
-# a mixin to add selectability to an interactive view
-class Selectable(Interactive):
-  def __init__(self):
-    Interactive.__init__(self)
-  def on_click(self, event):
-    if (event.modifiers() == Qt.ShiftModifier):
-      self.model.selected = True
-    elif (event.modifiers() == Qt.ControlModifier):
-      self.model.selected = not self.model.selected
-    else:
-      if (self.model.selected):
-        event.ignore()
-        return
-      doc.Selection.deselect_all()
-      self.model.selected = True
 
 # a mixin to allow a view's model time to be dragged horizontally
 class TimeDraggable(Selectable):
