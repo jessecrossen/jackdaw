@@ -7,18 +7,18 @@ from ..models import doc
 #import device
 #from ..midi import inputs, outputs, sampler
 
-class DocumentView(QWidget):
+class DocumentView(QGraphicsView):
   def __init__(self, document, parent=None):
-    QWidget.__init__(self, parent)
+    self.scene = QGraphicsScene()
+    QGraphicsView.__init__(self, self.scene, parent)
     self._document = document
     
-    self.layout = QVBoxLayout()
-    self.layout.addWidget(track.TrackListView(
+    self.track_list_view = track.TrackListView(
             tracks=document.tracks,
             transport=document.transport, 
-            view_scale=self.document.view_scale))
-    #self.layout.addStretch(1)
-    self.setLayout(self.layout)
+            view_scale=self.document.view_scale)
+    self.track_list_view.setRect(QRectF(0, 0, 300, 200))
+    self.scene.addItem(self.track_list_view)
     
   @property
   def document(self):

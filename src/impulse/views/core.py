@@ -9,12 +9,13 @@ from ..models import doc
 import state
 
 # make a base class for views
-class ModelView(QWidget):
+class ModelView(QGraphicsObject):
   def __init__(self, model, parent=None):
-    QWidget.__init__(self, parent)
+    QGraphicsObject.__init__(self, parent)
     self._model = model
-    self._model.add_observer(self.on_change)
+    self._model.add_observer(self.update)
     self._palette = QPalette()
+    self._size = QSizeF(0.0, 0.0)
   @property
   def model(self):
     return(self._model)
@@ -25,18 +26,24 @@ class ModelView(QWidget):
   def palette(self, value):
     self._palette = value
     self.on_change()
-  # redraw the widget if there's a drawing method defined
-  def paintEvent(self, e):
-    if ((self.model is not None) and (hasattr(self, 'redraw'))):
-      qp = QPainter()
-      qp.begin(self)
-      qp.setPen(Qt.NoPen)
-      qp.setBrush(Qt.NoBrush)
-      qp.setRenderHint(QPainter.Antialiasing, True)
-      qp.setRenderHint(QPainter.TextAntialiasing, True)
-      g = self.geometry()
-      self.redraw(qp, g.width(), g.height())
-      qp.end()
+  # make a qt-style getter/setter for the area of the item
+  def rect(self):
+    pos = self.pos()
+    return(QRectF(pos.x(), pos.y(), self._size.width(), self._size.height()))
+  def setRect(self, rect):
+    if ((rect.x() != self.pos().x()) or
+        (rect.y() != self.pos().y()) or
+        (rect.width() != self._size.width()) or 
+        (rect.height() != self._size.height())):
+      self.setPos(rect.x(), rect.y())
+      self._size = QSizeF(rect.width(), rect.height())
+      self.update()
+  # make a default implementation of the bounding box
+  def boundingRect(self):
+    return(QRectF(0.0, 0.0, self._size.width(), self._size.height()))
+  # redraw the view
+  def paint(self, qp, options, widget):
+    pass
   # get a brush based on the model's selection state
   def brush(self, alpha=1.0):
     selected = self.model.selected
@@ -53,38 +60,29 @@ class ModelView(QWidget):
     if (alpha < 1.0):
       color.setAlphaF(alpha)
     return(QPen(color))
-  # update the view when the model changes
-  def on_change(self):
-    if (hasattr(self, 'redraw')):
-      self.repaint()
-  # remove references to the widget when removing it
-  def destroy(self):
-    self._model.remove_observer(self.on_change)
-    self._model = None
-    QWidget.destroy(self)
 
 # make a view interactive
 class Interactive(object):
   def __init__(self):
     self._dragging = False
-    self._drag_start_x = None
-    self._drag_start_y = None
-    # accept keyboard focus
-    self.setFocusPolicy(Qt.ClickFocus)
+    self._drag_start_pos = None
   # handle mouse events
   def mousePressEvent(self, event):
     self._dragging = False
-    self._drag_start_x = event.globalX()
-    self._drag_start_y = event.globalY()
+    self._drag_start_pos = event.scenePos()
   def mouseMoveEvent(self, event):
-    delta_x = event.globalX() - self._drag_start_x
-    delta_y = event.globalY() - self._drag_start_y
+    pos = event.scenePos()
+    scene_delta = QPointF(
+      pos.x() - self._drag_start_pos.x(),
+      pos.y() - self._drag_start_pos.y())
+    delta = self.mapFromScene(scene_delta)
+    delta -= self.mapFromScene(QPointF(0, 0))
     if ((not self._dragging) and 
-        ((abs(delta_x) >= 6) or (abs(delta_y) >= 6))):
+        ((abs(scene_delta.x()) >= 6) or (abs(scene_delta.y()) >= 6))):
       self._dragging = True
       self.on_drag_start(event)
     if (self._dragging):
-      self.on_drag(event, delta_x, delta_y)
+      self.on_drag(event, delta.x(), delta.y())
   def mouseReleaseEvent(self, event):
     if (self._dragging):
       self.on_drag_end(event)
@@ -131,20 +129,6 @@ class Interactive(object):
   def on_key_y(self, event):
     pass
 
-# make a widget to draw a selection box
-class SelectionBox(QWidget):
-  def paintEvent(self, e):
-    qp = QPainter()
-    qp.begin(self)
-    pen = QPen(QColor(0, 0, 0, 128))
-    pen.setWidth(2)
-    pen.setDashPattern((2, 3))
-    qp.setPen(pen)
-    qp.setBrush(Qt.NoBrush)
-    g = self.geometry()
-    qp.drawRect(1, 1, g.width() - 2, g.height() - 2)
-    qp.end()
-
 # a mixin to add selectability to an interactive view
 class Selectable(Interactive):
   def __init__(self):
@@ -166,47 +150,48 @@ class BoxSelectable(Interactive, ModelView):
   def __init__(self):
     self._box_origin = None
     self._box_rect = None
-    self._box_widget = None
+    self._box_view = None
   def map_rect(self, r, source, dest):
     tl = r.topLeft()
     br = r.bottomRight()
     tl = dest.mapFromGlobal(source.mapToGlobal(tl))
     br = dest.mapFromGlobal(source.mapToGlobal(br))
-    r = QRect(tl.x(), tl.y(), br.x() - tl.x(), br.y() - tl.y())
+    r = QRectF(tl.x(), tl.y(), br.x() - tl.x(), br.y() - tl.y())
     return(r.normalized())
   def mousePressEvent(self, event):
     if (not self.model.selected):
-      self._box_origin = QPoint(event.x(), event.y())
-      self._box_rect = QRect(event.x(), event.y(), 0, 0)
-      node = self
-      while (node.parentWidget()):
-        node = node.parentWidget()  
-      self._box_widget = SelectionBox(node)
+      self._box_origin = event.pos()
+      self._box_rect = QRectF(
+        self._box_origin.x(), self._box_origin.y(), 0.0, 0.0)
+      self._box_view = QGraphicsRectItem()
+      pen = QPen(QColor(0, 0, 0, 128))
+      pen.setWidth(2)
+      pen.setDashPattern((2, 3))
+      self._box_view.setPen(pen)
+      self._box_view.setBrush(Qt.NoBrush)
+      self.scene().addItem(self._box_view)
     else:
       Interactive.mousePressEvent(self, event)
   def mouseMoveEvent(self, event):
     if (self._box_rect is not None):
       origin = self._box_origin
-      r = QRect(origin.x(), origin.y(),
-        event.x() - origin.x(), event.y() - origin.y()).normalized()
-      g = self.geometry()
+      pos = event.pos()
+      r = QRectF(origin.x(), origin.y(),
+        pos.x() - origin.x(), pos.y() - origin.y()).normalized()
+      g = self.boundingRect()
       r = r.intersected(QRect(-5, -5, g.width() + 10, g.height() + 10))
       self._box_rect = r
-      widget_parent = self._box_widget.parentWidget()
-      self._box_widget.setGeometry(
-        self.map_rect(self._box_rect, self, widget_parent))
-      self._box_widget.show()
-      self._box_widget.raise_()
+      self._box_view.setRect(
+        self.mapRectToScene(self._box_rect))
     else:
       Interactive.mouseMoveEvent(self, event)
   def mouseReleaseEvent(self, event):
     r = self._box_rect
     self._box_rect = None
     self._box_origin = None
-    if (self._box_widget):
-      self._box_widget.setParent(None)
-      self._box_widget.destroy()
-      self._box_widget = None
+    if (self._box_view):
+      self.scene().removeItem(self._box_view)
+      self._box_view = None
     if (r):
       min_dim = min(r.width(), r.height())
       if (min_dim >= 6):
@@ -218,51 +203,28 @@ class BoxSelectable(Interactive, ModelView):
     if ((modifiers != Qt.ShiftModifier) and 
         (modifiers != Qt.ControlModifier)):
       doc.Selection.deselect_all()
-    self._select_children_in_box(self, None, r, modifiers, set())
-  def _select_children_in_box(self, widget, layout, r, modifiers, visited):
-    if (layout is None):
-      layout = widget.layout()
-    if (layout is None): return
-    for i in range(0, layout.count()):
-      item = layout.itemAt(i)
-      if (item is None): continue
-      child_layout = item.layout()
-      child_widget = item.widget()
-      if (child_layout is not None):
-        self._select_children_in_box(widget, child_layout, r, 
-                                      modifiers, visited)
-      elif (child_widget is not None):
-        g = child_widget.geometry()
-        if (r.intersects(g)):
-          if ((isinstance(child_widget, Selectable)) and 
-              (r.contains(g))):
-            if (child_widget.model in visited): continue
-            visited.add(child_widget.model)
-            if (modifiers == Qt.ControlModifier):
-              child_widget.model.selected = not child_widget.model.selected
-            else:
-              child_widget.model.selected = True
-            if (child_widget.model.selected):
-              child_widget.setFocus()
-          else:
-            cr = self.map_rect(r, widget, child_widget)
-            self._select_children_in_box(child_widget, None, cr, 
-                                          modifiers, visited)
+    self._select_children_in_box(self, r, modifiers, set())
+  def _select_children_in_box(self, item, r, modifiers, visited):
+    for child in item.childItems():
+      cr = self.mapRectToItem(item, r)
+      br = child.mapRectToParent(child.boundingRect())
+      if ((isinstance(child, Selectable)) and (cr.contains(br))):
+        if (child.model in visited): continue
+        visited.add(child.model)
+        if (modifiers == Qt.ControlModifier):
+          child.model.selected = not child.model.selected
+        else:
+          child.model.selected = True
+        if (child.model.selected):
+          child.setFocus()
+      else:
+        self._select_children_in_box(child, r, modifiers, visited)
 
 # a mixin to allow a view's model time to be dragged horizontally
 class TimeDraggable(Selectable):
   def __init__(self):
     Selectable.__init__(self)
     self._drag_start_times = dict()
-    self._drag_view_scale = None
-  # get a scale to use for converting pixels to time
-  def _get_view_scale(self):
-    node = self
-    while (node):
-      if (hasattr(node, 'view_scale')):
-        return(node.view_scale)
-      node = node.parentWidget()
-    return(None)
   # get the interval of time to jump when shift is pressed
   def _get_time_jump(self, delta_time):
     sign = 1.0 if delta_time >= 0 else -1.0
@@ -291,24 +253,17 @@ class TimeDraggable(Selectable):
       try:
         self._drag_start_times[model] = model.time
       except AttributeError: continue
-    # get a scale for dragging
-    self._drag_view_scale = self._get_view_scale()
-  def on_drag_x(self, event, delta_x):
-    if (not self._drag_view_scale): return
-    delta_time = self._drag_view_scale.time_of_x(delta_x)
+  def on_drag_x(self, event, delta_time):
     for model in doc.Selection.models:
       if (model in self._drag_start_times):
         model.time = self._drag_start_times[model] + delta_time
   # reset state after dragging to avoid memory leaks
   def on_drag_end_x(self, event):
     self._drag_start_times = dict()
-    self._drag_view_scale = None
   # handle keypresses
   def on_key_x(self, event):
-    scale = self._get_view_scale()
-    if (scale is None): return
     # get the time difference equivalent to one pixel
-    delta_time = scale.time_of_x(1.0)
+    delta_time = self.mapFromScene(1, 0).x() - self.mapFromScene(0, 0).x()
     if (event.key() == Qt.Key_Left):
       delta_time *= -1
     # make a bigger jump when the shift key is down
@@ -323,7 +278,6 @@ class PitchDraggable(Selectable):
   def __init__(self):
     Selectable.__init__(self)
     self._drag_start_pitches = dict()
-    self._drag_view_scale = None
   def on_drag_start_y(self, event):
     # select the model if it isn't selected
     if (not self.model.selected):
@@ -335,25 +289,15 @@ class PitchDraggable(Selectable):
       try:
         self._drag_start_pitches[model] = model.pitch
       except AttributeError: continue
-    # get a scale to use for converting pixels to pitch
-    node = self
-    while (node):
-      if (hasattr(node, 'view_scale')):
-        self._drag_view_scale = node.view_scale
-        break
-      node = node.parentWidget()
   def on_drag_y(self, event, delta_y):
-    if (not self._drag_view_scale): return
     sign = -1 if delta_y > 0 else 1
-    delta_pitch = sign * int(
-      math.floor(abs(delta_y) / self._drag_view_scale.pitch_height))
+    delta_pitch = sign * int(math.floor(abs(delta_y)))
     for model in doc.Selection.models:
       if (model in self._drag_start_pitches):
         model.pitch = self._drag_start_pitches[model] + delta_pitch
   # reset state after dragging to avoid memory leaks
   def on_drag_end_y(self, event):
     self._drag_start_pitches = dict()
-    self._drag_view_scale = None
   # handle keypresses
   def on_key_y(self, event):
     # get the time difference equivalent to one pixel
@@ -367,113 +311,71 @@ class PitchDraggable(Selectable):
     for model in doc.Selection.models:
       model.pitch += delta_pitch
 
-# make a layout class with basic array management
-class ListLayout(QLayout):
-  def __init__(self):
-    QLayout.__init__(self)
-    self._items = list()
-  def addItem(self, item):
-    self._items.append(item)
-    if (isinstance(item, QLayout)):
-      self.addChildLayout(item)
-    self.invalidate()
-  def count(self):
-    return(len(self._items))
-  def itemAt(self, index):
-    if ((index >= 0) and (index < len(self._items))):
-      return(self._items[index])
-    else:
-      return(None)
-  def takeAt(self, index):
-    if ((index >= 0) and (index < len(self._items))):
-      item = self._items.pop(index)
-      # remove the parent of child layouts
-      if (isinstance(item, QLayout)):
-        item.setParent(None)
-      self.invalidate()
-      return(item)
-    else:
-      return(None)
-  # allow layouts to be added as well as widgets
-  def addLayout(self, layout):
-    self.addItem(layout)
-  # destroy the layout and all widgets in it
-  def destroy(self):
-    while(self.count()):
-      child = self.takeAt(0)
-      try:
-        widget = child.widget()
-        widget.destroy()
-      except AttributeError:
-        try:
-          child.destroy()
-        except AttributeError: pass
-
-# make a layout class that overlays layouts or widgets on top of eachother
-class OverlayLayout(ListLayout):
-  def __init__(self):
-    ListLayout.__init__(self)
-  def setGeometry(self, rect):
-    for item in self._items:
-      item.setGeometry(rect)
-
-# make a layout class for lists of models
-class ModelListLayout(ListLayout):
-  def __init__(self, model_list, view_class=ModelView):
-    ListLayout.__init__(self)
-    self._view_class = view_class
-    self._model_list = model_list
-    self._model_list.add_observer(self.on_change)
-    self.views = list()
+# make a class that manages graphics items representing a list
+class ListLayout(QGraphicsObject):
+  def __init__(self, parent, items, view_for_item):
+    QGraphicsObject.__init__(self, parent)
+    self.view_for_item = view_for_item
     self._view_map = dict()
-  def on_change(self):
+    self._views = list()
+    self._items = items
+    self._rect = QRectF(0, 0, 0, 0)
+    try:
+      self._items.add_observer(self.update_views)
+    except AttributeError: pass
     self.update_views()
-    self.invalidate()
+  def container(self):
+    return(self._container)
+  def rect(self):
+    return(self._rect)
+  def setRect(self, rect):
+    self._rect = rect
+    self.layout()
+  def boundingRect(self):
+    return(QRectF())
+  def paint(self, qp, options, widget):
+    pass
   def update_views(self):
-    if (not self._model_list): return(False)
     old = set(self._view_map.keys())
     new = set()
     views = list()
-    for model in self._model_list:
-      if (model in self._view_map):
-        view = self._view_map[model]
-        old.remove(model)
+    for item in self._items:
+      if (item in self._view_map):
+        old.remove(item)
+        view = self._view_map[item]
       else:
-        view = self.get_view_for_model(model)
-        self._view_map[model] = view
-        self.addWidget(view)
-        new.add(view)
+        new.add(item)
+        view = self.view_for_item(item)
+        view.setParentItem(self)
+        self._view_map[item] = view
+        try:
+          item.add_observer(self.layout)
+        except AttributeError: pass
       views.append(view)
-    for model in old:
-      view = self._view_map[model]
-      del self._view_map[model]
+    for item in old:
+      view = self._view_map[item]
+      view.setParentItem(None)
+      self.scene.removeItem(view)
+      del self._view_map[item]
       try:
-        self.removeWidget(view)
+        item.remove_observer(self.layout)
       except AttributeError: pass
-      view.destroy()
-    self.views = views
-    # redo layout if the items have changed
-    return((len(old) > 0) or (len(new) > 0))
-  # remove references to all views when destroyed so they get garbage collected
-  def destroy(self):
-    self.views = list()
-    self._view_map = dict()
-    self._model_list.remove_observer(self.on_change)
-    self._model_list = None    
-    ListLayout.destroy(self)
-  # update layout    
-  def setGeometry(self, rect):
-    QLayout.setGeometry(self, rect)
-    if (len(self.views) != len(self._model_list)):
-      self.update_views()
-    self.do_layout()
-  # override this to do custom view creation
-  def get_view_for_model(self, model):
-    return(self._view_class(model))
-  # override this for custom layout
-  def do_layout(self):
+    self._views = views
+    if ((len(old) > 0) or (len(new) > 0)):
+      self.layout()
+  def layout(self):
     pass
-    
+
+class VBoxLayout(ListLayout):
+  def layout(self):
+    y = self._rect.y()
+    x = self._rect.x()
+    w = self._rect.width()
+    for view in self._views:
+      r = view.rect()
+      view.setRect(QRectF(x, y, w, r.height()))
+      y += r.height()
+
 # make a singleton for handling things like selection state
 class ViewManagerSingleton(observable.Object):
   def __init__(self):
