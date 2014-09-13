@@ -102,10 +102,10 @@ class BlockView(core.BoxSelectable, core.TimeDraggable, core.ModelView):
     if (events.divisions > 1):
       div_time = float(events.duration) / float(events.divisions)
       # if the space between divisions is too small, don't show them
-      t = 0.0
+      t = div_time
       while ((div_time > 0) and (t < self.block.duration)):
-        t += div_time
         qp.drawLine(QPointF(t, 0), QPointF(t, height))
+        t += div_time        
 
 # do layout for notes in a block
 class NoteLayout(core.ListLayout):

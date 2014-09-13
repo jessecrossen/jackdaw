@@ -35,6 +35,7 @@ class ModelView(QGraphicsObject):
         (rect.y() != self.pos().y()) or
         (rect.width() != self._size.width()) or 
         (rect.height() != self._size.height())):
+      self.prepareGeometryChange()
       self.setPos(rect.x(), rect.y())
       self._size = QSizeF(rect.width(), rect.height())
       self.update()
