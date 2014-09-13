@@ -8,68 +8,6 @@ from ..common import observable
 import core
 from ..models.doc import ViewScale
 
-## do layout for events in a block
-#class EventsLayout(TimedLayout, core.ModelListLayout):
-#  def __init__(self, events, view_scale, pitch_source=None, margin=None):
-#    core.ModelListLayout.__init__(self, events)
-#    TimedLayout.__init__(self, view_scale, margin)
-#    self._pitch_source = None
-#    self.set_pitch_source(pitch_source)
-#  def destroy(self):  
-#    if (self._pitch_source):
-#      self._pitch_source.remove_observer(self.on_change)
-#    core.ModelListLayout.destroy(self)
-#    TimedLayout.destroy(self)
-#  @property
-#  def events(self):
-#    return(self._model_list)
-#  # suggest a size for the events
-#  def sizeHint(self):
-#    return(self.minimumSize())
-#  def minimumSize(self):
-#    return(QSize(
-#      self.view_scale.x_of_time(self.events.duration + (2 * self._margin)),
-#      len(self.pitches) * self.view_scale.pitch_height))
-#  # the list of pitches to display can be sourced from the event list 
-#  #  or can be set externally, as when displayed as part of a track
-#  @property
-#  def pitches(self):
-#    if (self._pitch_source != None):
-#      return(self._pitch_source.pitches)
-#    return(self.events.pitches)
-#  def set_pitch_source(self, value):
-#    if (self._pitch_source != value):
-#      if (self._pitch_source):
-#        self._pitch_source.remove_observer(self.on_change)
-#      self._pitch_source = value
-#      if (self._pitch_source):
-#        self._pitch_source.add_observer(self.on_change)
-#      self.on_change()
-#  # get a view for the given event
-#  def get_view_for_model(self, model):
-#    return(NoteView(model))
-#  # lay out events by time and duration
-#  def do_layout(self):
-#    rect = self.geometry()
-#    # map pitches to coordinates for fast lookup
-#    pitch_height = self.view_scale.pitch_height
-#    y_of_pitch = dict()
-#    i = 0
-#    for pitch in reversed(self.pitches):
-#      y_of_pitch[pitch] = i * pitch_height
-#      i += 1
-#    for view in self.views:
-#      model = view.model
-#      try:
-#        y = y_of_pitch[model.pitch]
-#      except IndexError: continue
-#      x1 = rect.x() + self.x_of_time(model.time)
-#      x2 = rect.x() + self.x_of_time(model.time + model.duration)
-#      # give the note a minimum width
-#      w = max(NoteView.RADIUS * 2, x2 - x1)
-#      w = max(pitch_height / 2, w)
-#      view.setGeometry(QRect(x1, y, w, pitch_height))
-
 ## do layout for a block's start, end, and repeat points
 #class BlockPlaceholderLayout(TimedLayout, core.ListLayout):
 #  CAP_WIDTH = 10
@@ -103,46 +41,6 @@ from ..models.doc import ViewScale
 #      x - self.REPEAT_WIDTH, r.y(), self.REPEAT_WIDTH, r.height()))
 #    self.repeat_view.setVisible(x < r.width() - 1)
 
-## do layout of the multiple repeats in a block
-#class BlockRepeatLayout(TimedLayout, core.ListLayout):
-#  def __init__(self, block, view_scale, track=None, margin=None):
-#    core.ListLayout.__init__(self)
-#    TimedLayout.__init__(self, view_scale, margin)
-#    self._block = block
-#    self._track = track
-#    self.block.add_observer(self.update_repeats)
-#    self.update_repeats()
-#  def destroy(self):
-#    self.block.remove_observer(self.update_repeats)
-#    core.ListLayout.destroy(self)
-#    TimedLayout.destroy(self)
-#  @property
-#  def block(self):
-#    return(self._block)
-#  # make sure we have the right number of repeats to cover the block
-#  def update_repeats(self):
-#    repeats = max(1, int(
-#      math.ceil(self.block.duration / self.block.events.duration)))
-#    while(len(self._items) < repeats):
-#      self.addLayout(EventsLayout(self.block.events, 
-#        view_scale=self.view_scale, 
-#        pitch_source=self._track,
-#        margin=0))
-#    while(len(self._items) > repeats + 1):
-#      removed = self.takeAt(self.count() - 1)
-#      removed.destroy()
-#  def setGeometry(self, rect):
-#    QLayout.setGeometry(self, rect)
-#    self.do_layout()
-#  def do_layout(self):
-#    r = self.geometry()
-#    time = 0.0
-#    duration = self.block.events.duration
-#    for item in self._items:
-#      item.setGeometry(QRect(self.x_of_time(time), r.y(), 
-#        self.view_scale.x_of_time(duration), r.height()))
-#      time += duration
-
 # represent a block of events on a track
 class BlockView(core.BoxSelectable, core.TimeDraggable, core.ModelView):
   def __init__(self, block, track=None, parent=None):
@@ -150,32 +48,44 @@ class BlockView(core.BoxSelectable, core.TimeDraggable, core.ModelView):
     core.TimeDraggable.__init__(self)
     core.BoxSelectable.__init__(self)
     self._track = track
-#    # make a master layout
-#    layout = core.OverlayLayout()
-#    # add a layout for the block's events
-#    self.repeat_layout = BlockRepeatLayout(self.block, 
-#      track=track,
-#      view_scale=self.view_scale,
-#      margin=self._margin)
-#    layout.addLayout(self.repeat_layout)
-#    # add a layout for the block's start, end, and repeat length
-#    self.placeholder_layout = BlockPlaceholderLayout(self.block, 
-#      view_scale=self.view_scale,
-#      margin=self._margin)
-#    layout.addLayout(self.placeholder_layout)
-#    # activate the layout
-#    self.setLayout(layout)
+    self.note_layouts = list()
+    self.repeat_view = BlockRepeatView(self.block.repeat, self)
+    self.start_view = BlockStartView(self.block.start, self)
+    self.end_view = BlockEndView(self.block.end, self)
+    # enable clipping to hide partial repeats
+    self.setFlag(QGraphicsItem.ItemClipsChildrenToShape, True)
   @property
   def block(self):
     return(self._model)
   @property
   def track(self):
     return(self._track)
-
+  # do background drawing and layout
   def paint(self, qp, options, widget):
     r = self.rect()
     width = r.width()
     height = r.height()
+    # add note layouts to cover the duration of the block
+    duration = float(self.block.duration)
+    repeat_time = float(self.block.events.duration)
+    repeats = max(1, int(math.ceil(duration / repeat_time)))
+    for i in range(0, repeats):
+      if (i < len(self.note_layouts)):
+        layout = self.note_layouts[i]
+      else:
+        layout = NoteLayout(self, self.block.events, self.track)
+        self.note_layouts.append(layout)
+      layout.setPos(QPointF(i * repeat_time, 0.0))
+    # remove extraneous layouts
+    for i in range(repeats, len(self.note_layouts)):
+      layout = self.note_layouts.pop()
+      layout.setParent(None)
+      self.scene().removeItem(layout)
+    # place the block's placeholders
+    self.start_view.setRect(QRectF(0.0, 0.0, 0.0, height))
+    self.repeat_view.setRect(QRectF(repeat_time, 0.0, 0.0, height))
+    self.end_view.setRect(QRectF(duration, 0.0, 0.0, height))
+    # choose a color for the background
     selected = self.block.selected
     if (selected):
       qp.setBrush(self.palette.brush(
@@ -183,10 +93,10 @@ class BlockView(core.BoxSelectable, core.TimeDraggable, core.ModelView):
     else:
       qp.setBrush(QBrush(self.palette.color(QPalette.Normal, QPalette.Base)))
     qp.setPen(Qt.NoPen)
-    qp.drawRect(0, 0, width, height)
+    qp.drawRect(QRectF(0, 0, width, height))
     # draw lines for divisions, if there are any
     color = self.palette.color(QPalette.Normal, QPalette.WindowText)
-    color.setAlphaF(0.05)
+    color.setAlphaF(0.10)
     qp.setPen(QPen(color))
     events = self.block.events
     if (events.divisions > 1):
@@ -195,77 +105,142 @@ class BlockView(core.BoxSelectable, core.TimeDraggable, core.ModelView):
       t = 0.0
       while ((div_time > 0) and (t < self.block.duration)):
         t += div_time
-        qp.drawLine(t, 0, t, height)
+        qp.drawLine(QPointF(t, 0), QPointF(t, height))
 
-## represent a note event in a block
-#class NoteView(core.TimeDraggable, core.PitchDraggable, core.ModelView):
-#  RADIUS = 2
-#  def __init__(self, note, parent=None):
-#    core.ModelView.__init__(self, note, parent)
-#    core.TimeDraggable.__init__(self)
-#    core.PitchDraggable.__init__(self)
-#  @property
-#  def note(self):
-#    return(self._model)
-#  def redraw(self, qp, width, height):
-#    selected = self.note.selected
-#    role = QPalette.Highlight if selected else QPalette.WindowText
-#    color = self.palette.color(QPalette.Normal, role)
-#    # dim notes to show velocity
-#    velocity = 1.0
-#    try:
-#      velocity = self.note.velocity
-#    except AttributeError: pass
-#    if (velocity < 1.0):
-#      color.setAlphaF(0.1 + (0.9 * velocity))
-#    qp.setBrush(QBrush(color))
-#    qp.drawRoundedRect(0, 0, width, height, self.RADIUS, self.RADIUS)
+# do layout for notes in a block
+class NoteLayout(core.ListLayout):
+  def __init__(self, parent, notes, track):
+    self._track = track
+    core.ListLayout.__init__(self, parent, notes, self.note_view_for_event)
+  def note_view_for_event(self, event):
+    try:
+      p = event.pitch
+    except AttributeError:
+      return(None)
+    return(NoteView(event))
+  def layout(self):
+    pitch_map = dict()
+    i = 0.0
+    for pitch in reversed(self._track.pitches):
+      pitch_map[pitch] = i
+      i += 1.0
+    for view in self._views:
+      note = view.note
+      y = pitch_map[note.pitch]
+      view.setRect(QRectF(note.time, y, note.duration, 1))
 
-## represent the start of a block
-#class BlockStartView(core.TimeDraggable, core.ModelView):
-#  WIDTH = 6
-#  def __init__(self, model, parent=None):
-#    core.ModelView.__init__(self, model, parent)
-#    core.TimeDraggable.__init__(self)
-#  def redraw(self, qp, width, height):
-#    qp.setBrush(self.brush())
-#    w = min(self.WIDTH, width)
-#    qp.drawPolygon(QPolygon([
-#      QPoint(0, 0), QPoint(w, 0),
-#      QPoint(w, 1), QPoint(2, 2),
-#      QPoint(2, height - 2), QPoint(w, height - 1),
-#      QPoint(w, height), QPoint(0, height)
-#    ]))
-## represent the end of a block
-#class BlockEndView(core.TimeDraggable, core.ModelView):
-#  WIDTH = 6
-#  def __init__(self, model, parent=None):
-#    core.ModelView.__init__(self, model, parent)
-#    core.TimeDraggable.__init__(self)
-#  def redraw(self, qp, width, height):
-#    qp.setBrush(self.brush())
-#    w = min(self.WIDTH, width)
-#    x = width - w
-#    qp.drawPolygon(QPolygon([
-#      QPoint(x, 0), QPoint(width, 0),
-#      QPoint(width, height), QPoint(x, height),
-#      QPoint(x, height - 1), QPoint(width - 2, height - 2),
-#      QPoint(width - 2, 2), QPoint(x, 1)
-#    ]))
-## represent the repeat length of a block
-#class BlockRepeatView(core.TimeDraggable, core.ModelView):
-#  def __init__(self, model, parent=None):
-#    core.ModelView.__init__(self, model, parent)
-#    core.TimeDraggable.__init__(self)
-#  def redraw(self, qp, width, height):
-#    qp.setBrush(self.brush(0.25))
-#    qp.drawRect(width - 2, 0, 2, height)
-#    qp.drawRect(width - 5, 0, 2, height)
-#    x = width - 9
-#    y = round(height / 2)
-#    r = 1.5
-#    qp.drawEllipse(QPointF(x, y - 5), r, r)
-#    qp.drawEllipse(QPointF(x, y + 5), r, r)
+# represent a note event in a block
+class NoteView(core.TimeDraggable, core.PitchDraggable, core.ModelView):
+  RADIUS = 2.0
+  def __init__(self, note, parent=None):
+    core.ModelView.__init__(self, note, parent)
+    core.TimeDraggable.__init__(self)
+    core.PitchDraggable.__init__(self)
+  @property
+  def note(self):
+    return(self._model)
+  # ensure the note always has some width
+  def rect(self):
+    r = core.ModelView.rect(self)
+    if (r.width() < 0.001):
+      r.setWidth(0.001)
+    sr = self.mapRectToScene(r)
+    min_width = sr.height() / 2.0
+    if (sr.width() < min_width):
+      r.setWidth(min_width * (r.width() / sr.width()))
+    return(r)
+  def paint(self, qp, options, widget):
+    selected = self.note.selected
+    role = QPalette.Highlight if selected else QPalette.WindowText
+    color = self.palette.color(QPalette.Normal, role)
+    # dim notes to show velocity
+    velocity = 1.0
+    try:
+      velocity = self.note.velocity
+    except AttributeError: pass
+    if (velocity < 1.0):
+      color.setAlphaF(0.1 + (0.9 * velocity))
+    qp.setBrush(QBrush(color))
+    qp.setPen(Qt.NoPen)
+    r = self.rect()
+    width = r.width()
+    height = r.height()
+    t = qp.deviceTransform()
+    rx = self.RADIUS / t.m11()
+    ry = self.RADIUS / t.m22()
+    qp.drawRoundedRect(QRectF(0.0, 0.0, width, height), rx, ry)
+
+# represent the start of a block
+class BlockStartView(core.TimeDraggable, core.ModelView):
+  WIDTH = 6.0
+  def __init__(self, model, parent=None):
+    core.ModelView.__init__(self, model, parent)
+    core.TimeDraggable.__init__(self)
+  def boundingRect(self):
+    r = self.mapRectFromScene(QRectF(0.0, 0.0, self.WIDTH, 0.0))
+    return(QRectF(0.0, 0.0, r.width(), self.rect().height()))
+  def paint(self, qp, options, widget):
+    qp.setBrush(self.brush())
+    qp.setPen(Qt.NoPen)
+    t = qp.deviceTransform()
+    px = 1.0 / t.m11()
+    py = 1.0 / t.m22()
+    w = self.WIDTH * px
+    h = self.rect().height()
+    qp.drawPolygon(QPolygonF([
+      QPointF(0.0, 0.0), QPointF(w, 0.0),
+      QPointF(w, 1.0 * py), QPointF(2.0 * px, 2.0 * py),
+      QPointF(2.0 * px, h - (2.0 * py)), QPointF(w, h - py),
+      QPointF(w, h), QPointF(0.0, h)
+    ]))
+# represent the end of a block
+class BlockEndView(core.TimeDraggable, core.ModelView):
+  WIDTH = 6.0
+  def __init__(self, model, parent=None):
+    core.ModelView.__init__(self, model, parent)
+    core.TimeDraggable.__init__(self)
+  def boundingRect(self):
+    r = self.mapRectFromScene(QRectF(0.0, 0.0, self.WIDTH, 0.0))
+    return(QRectF(- r.width(), 0.0, r.width(), self.rect().height()))
+  def paint(self, qp, options, widget):
+    qp.setBrush(self.brush())
+    qp.setPen(Qt.NoPen)
+    t = qp.deviceTransform()
+    px = 1.0 / t.m11()
+    py = 1.0 / t.m22()
+    x = - (self.WIDTH * px)
+    h = self.rect().height()
+    qp.drawPolygon(QPolygonF([
+      QPointF(x, 0.0), QPointF(0.0, 0.0),
+      QPointF(0.0, h), QPointF(x, h),
+      QPointF(x, h - py), QPointF(-(2.0 * px), h - (2.0 * py)),
+      QPointF(- (2.0 * px), 2.0 * py), QPointF(x, 1.0 * py)
+    ]))
+# represent the repeat length of a block
+class BlockRepeatView(core.TimeDraggable, core.ModelView):
+  WIDTH = 12.0
+  def __init__(self, model, parent=None):
+    core.ModelView.__init__(self, model, parent)
+    core.TimeDraggable.__init__(self)
+  def boundingRect(self):
+    r = self.mapRectFromScene(QRectF(0.0, 0.0, 1.0, 0.0))
+    px = r.width()
+    return(QRectF(- ((self.WIDTH - 1) * px), 0.0, 
+      self.WIDTH * px, self.rect().height()))
+  def paint(self, qp, options, width):
+    qp.setBrush(self.brush(0.25))
+    qp.setPen(Qt.NoPen)
+    t = qp.deviceTransform()
+    px = 1.0 / t.m11()
+    py = 1.0 / t.m22()
+    h = self.rect().height()
+    qp.drawRect(QRectF(-1.0 * px, 0.0, 2.0 * px, h))
+    qp.drawRect(QRectF(- (4.0 * px), 0.0, 2.0 * px, h))
+    x = - (8.0 * px)
+    y = round(h / 2)
+    r = 1.5
+    qp.drawEllipse(QPointF(x, y - 0.5), r * px, r * py)
+    qp.drawEllipse(QPointF(x, y + 0.5), r * px, r * py)
 
 ## make a context menu for blocks
 #class BlockMenu(ContextMenu):

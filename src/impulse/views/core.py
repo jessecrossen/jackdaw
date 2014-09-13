@@ -40,13 +40,17 @@ class ModelView(QGraphicsObject):
       self.update()
   # make a default implementation of the bounding box
   def boundingRect(self):
-    return(QRectF(0.0, 0.0, self._size.width(), self._size.height()))
+    r = self.rect()
+    return(QRectF(0.0, 0.0, r.width(), r.height()))
   # redraw the view
   def paint(self, qp, options, widget):
     pass
   # get a brush based on the model's selection state
   def brush(self, alpha=1.0):
-    selected = self.model.selected
+    try:
+      selected = self.model.selected
+    except AttributeError:
+      selected = False
     role = QPalette.Highlight if selected else QPalette.WindowText
     color = self.palette.color(QPalette.Normal, role)
     if (alpha < 1.0):
@@ -66,6 +70,7 @@ class Interactive(object):
   def __init__(self):
     self._dragging = False
     self._drag_start_pos = None
+    self.setFlag(QGraphicsItem.ItemIsFocusable, True)
   # handle mouse events
   def mousePressEvent(self, event):
     self._dragging = False
@@ -240,7 +245,7 @@ class TimeDraggable(Selectable):
             (hasattr(model, 'duration')) and 
             (model.divisions > 1)):
           return(sign * (float(model.duration) / float(model.divisions)))
-      node = node.parent()
+      node = node.parentItem()
     return(delta_time * 10.0)
   def on_drag_start_x(self, event):  
     # select the model if it isn't selected
@@ -344,8 +349,9 @@ class ListLayout(QGraphicsObject):
         old.remove(item)
         view = self._view_map[item]
       else:
-        new.add(item)
         view = self.view_for_item(item)
+        if (view is None): continue
+        new.add(item)
         view.setParentItem(self)
         self._view_map[item] = view
         try:

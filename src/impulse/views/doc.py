@@ -12,7 +12,11 @@ class DocumentView(QGraphicsView):
     self.scene = QGraphicsScene()
     QGraphicsView.__init__(self, self.scene, parent)
     self._document = document
-    
+    # enable antialiasing
+    self.setRenderHints(QPainter.Antialiasing)
+    # draw the background like a plain window background
+    self.setBackgroundBrush(QPalette().brush(QPalette.Normal, QPalette.Window))
+    # add views
     self.track_list_view = track.TrackListView(
             tracks=document.tracks,
             transport=document.transport, 

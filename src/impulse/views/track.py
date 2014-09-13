@@ -10,100 +10,29 @@ from ..models.doc import ViewScale
 from ..models import doc
 import block
 
-## do layout of tracks
-#class TrackListLayout(QGridLayout):
-#  def __init__(self, tracks, transport, parent=None, view_scale=None, margin=1):
-#    QGridLayout.__init__(self, parent)
-#    if (view_scale is None):
-#      view_scale = ViewScale()
-#    self.view_scale = view_scale
-#    self._margin = margin
-#    self.transport = transport
-#    # attach to the list of models
-#    self._model_list = tracks
-#    self._model_list.add_observer(self.on_change)
-#    self.update_views()
-#    # make a view to go in front of the tracks
-#    self.front_view = TrackListFrontView(self.tracks, 
-#      transport=self.transport,
-#      view_scale=self.view_scale,
-#      margin=margin)
-#    self.addWidget(self.front_view)
-#  @property
-#  def tracks(self):
-#    return(self._model_list)
-#  def on_change(self):
-#    self.update_views()
-#  def update_views(self):
-#    if (not self._model_list): return
-#    # update views for each row
-#    row = 0
-#    for model in self._model_list:
-#      row_model = self.get_row_model(row)
-#      if (row_model is not model):
-#        self.set_row_model(row, model)
-#      row += 1
-#    # clear any remaining rows
-#    rows = self.rowCount()
-#    if (row < rows - 1):
-#      for empty_row in range(row, rows):
-#        self.clear_row(empty_row)
-#    # add stretch at the end so the tracks have a fixed height
-#    self.setRowStretch(rows, 1)
-#  # get the model that's been placed at the given row index
-#  def get_row_model(self, row):
-#    row_item = self.itemAtPosition(row, 0)
-#    if (row_item is None): return(None)
-#    row_view = row_item.widget()
-#    if (row_view is None): return(None)
-#    return(row_view.model)
-#  # set the model to place at the given row index
-#  def set_row_model(self, row, track):
-#    self.clear_row(row)
-#    self.addWidget(PitchKeyView(track, view_scale=self.view_scale), row, 0)
-#    self.addWidget(TrackView(track, 
-#      view_scale=self.view_scale, 
-#      margin=self._margin), row, 1)
-#    self.setColumnStretch(1, 1)
-#    self.setRowStretch(row, 0)
-#  # remove all views at the given row
-#  def clear_row(self, row):
-#    rows = self.rowCount()
-#    if (row >= rows): return
-#    cols = self.columnCount()
-#    for col in range(0, cols):
-#      item = self.itemAtPosition(row, col)
-#      if (item is not None):
-#        self.removeItem(item)
-#  # do layout of back and front views
-#  def setGeometry(self, r):
-#    QGridLayout.setGeometry(self, r)
-#    trackColumn = self.cellRect(0, 1)
-#    trackColumn.setHeight(r.height())
-#    if (trackColumn is not None):
-#      self.front_view.setGeometry(trackColumn)
-#      self.front_view.raise_()
-
-## make a view to act as an overlay for a track list
-#class TrackListFrontView(core.ModelView):
-#  def __init__(self, tracks, transport, view_scale=None, parent=None, margin=1):
-#    core.ModelView.__init__(self, model=tracks, parent=parent)
-#    self.view_scale = view_scale
-#    self.view_scale.add_observer(self.on_change)
-#    self.transport = transport
-#    self.transport.add_observer(self.on_change)
-#    self._margin = margin
-#    # this needs to be transparent for mouse events so it doesn't eat clicks
-#    #  on the document itself
-#    self.setAttribute(Qt.WA_TransparentForMouseEvents)
-#  def redraw(self, qp, width, height):
-#    x = self._margin + self.view_scale.x_of_time(self.transport.time)
-#    qp.setBrush(self.brush(0.10))
-#    qp.drawRect(0, 0, x, height)
-#    pen = QPen(QColor(255, 0, 0, 128))
-#    pen.setWidth(2)
-#    qp.setPen(pen)
-#    qp.drawLine(x, 0, x, height)
+# an overlay for a track list that shows the state of the transport
+class TransportView(core.ModelView):
+  def __init__(self, transport, view_scale=None, parent=None):
+    core.ModelView.__init__(self, model=transport, parent=parent)
+    self.view_scale = view_scale
+    self.view_scale.add_observer(self.update)
+  @property
+  def transport(self):
+    return(self._model)
+  def paint(self, qp, options, widget):
+    r = self.rect()
+    width = r.width()
+    height = r.height()
+    pps = self.view_scale.pixels_per_second
+    x = round((self.transport.time - self.view_scale.time_offset) * pps)
+    if (x >= 0):
+      qp.setBrush(self.brush(0.10))
+      qp.setPen(Qt.NoPen)
+      qp.drawRect(0, 0, x, height)
+      pen = QPen(QColor(255, 0, 0, 128))
+      pen.setWidth(2)
+      qp.setPen(pen)
+      qp.drawLine(QPointF(x, 0.0), QPointF(x, height))
     
 # make a view that displays a list of tracks
 class TrackListView(core.BoxSelectable, core.Interactive, core.ModelView):
@@ -111,19 +40,58 @@ class TrackListView(core.BoxSelectable, core.Interactive, core.ModelView):
     core.ModelView.__init__(self, model=tracks, parent=parent)
     core.Interactive.__init__(self)
     core.BoxSelectable.__init__(self)
+    self.scrollbar = None
     if (view_scale is None):
       view_scale = ViewScale()
     self.view_scale = view_scale
     self.transport = transport
     self.track_layout = core.VBoxLayout(self, tracks,
       lambda t: TrackView(t, view_scale=view_scale))
+    # add a view for the transport
+    self.overlay = TransportView(
+      transport=self.transport,
+      view_scale=self.view_scale,
+      parent=self)
+    # enable clipping of children, so tracks can scroll/zoom
+    # without going outside the box
+    self.setFlag(QGraphicsItem.ItemClipsChildrenToShape, True)
+  @property
+  def tracks(self):
+    return(self._model)
   def paint(self, qp, options, widget):
     width = self._size.width()
     height = self._size.height()
-    qp.setBrush(QBrush(QColor(255, 0, 0)))
+    qp.setPen(Qt.NoPen)
+    qp.setBrush(QBrush(QColor(255, 0, 0, 32)))
     qp.drawRect(0, 0, width, height)
-    self.track_layout.setRect(QRectF(0, 0, width, height))
-  
+    r = QRectF(0, 0, width, height)
+    self.track_layout.setRect(r)
+    self.overlay.setRect(r)
+    # add a scrollbar to scroll through the timeline
+    if ((not self.scrollbar) and (self.scene())):
+      self.scrollbar = QScrollBar(Qt.Orientation.Horizontal)
+      proxy = self.scene().addWidget(self.scrollbar)
+      proxy.setParent(self)
+      self.scrollbar.valueChanged.connect(self.on_scroll)
+    if (self.scrollbar):
+      # position the scrollbar
+      g = self.scrollbar.geometry()
+      self.scrollbar.setGeometry(0, height - g.height(), width, g.height())
+      # update its range to fit the timeline, using milliseconds because
+      #  it can't have a float value
+      shown_duration = width / self.view_scale.pixels_per_second
+      max_duration = 0
+      for track in self.tracks:
+        max_duration = max(max_duration, track.duration)
+      shown_duration = min(shown_duration, max_duration)
+      maximum = max_duration - shown_duration
+      self.scrollbar.setMaximum(int(math.ceil(maximum * 1000)))
+      self.scrollbar.setPageStep(int(math.floor(shown_duration * 1000)))
+      self.scrollbar.setSingleStep(1000)
+  # handle scrolling
+  def on_scroll(self):
+    time = float(self.scrollbar.value()) / 1000.0
+    self.view_scale.time_offset = time
   # clear the selection when clicked
   def on_click(self, event):
     if (event.modifiers() == 0):
@@ -132,20 +100,24 @@ class TrackListView(core.BoxSelectable, core.Interactive, core.ModelView):
   def track(self):
     return(self._model)
 
+# do layout of blocks in a track
 class TrackLayout(core.ListLayout):
   @property
   def track(self):
     return(self._items)
   def layout(self):
     y = self._rect.y()
+    r = self.mapRectFromParent(self._rect)
+    h = r.height()
     for view in self._views:
       x = view.model.time
       try:
         w = view.model.duration
       except AttributeError:
         w = view.rect().width()
-      view.setRect(QRectF(x, y, w, len(self.track.pitches)))
+      view.setRect(QRectF(x, y, w, h))
 
+# show a track
 class TrackView(core.ModelView):
   def __init__(self, track, view_scale=None, parent=None):
     core.ModelView.__init__(self, model=track, parent=parent)
@@ -160,23 +132,22 @@ class TrackView(core.ModelView):
   @property
   def track(self):
     return(self._model)
-    
+  # respond to scaling
   def on_scale(self):
     t = QTransform()
     t.scale(self.view_scale.pixels_per_second, self.view_scale.pitch_height)
+    t.translate(- self.view_scale.time_offset, 0)
     self.block_layout.setTransform(t)
-    
+  # provide a height for layout in the parent
   def rect(self):
     r = core.ModelView.rect(self)
     r.setHeight(len(self.track.pitches) * self.view_scale.pitch_height)
     return(r)
-
+  # update the placement of the layout
   def paint(self, qp, options, widget):
     r = self.rect()
     width = r.width()
     height = r.height()
-    qp.setBrush(QBrush(QColor(0, 0, 255)))
-    qp.drawRect(0, 0, width, height)
     self.block_layout.setRect(QRectF(0, 0, width, height))
 
 ## show a label for a pitch on the track
