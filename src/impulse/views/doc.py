@@ -21,7 +21,7 @@ class DocumentView(QGraphicsView):
             tracks=document.tracks,
             transport=document.transport, 
             view_scale=self.document.view_scale)
-    self.track_list_view.setRect(QRectF(0, 0, 300, 200))
+    self.track_list_view.setRect(QRectF(0, 0, 600, 200))
     self.scene.addItem(self.track_list_view)
     
   @property

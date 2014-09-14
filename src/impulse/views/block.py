@@ -8,39 +8,6 @@ from ..common import observable
 import core
 from ..models.doc import ViewScale
 
-## do layout for a block's start, end, and repeat points
-#class BlockPlaceholderLayout(TimedLayout, core.ListLayout):
-#  CAP_WIDTH = 10
-#  REPEAT_WIDTH = 12
-#  def __init__(self, block, view_scale, margin=None):
-#    core.ListLayout.__init__(self)
-#    TimedLayout.__init__(self, view_scale, margin)
-#    self.block = block
-#    self.repeat_view = BlockRepeatView(block.repeat)
-#    block.repeat.add_observer(self.invalidate)
-#    self.start_view = BlockStartView(block.start)
-#    self.end_view = BlockEndView(block.end)
-#    self.addWidget(self.repeat_view)
-#    self.addWidget(self.start_view)
-#    self.addWidget(self.end_view)
-#  def destroy(self):
-#    self.repeat.remove_observer(self.invalidate)
-#    core.ListLayout.destroy(self)
-#    TimedLayout.destroy(self)
-#  def setGeometry(self, rect):
-#    QLayout.setGeometry(self, rect)
-#    self.do_layout()
-#  def do_layout(self):
-#    r = self.geometry()
-#    self.start_view.setGeometry(QRect(
-#      r.x(), r.y(), self.CAP_WIDTH, r.height()))
-#    self.end_view.setGeometry(QRect(
-#      r.right() - self.CAP_WIDTH + 1, r.y(), self.CAP_WIDTH, r.height()))
-#    x = self.x_of_time(self.repeat_view.model.time) + 1
-#    self.repeat_view.setGeometry(QRect(
-#      x - self.REPEAT_WIDTH, r.y(), self.REPEAT_WIDTH, r.height()))
-#    self.repeat_view.setVisible(x < r.width() - 1)
-
 # represent a block of events on a track
 class BlockView(core.BoxSelectable, core.TimeDraggable, core.ModelView):
   def __init__(self, block, track=None, parent=None):
@@ -111,6 +78,7 @@ class BlockView(core.BoxSelectable, core.TimeDraggable, core.ModelView):
 class NoteLayout(core.ListLayout):
   def __init__(self, parent, notes, track):
     self._track = track
+    self._track.add_observer(self.layout)
     core.ListLayout.__init__(self, parent, notes, self.note_view_for_event)
   def note_view_for_event(self, event):
     try:
@@ -127,7 +95,7 @@ class NoteLayout(core.ListLayout):
     for view in self._views:
       note = view.note
       y = pitch_map[note.pitch]
-      view.setRect(QRectF(note.time, y, note.duration, 1))
+      view.setRect(QRectF(note.time, y, note.duration, 1.0))
 
 # represent a note event in a block
 class NoteView(core.TimeDraggable, core.PitchDraggable, core.ModelView):

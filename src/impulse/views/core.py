@@ -14,6 +14,7 @@ class ModelView(QGraphicsObject):
     QGraphicsObject.__init__(self, parent)
     self._model = model
     self._model.add_observer(self.update)
+    self._model.add_observer(self.layout)
     self._palette = QPalette()
     self._size = QSizeF(0.0, 0.0)
   @property
@@ -38,11 +39,19 @@ class ModelView(QGraphicsObject):
       self.prepareGeometryChange()
       self.setPos(rect.x(), rect.y())
       self._size = QSizeF(rect.width(), rect.height())
-      self.update()
+      self.layout()
   # make a default implementation of the bounding box
   def boundingRect(self):
     r = self.rect()
     return(QRectF(0.0, 0.0, r.width(), r.height()))
+  # update layout when added to the scene, in case widgets need to be added
+  def itemChange(self, change, value):
+    if (change == QGraphicsItem.ItemSceneHasChanged):
+      self.layout()
+    return(QGraphicsItem.itemChange(self, change, value))
+  # do layout of subviews
+  def layout(self):
+    pass
   # redraw the view
   def paint(self, qp, options, widget):
     pass

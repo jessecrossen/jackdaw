@@ -1028,6 +1028,8 @@ class ViewScale(observable.Object):
       'time_offset': self.time_offset,
       'pitch_height': self.pitch_height
     })
+  def height_of_track(self, track):
+    return(len(track.pitches) * self.pitch_height)
 serializable.add(ViewScale)
 
 # represent a document, which can contain multiple tracks
