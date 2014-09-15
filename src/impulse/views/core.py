@@ -85,9 +85,11 @@ class Interactive(object):
     self.setFlag(QGraphicsItem.ItemIsFocusable, True)
   # handle mouse events
   def mousePressEvent(self, event):
+    if (event.button() != Qt.LeftButton): return
     self._dragging = False
     self._drag_start_pos = event.scenePos()
   def mouseMoveEvent(self, event):
+    if ((event.buttons() & Qt.LeftButton) == Qt.NoButton): return
     pos = event.scenePos()
     scene_delta = QPointF(
       pos.x() - self._drag_start_pos.x(),
@@ -104,7 +106,7 @@ class Interactive(object):
     if (self._dragging):
       self.on_drag_end(event)
       self._dragging = False
-    else:
+    elif (event.button() == Qt.LeftButton):
       self.on_click(event)
   # override these to handle mouse events in general
   def on_click(self, event):
@@ -376,7 +378,7 @@ class ListLayout(QGraphicsObject):
     for item in old:
       view = self._view_map[item]
       view.setParentItem(None)
-      self.scene.removeItem(view)
+      self.scene().removeItem(view)
       del self._view_map[item]
       try:
         item.remove_observer(self.layout)
@@ -451,7 +453,7 @@ class ViewManagerSingleton(observable.Object):
       else:
         first_one = True
       self._end_action_timer.start(end_timeout)
-    elif (self._end_action_timer is not None):
+    elif (self._end_action_timer.isActive()):
       self._end_action_timer.stop()
       self.end_action()
     if (first_one):

@@ -6,6 +6,7 @@ from PySide.QtGui import *
 from ..common import observable
 # import symbols
 import core
+from ..models import doc
 from ..models.doc import ViewScale
 
 # represent a block of events on a track
@@ -76,7 +77,13 @@ class BlockView(core.BoxSelectable, core.TimeDraggable, core.ModelView):
       t = div_time
       while ((div_time > 0) and (t < self.block.duration)):
         qp.drawLine(QPointF(t, 0), QPointF(t, height))
-        t += div_time        
+        t += div_time
+  # show a context menu with block actions
+  def contextMenuEvent(self, e):
+    menu = BlockMenu(self.block, track=self.track)
+    proxy = self.scene().addWidget(menu)
+    p = e.scenePos()
+    menu.popup(QPoint(round(p.x()), round(p.y())))
 
 # do layout for notes in a block
 class NoteLayout(core.ListLayout):
@@ -214,6 +221,77 @@ class BlockRepeatView(core.TimeDraggable, core.ModelView):
     qp.drawEllipse(QPointF(x, y - 0.5), r * px, r * py)
     qp.drawEllipse(QPointF(x, y + 0.5), r * px, r * py)
 
+class BlockMenu(QMenu):
+  def __init__(self, block, track, parent=None):
+    QMenu.__init__(self, parent)
+    self.block = block
+    self.track = track
+    split_action = QAction('Split', self)
+    split_action.setStatusTip('Split the block into multiple blocks')
+    split_action.triggered.connect(self.on_split)
+    join_action = QAction('Join', self)
+    join_action.setStatusTip('Join selected blocks into one')
+    join_action.triggered.connect(self.on_join)
+    self.addAction(split_action)
+    self.addAction(join_action)
+  # get all blocks in the selection
+  def get_selected_blocks(self):
+    blocks = set()
+    for item in doc.Selection.models:
+      if (hasattr(item, 'events')):
+        blocks.add(item)
+    return(blocks)
+  # get selected events within the current block
+  def get_selected_notes(self):
+    block_events = set(self.block.events)
+    selected_events = set()
+    for item in doc.Selection.models:
+      if ((item in block_events) and (hasattr(item, 'pitch'))):
+        selected_events.add(item)
+    return(selected_events)
+  # join multiple blocks
+  def on_join(self, *args):
+    blocks = self.get_selected_blocks()
+    blocks.add(self.block)
+    core.ViewManager.begin_action((blocks, self.track))
+    if (len(blocks) > 1):
+      self.block.join(blocks, tracks=(self.track,))
+    else:
+      self.block.join_repeats()
+    core.ViewManager.end_action()
+  # split a block at selected note boundaries
+  def on_split(self, *args):
+    track = self.track
+    # if the block has multiple repeats, split the repeats
+    if (self.block.events.duration < self.block.duration):
+      core.ViewManager.begin_action(track)
+      self.block.split_repeats(track=track)
+      core.ViewManager.end_action()
+    else:
+      times = [ ]
+      # get selected events in the block
+      selected_events = self.get_selected_notes()
+      # if events are selected in the block, find boundaries 
+      #  between selected and deselected events
+      if (len(selected_events) > 0):
+        # sort all block events by time
+        events = list(self.block.events)
+        events.sort(key=lambda e: e.time)
+        # find boundaries
+        was_selected = (events[0] in selected_events)
+        for event in events:
+          # count notes only
+          if (not hasattr(event, 'pitch')): continue
+          is_selected = (event in selected_events)
+          if (is_selected != was_selected):
+            times.append(event.time)
+            was_selected = is_selected
+      # if there are times to split on, we can split
+      if (len(times) > 0):
+        core.ViewManager.begin_action((self.block, track))
+        self.block.split(times, track=track)
+        core.ViewManager.end_action()
+
 ## make a context menu for blocks
 #class BlockMenu(ContextMenu):
 #  def __init__(self, block, tracks=None):
@@ -235,68 +313,4 @@ class BlockRepeatView(core.TimeDraggable, core.ModelView):
 #    # if more than one block is selected, they can be joined
 #    self.join_item.set_sensitive(
 #      (len(selected) == 0) or (self.block in selected))
-#  # get all blocks in the selection
-#  def get_selected_blocks(self):
-#    blocks = set()
-#    for item in ViewManager.selection:
-#      if (hasattr(item, 'events')):
-#        blocks.add(item)
-#    return(blocks)
-#  # get selected events within the current block
-#  def get_selected_notes(self):
-#    block_events = set(self.block.events)
-#    selected_events = set()
-#    for item in ViewManager.selection:
-#      if ((item in block_events) and (hasattr(item, 'pitch'))):
-#        selected_events.add(item)
-#    return(selected_events)
-#  # join multiple blocks
-#  def on_join(self, *args):
-#    blocks = self.get_selected_blocks()
-#    blocks.add(self.block)
-#    ViewManager.begin_action((blocks, self.tracks))
-#    if (len(blocks) > 1):
-#      self.block.join(blocks, tracks=self.tracks)
-#    else:
-#      self.block.join_repeats()
-#    ViewManager.end_action()
-#  # split a block at selected note boundaries
-#  def on_split(self, *args):
-#    # find the track this block is in so we can place 
-#    #  the new split-off blocks somewhere
-#    track = None
-#    if (self.tracks):
-#      for search_track in self.tracks:
-#        if (self.block in search_track):
-#          track = search_track
-#          break
-#    if (track is None): return
-#    # if the block has multiple repeats, split the repeats
-#    if (self.block.events.duration < self.block.duration):
-#      ViewManager.begin_action(track)
-#      self.block.split_repeats(track=track)
-#      ViewManager.end_action()
-#    else:
-#      times = [ ]
-#      # get selected events in the block
-#      selected_events = self.get_selected_notes()
-#      # if events are selected in the block, find boundaries 
-#      #  between selected and deselected events
-#      if (len(selected_events) > 0):
-#        # sort all block events by time
-#        events = list(self.block.events)
-#        events.sort(key=lambda e: e.time)
-#        # find boundaries
-#        was_selected = (events[0] in selected_events)
-#        for event in events:
-#          # count notes only
-#          if (not hasattr(event, 'pitch')): continue
-#          is_selected = (event in selected_events)
-#          if (is_selected != was_selected):
-#            times.append(event.time)
-#            was_selected = is_selected
-#      # if there are times to split on, we can split
-#      if (len(times) > 0):
-#        ViewManager.begin_action((self.block, track))
-#        self.block.split(times, track=track)
-#        ViewManager.end_action()
+
