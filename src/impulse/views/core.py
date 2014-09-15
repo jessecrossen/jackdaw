@@ -32,14 +32,16 @@ class ModelView(QGraphicsObject):
     pos = self.pos()
     return(QRectF(pos.x(), pos.y(), self._size.width(), self._size.height()))
   def setRect(self, rect):
-    if ((rect.x() != self.pos().x()) or
-        (rect.y() != self.pos().y()) or
-        (rect.width() != self._size.width()) or 
-        (rect.height() != self._size.height())):
+    posChanged = ((rect.x() != self.pos().x()) or
+                  (rect.y() != self.pos().y()))
+    sizeChanged = ((rect.width() != self._size.width()) or 
+                   (rect.height() != self._size.height()))
+    if ((posChanged) or (sizeChanged)):
       self.prepareGeometryChange()
       self.setPos(rect.x(), rect.y())
       self._size = QSizeF(rect.width(), rect.height())
-      self.layout()
+      if (sizeChanged):
+        self.layout()
   # make a default implementation of the bounding box
   def boundingRect(self):
     r = self.rect()
@@ -339,6 +341,9 @@ class ListLayout(QGraphicsObject):
       self._items.add_observer(self.update_views)
     except AttributeError: pass
     self.update_views()
+  @property
+  def views(self):
+    return(tuple(self._views))
   def container(self):
     return(self._container)
   def rect(self):
@@ -347,7 +352,7 @@ class ListLayout(QGraphicsObject):
     self._rect = rect
     self.layout()
   def boundingRect(self):
-    return(QRectF())
+    return(self.mapRectFromParent(self._rect))
   def paint(self, qp, options, widget):
     pass
   def update_views(self):
@@ -383,6 +388,9 @@ class ListLayout(QGraphicsObject):
     pass
 
 class VBoxLayout(ListLayout):
+  def __init__(self, *args, **kwargs):
+    self.spacing = 0.0
+    ListLayout.__init__(self, *args, **kwargs)
   def layout(self):
     y = self._rect.y()
     x = self._rect.x()
@@ -390,7 +398,7 @@ class VBoxLayout(ListLayout):
     for view in self._views:
       r = view.rect()
       view.setRect(QRectF(x, y, w, r.height()))
-      y += r.height()
+      y += r.height() + self.spacing
 
 # make a singleton for handling things like selection state
 class ViewManagerSingleton(observable.Object):

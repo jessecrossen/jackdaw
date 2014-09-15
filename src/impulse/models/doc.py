@@ -523,10 +523,11 @@ class Track(ModelList):
     u'C', u'D♭', u'D', u'E♭', u'E', u'F', 
     u'F♯', u'G', u'A♭', u'A', u'B♭', u'B' )
 
-  def __init__(self, blocks=(), duration=60, 
+  def __init__(self, blocks=(), duration=60, name='Track',
                      solo=False, mute=False, arm=False,
                      level=1.0, pan=0.0, pitch_names=None):
     ModelList.__init__(self, blocks)
+    self._name = name
     self._duration = duration
     self._solo = solo
     self._mute = mute
@@ -543,6 +544,15 @@ class Track(ModelList):
     # whether the track is enabled for playback 
     # (this will be controlled by the track list)
     self.enabled = True
+  # get and set the name of the track
+  @property
+  def name(self):
+    return(self._name)
+  @name.setter
+  def name(self, value):
+    if (value != self._name):
+      self._name = value
+      self.on_change()
   # get and set user-defined names for pitches
   @property
   def pitch_names(self):
@@ -649,6 +659,7 @@ class Track(ModelList):
   # track serialization
   def serialize(self):
     return({ 
+      'name': self.name,
       'blocks': list(self),
       'duration': self.duration,
       'solo': self.solo,

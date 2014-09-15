@@ -28,7 +28,7 @@ class BlockView(core.BoxSelectable, core.TimeDraggable, core.ModelView):
   def track(self):
     return(self._track)
   # do background drawing and layout
-  def paint(self, qp, options, widget):
+  def layout(self):
     r = self.rect()
     width = r.width()
     height = r.height()
@@ -52,6 +52,10 @@ class BlockView(core.BoxSelectable, core.TimeDraggable, core.ModelView):
     self.start_view.setRect(QRectF(0.0, 0.0, 0.0, height))
     self.repeat_view.setRect(QRectF(repeat_time, 0.0, 0.0, height))
     self.end_view.setRect(QRectF(duration, 0.0, 0.0, height))
+  def paint(self, qp, options, widget):
+    r = self.rect()
+    width = r.width()
+    height = r.height()
     # choose a color for the background
     selected = self.block.selected
     if (selected):
