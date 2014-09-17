@@ -20,6 +20,11 @@ class ModelView(QGraphicsObject):
   def destroy(self):
     self._model.remove_observer(self.update)
     self._model.remove_observer(self.layout)
+    for item in self.childItems():
+      try:
+        item.destroy()
+      except AttributeError:
+        item.setParentItem(None)
     self.setParentItem(None)
   @property
   def model(self):
