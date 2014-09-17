@@ -40,6 +40,7 @@ class BlockView(core.BoxSelectable, core.TimeDraggable, core.ModelView):
     for i in range(0, repeats):
       if (i < len(self.note_layouts)):
         layout = self.note_layouts[i]
+        layout.items = self.block.events
       else:
         layout = NoteLayout(self, self.block.events, self.track)
         self.note_layouts.append(layout)
@@ -47,8 +48,7 @@ class BlockView(core.BoxSelectable, core.TimeDraggable, core.ModelView):
     # remove extraneous layouts
     for i in range(repeats, len(self.note_layouts)):
       layout = self.note_layouts.pop()
-      layout.setParent(None)
-      self.scene().removeItem(layout)
+      layout.destroy()
     # place the block's placeholders
     self.start_view.setRect(QRectF(0.0, 0.0, 0.0, height))
     self.repeat_view.setRect(QRectF(repeat_time, 0.0, 0.0, height))
@@ -80,10 +80,20 @@ class BlockView(core.BoxSelectable, core.TimeDraggable, core.ModelView):
         t += div_time
   # show a context menu with block actions
   def contextMenuEvent(self, e):
-    menu = BlockMenu(self.block, track=self.track)
-    proxy = self.scene().addWidget(menu)
-    p = e.scenePos()
-    menu.popup(QPoint(round(p.x()), round(p.y())))
+    # walk up the chain to find the track list this block is being 
+    #  presented in, falling back to just the block's track
+    node = self
+    tracks = (self.track,)
+    while(node):
+      if (hasattr(node, 'tracks')):
+        tracks = node.tracks
+        break
+      node = node.parentItem()
+    # create and show the menu
+    menu = BlockMenu(parent=e.widget(),
+                     block=self.block, 
+                     tracks=tracks)
+    menu.popup(e.screenPos())
 
 # do layout for notes in a block
 class NoteLayout(core.ListLayout):
@@ -105,7 +115,10 @@ class NoteLayout(core.ListLayout):
       i += 1.0
     for view in self._views:
       note = view.note
-      y = pitch_map[note.pitch]
+      try:
+        y = pitch_map[note.pitch]
+      except KeyError:
+        y = -1.0
       view.setRect(QRectF(note.time, y, note.duration, 1.0))
 
 # represent a note event in a block
@@ -222,10 +235,10 @@ class BlockRepeatView(core.TimeDraggable, core.ModelView):
     qp.drawEllipse(QPointF(x, y + 0.5), r * px, r * py)
 
 class BlockMenu(QMenu):
-  def __init__(self, block, track, parent=None):
+  def __init__(self, block, tracks, parent=None):
     QMenu.__init__(self, parent)
     self.block = block
-    self.track = track
+    self.tracks = tracks
     split_action = QAction('Split', self)
     split_action.setStatusTip('Split the block into multiple blocks')
     split_action.triggered.connect(self.on_split)
@@ -234,6 +247,15 @@ class BlockMenu(QMenu):
     join_action.triggered.connect(self.on_join)
     self.addAction(split_action)
     self.addAction(join_action)
+    # disable actions that can't be performed
+    # get all the selected blocks
+    selected = self.get_selected_blocks()
+    # if the block is the only one selected, it can be split
+    split_action.setEnabled((len(selected) == 0) or 
+      ((len(selected) == 1) and (self.block in selected)))
+    # if more than one block is selected, they can be joined
+    join_action.setEnabled(
+      (len(selected) == 0) or (self.block in selected))
   # get all blocks in the selection
   def get_selected_blocks(self):
     blocks = set()
@@ -253,19 +275,23 @@ class BlockMenu(QMenu):
   def on_join(self, *args):
     blocks = self.get_selected_blocks()
     blocks.add(self.block)
-    core.ViewManager.begin_action((blocks, self.track))
+    core.ViewManager.begin_action((blocks, self.tracks))
     if (len(blocks) > 1):
-      self.block.join(blocks, tracks=(self.track,))
+      self.block.join(blocks, tracks=self.tracks)
     else:
       self.block.join_repeats()
     core.ViewManager.end_action()
   # split a block at selected note boundaries
   def on_split(self, *args):
-    track = self.track
+    current_track = None
+    for track in self.tracks:
+      if (self.block in track):
+        current_track = track
+        break
     # if the block has multiple repeats, split the repeats
     if (self.block.events.duration < self.block.duration):
       core.ViewManager.begin_action(track)
-      self.block.split_repeats(track=track)
+      self.block.split_repeats(track=current_track)
       core.ViewManager.end_action()
     else:
       times = [ ]
@@ -288,29 +314,8 @@ class BlockMenu(QMenu):
             was_selected = is_selected
       # if there are times to split on, we can split
       if (len(times) > 0):
-        core.ViewManager.begin_action((self.block, track))
-        self.block.split(times, track=track)
+        core.ViewManager.begin_action((self.block, current_track))
+        self.block.split(times, track=current_track)
         core.ViewManager.end_action()
 
-## make a context menu for blocks
-#class BlockMenu(ContextMenu):
-#  def __init__(self, block, tracks=None):
-#    ContextMenu.__init__(self, block)
-#    self.tracks = tracks
-#    # add menu items
-#    self.join_item = self.make_item('Join', self.on_join)
-#    self.split_item = self.make_item('Split', self.on_split)
-#    self.show_all()
-#  @property
-#  def block(self):
-#    return(self._model)
-#  def on_change(self):
-#    # get all the selected blocks
-#    selected = self.get_selected_blocks()
-#    # if the block is the only one selected it can be split
-#    self.split_item.set_sensitive((len(selected) == 0) or 
-#      ((len(selected) == 1) and (self.block in selected)))
-#    # if more than one block is selected, they can be joined
-#    self.join_item.set_sensitive(
-#      (len(selected) == 0) or (self.block in selected))
 

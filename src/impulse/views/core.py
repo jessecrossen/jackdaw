@@ -17,6 +17,10 @@ class ModelView(QGraphicsObject):
     self._model.add_observer(self.layout)
     self._palette = QPalette()
     self._size = QSizeF(0.0, 0.0)
+  def destroy(self):
+    self._model.remove_observer(self.update)
+    self._model.remove_observer(self.layout)
+    self.setParentItem(None)
   @property
   def model(self):
     return(self._model)
@@ -337,12 +341,27 @@ class ListLayout(QGraphicsObject):
     self.view_for_item = view_for_item
     self._view_map = dict()
     self._views = list()
-    self._items = items
     self._rect = QRectF(0, 0, 0, 0)
-    try:
-      self._items.add_observer(self.update_views)
-    except AttributeError: pass
-    self.update_views()
+    self._items = None
+    self.items = items
+  def destroy(self):
+    self.items = None
+  @property
+  def items(self):
+    return(self._items)
+  @items.setter
+  def items(self, value):
+    if (value is not self._items):
+      if (self._items):
+        try:
+          self._items.remove_observer(self.update_views)
+        except AttributeError: pass
+      self._items = value
+      if (self._items):
+        try:
+          self._items.add_observer(self.update_views)
+        except AttributeError: pass
+      self.update_views()
   @property
   def views(self):
     return(tuple(self._views))
@@ -361,29 +380,31 @@ class ListLayout(QGraphicsObject):
     old = set(self._view_map.keys())
     new = set()
     views = list()
-    for item in self._items:
-      if (item in self._view_map):
-        old.remove(item)
-        view = self._view_map[item]
-      else:
-        view = self.view_for_item(item)
-        if (view is None): continue
-        new.add(item)
-        view.setParentItem(self)
-        self._view_map[item] = view
-        try:
-          item.add_observer(self.layout)
-        except AttributeError: pass
-      views.append(view)
+    if (self._items is not None):
+      for item in self._items:
+        if (item in self._view_map):
+          old.remove(item)
+          view = self._view_map[item]
+        else:
+          view = self.view_for_item(item)
+          if (view is None): continue
+          new.add(item)
+          view.setParentItem(self)
+          self._view_map[item] = view
+          try:
+            item.add_observer(self.layout)
+          except AttributeError: pass
+        views.append(view)
+    self._views = views
     for item in old:
       view = self._view_map[item]
-      view.setParentItem(None)
-      self.scene().removeItem(view)
       del self._view_map[item]
+      item.remove_observer(self.layout)
       try:
-        item.remove_observer(self.layout)
-      except AttributeError: pass
-    self._views = views
+        view.destroy()
+      except AttributeError:
+        view.setParentItem(None)
+    # do layout if the contained items have changed
     if ((len(old) > 0) or (len(new) > 0)):
       self.layout()
   def layout(self):
