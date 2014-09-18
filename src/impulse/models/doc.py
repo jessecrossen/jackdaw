@@ -7,6 +7,8 @@ import copy
 from PySide.QtCore import QAbstractAnimation, Signal
 
 from ..common import observable, serializable
+from core import Model, ModelList
+import device
 
 # make a singleton for managing the selection
 class SelectionSingleton(observable.Object):
@@ -64,82 +66,6 @@ class SelectionSingleton(observable.Object):
     
 # make a global instance
 Selection = SelectionSingleton()
-
-# make a mixin to add selectability
-class Selectable(object):
-  def __init__(self):
-    self._selected = False
-  @property
-  def selected(self):
-    return(self._selected)
-  @selected.setter
-  def selected(self, value):
-    if (value != self._selected):
-      if (value):
-        Selection.select(self)
-      else:
-        Selection.deselect(self)
-      self.on_change()
-
-# make a base class to implement common functions of the model layer
-class Model(Selectable, observable.Object):
-  def __init__(self):
-    Selectable.__init__(self)
-    observable.Object.__init__(self)
-    # initialize cached data attributes  
-    self.invalidate()
-  # invalidate cached data when the model changes
-  def on_change(self):
-    self.invalidate()
-    observable.Object.on_change(self)
-  # override to invalidate cached data
-  def invalidate(self):
-    pass
-  # return if the model contains the given model in one of its properties
-  def contains_model(self, model, visited=None):
-    if (visited is None):
-      visited = set()
-    if (self in visited): return
-    visited.add(self)
-    for key in dir(self):
-      # skip private stuff
-      if (key[0] == '_'): continue
-      value = getattr(self, key)
-      if (value is model):
-        return(True)
-      try:
-        if (value.contains_model(model, visited)):
-          return(True)
-      except AttributeError: continue
-
-# make a base class to implement common functions for lists of Model instances
-class ModelList(Selectable, observable.List):
-  def __init__ (self, value=()):
-    Selectable.__init__(self)
-    observable.List.__init__(self, value)
-    # initialize cached data attributes  
-    self.invalidate()
-  # invalidate cached data when the model changes
-  def on_change(self):
-    self.invalidate()
-    observable.Object.on_change(self)
-  # override to invalidate cached data
-  def invalidate(self):
-    pass
-  # return whether the list or one of its items contains the given model
-  def contains_model(self, model, visited=None):
-    if (visited is None):
-      visited = set()
-    if (self in visited): return
-    visited.add(self)
-    if (model in self):
-      return(True)
-    for item in self:
-      try:
-        if (item.contains_model(model)):
-          return(True)
-      except AttributeError: continue
-    return(False)
 
 # represents a single note event with time, pitch, velocity, and duration
 #  - time and duration are in seconds
@@ -1045,8 +971,7 @@ serializable.add(ViewScale)
 
 # represent a document, which can contain multiple tracks
 class Document(Model):
-  def __init__(self, tracks=None, transport=None, view_scale=None,
-               input_patch_bay=None, output_patch_bay=None):
+  def __init__(self, tracks=None, transport=None, view_scale=None):
     Model.__init__(self)
     # the file path to save to
     self.path = None
@@ -1055,16 +980,6 @@ class Document(Model):
       tracks = TrackList()
     self.tracks = tracks
     self.tracks.add_observer(self.on_change)
-    # inputs
-    if (input_patch_bay is None):
-      input_patch_bay = PatchBay()
-    self.input_patch_bay = input_patch_bay
-    self.input_patch_bay.add_observer(self.on_input_change)
-    # outputs
-    if (output_patch_bay is None):
-      output_patch_bay = PatchBay()
-    self.output_patch_bay = output_patch_bay
-    self.output_patch_bay.add_observer(self.on_output_change)
     # transport
     if (transport is None):
       transport = Transport()
@@ -1073,21 +988,19 @@ class Document(Model):
     if (view_scale is None):
       view_scale = ViewScale()
     self.view_scale = view_scale
+    # a list of devices on the workspace
+    self.devices = device.DeviceList()
+    self.devices.append(device.MultitrackDevice(
+      name='Tracks',
+      tracks=self.tracks, 
+      view_scale=self.view_scale, 
+      transport=self.transport))
+    self.devices.add_observer(self.on_change)
   
   # add a track to the document
   def add_track(self, *args):
     self.tracks.append(Track())
-    
-  # connect input adapters when they're routed to something in the patch bay
-  def on_input_change(self):
-    for adapter in self.input_patch_bay.from_items:
-      if (not adapter.is_connected):
-        adapter.patch()
-  # connect output adapters when there's something routed to them
-  def on_output_change(self):
-    for adapter in self.output_patch_bay.to_items:
-      if (not adapter.is_connected):
-        adapter.patch()
+
   # save the document to a file
   def save(self):
     output_stream = open(self.path, 'w')
@@ -1098,9 +1011,7 @@ class Document(Model):
     return({ 
       'tracks': self.tracks,
       'transport': self.transport,
-      'view_scale': self.view_scale,
-      'input_patch_bay': self.input_patch_bay,
-      'output_patch_bay': self.output_patch_bay
+      'view_scale': self.view_scale
     })
 serializable.add(Document)
 

@@ -3,8 +3,7 @@ from PySide.QtGui import *
 
 import core
 import track
-from ..models import doc
-#import device
+import workspace
 #from ..midi import inputs, outputs, sampler
 
 class DocumentView(QGraphicsView):
@@ -16,13 +15,9 @@ class DocumentView(QGraphicsView):
     self.setRenderHints(QPainter.Antialiasing)
     # draw the background like a plain window background
     self.setBackgroundBrush(QPalette().brush(QPalette.Normal, QPalette.Window))
-    # add views
-    self.track_list_view = track.TrackListView(
-            tracks=document.tracks,
-            transport=document.transport, 
-            view_scale=self.document.view_scale)
-    self.track_list_view.setRect(QRectF(0, 0, 300, 200))
-    self.scene.addItem(self.track_list_view)
+    # add a view of the document workspace
+    self.workspace = workspace.WorkspaceView(document)
+    self.scene.addItem(self.workspace)
     
   @property
   def document(self):

@@ -164,52 +164,10 @@ class TrackView(core.ModelView):
     height = r.height()
     self.block_layout.setRect(QRectF(0, 0, width, height))
 
-# make a transparent line edit
-class TransparentLineEdit(QLineEdit):
-  def __init__(self, parent):
-    QLineEdit.__init__(self, parent)
-    self.setFrame(False)
-    p = self.palette()
-    p.setBrush(QPalette.Base, Qt.NoBrush)
-    self.setPalette(p)
-    self.setAutoFillBackground(False)
-    self.setStyleSheet("background-color:transparent")
-    self.clickedToFocus = False
-  # select all on focus
-  def mousePressEvent(self, e, Parent=None):
-    QLineEdit.mousePressEvent(self, e)
-    if (not self.clickedToFocus):
-      self.selectAll()
-      self.clickedToFocus = True
-  def focusOutEvent(self, e):
-    QLineEdit.focusOutEvent(self, e)
-    self.clickedToFocus = False
-
-# show an editable label for a track's name
-class TrackNameView(TransparentLineEdit):
-  def __init__(self, track, parent=None):
-    TransparentLineEdit.__init__(self, parent)
-    # link to the track
-    self._track = track
-    self._track.add_observer(self._update_name)
-    self._update_name()
-    self.setAlignment(Qt.AlignCenter | Qt.AlignVCenter)
-    self.textEdited.connect(self.on_edited)
-  def _update_name(self):
-    if (not self.hasFocus()):
-      self.setText(self._track.name)
-  def on_edited(self, text):
-    self._track.name = text
-  def minimumSizeHint(self):
-    s = QLineEdit.sizeHint(self)
-    fm = QFontMetrics(self.font())
-    s.setWidth(fm.width('  '+self.text()))
-    return(s)
-
 # show an editable label for a pitch on the track
-class PitchNameView(TransparentLineEdit):
+class PitchNameView(core.EditableLabel):
   def __init__(self, track, pitch, parent=None):
-    TransparentLineEdit.__init__(self, parent)
+    core.EditableLabel.__init__(self, parent)
     # link to the track and index
     self._track = track
     self._pitch = None
@@ -267,7 +225,7 @@ class PitchKeyView(core.ModelView):
     h = self.view_scale.pitch_height
     # make a view for the track name
     if (not self.track_name_proxy):
-      self.track_name_proxy = self.scene().addWidget(TrackNameView(self.track))
+      self.track_name_proxy = self.scene().addWidget(core.NameLabel(self.track))
       self.track_name_proxy.setParentItem(self)
       self.track_name_proxy.setRotation(-90)
     name_view = self.track_name_proxy.widget()

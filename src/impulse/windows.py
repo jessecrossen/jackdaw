@@ -62,13 +62,11 @@ class DocumentWindow(QMainWindow):
 #    self.control_surface = inputs.NanoKONTROL2(
 #      transport=self.document.transport, mixer=self.mixer)
     # add record/playback controllers
-    self.recorder = controllers.Recorder(
-      transport=self.document.transport,
-      input_patch_bay=self.document.input_patch_bay,
-      output_patch_bay=self.document.output_patch_bay)
-    self.player = controllers.Player(
-      transport=self.document.transport,
-      output_patch_bay=self.document.output_patch_bay)
+#    self.recorder = controllers.Recorder(
+#      transport=self.document.transport)
+#    self.player = controllers.Player(
+#      transport=self.document.transport,
+#      output_patch_bay=self.document.output_patch_bay)
     # make a view for the document
     self.document_view = views.doc.DocumentView(parent=self,
       document=self.document)
@@ -299,11 +297,5 @@ class DocumentWindow(QMainWindow):
       (self.document_view is not None) and (self.document_view.can_zoom_in))
     self.zoom_out_action.setEnabled(
       (self.document_view is not None) and (self.document_view.can_zoom_out))
-    
-#    # only allow adding instruments if the sampler is ready
-#    self.add_output_action.set_enabled(
-#      (sampler.LinuxSampler.ready) and 
-#      (sampler.LinuxSampler.input_connected) and 
-#      (sampler.LinuxSampler.output_connected))
 
 

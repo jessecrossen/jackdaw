@@ -1,5 +1,4 @@
 import math
-import weakref
 
 from PySide.QtCore import *
 from PySide.QtGui import *
@@ -9,26 +8,18 @@ from ..models import doc
 import state
 
 # make a base class for views
-class ModelView(QGraphicsObject):
-  def __init__(self, model, parent=None):
+class View(QGraphicsObject):
+  def __init__(self, parent=None):
     QGraphicsObject.__init__(self, parent)
-    self._model = model
-    self._model.add_observer(self.update)
-    self._model.add_observer(self.layout)
     self._palette = QPalette()
     self._size = QSizeF(0.0, 0.0)
   def destroy(self):
-    self._model.remove_observer(self.update)
-    self._model.remove_observer(self.layout)
     for item in self.childItems():
       try:
         item.destroy()
       except AttributeError:
         item.setParentItem(None)
     self.setParentItem(None)
-  @property
-  def model(self):
-    return(self._model)
   @property
   def palette(self):
     return(self._palette)
@@ -66,6 +57,21 @@ class ModelView(QGraphicsObject):
   # redraw the view
   def paint(self, qp, options, widget):
     pass
+
+# make a base class for views of models
+class ModelView(View):
+  def __init__(self, model, parent=None):
+    View.__init__(self, parent)
+    self._model = model
+    self._model.add_observer(self.update)
+    self._model.add_observer(self.layout)
+  def destroy(self):
+    self._model.remove_observer(self.update)
+    self._model.remove_observer(self.layout)
+    View.destroy(self)
+  @property
+  def model(self):
+    return(self._model)
   # get a brush based on the model's selection state
   def brush(self, alpha=1.0):
     try:
@@ -427,6 +433,48 @@ class VBoxLayout(ListLayout):
       r = view.rect()
       view.setRect(QRectF(x, y, w, r.height()))
       y += r.height() + self.spacing
+
+# make a transparent line edit that looks like a label but can be edited
+class EditableLabel(QLineEdit):
+  def __init__(self, parent):
+    QLineEdit.__init__(self, parent)
+    self.setFrame(False)
+    p = self.palette()
+    p.setBrush(QPalette.Base, Qt.NoBrush)
+    self.setPalette(p)
+    self.setAutoFillBackground(False)
+    self.setStyleSheet("background-color:transparent")
+    self.clickedToFocus = False
+  # select all on focus
+  def mousePressEvent(self, e, Parent=None):
+    QLineEdit.mousePressEvent(self, e)
+    if (not self.clickedToFocus):
+      self.selectAll()
+      self.clickedToFocus = True
+  def focusOutEvent(self, e):
+    QLineEdit.focusOutEvent(self, e)
+    self.clickedToFocus = False
+
+# show an editable label for the name property of a model
+class NameLabel(EditableLabel):
+  def __init__(self, model, parent=None):
+    EditableLabel.__init__(self, parent)
+    # link to the track
+    self._model = model
+    self._model.add_observer(self._update_name)
+    self._update_name()
+    self.setAlignment(Qt.AlignCenter | Qt.AlignVCenter)
+    self.textEdited.connect(self.on_edited)
+  def _update_name(self):
+    if (not self.hasFocus()):
+      self.setText(self._model.name)
+  def on_edited(self, text):
+    self._model.name = text
+  def minimumSizeHint(self):
+    s = QLineEdit.sizeHint(self)
+    fm = QFontMetrics(self.font())
+    s.setWidth(fm.width('  '+self.text()))
+    return(s)
 
 # make a singleton for handling things like selection state
 class ViewManagerSingleton(observable.Object):
