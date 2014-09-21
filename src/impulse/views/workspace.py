@@ -8,7 +8,7 @@ from PySide.QtGui import *
 import core
 import track
 
-class DeviceView(core.ModelView):
+class UnitView(core.ModelView):
   MARGIN = 10.0
   def __init__(self, *args, **kwargs):
     core.ModelView.__init__(self, *args, **kwargs)
@@ -16,7 +16,7 @@ class DeviceView(core.ModelView):
     self._size = QSizeF(60.0, 40.0)
     self._content = None
   @property
-  def device(self):
+  def unit(self):
     return(self._model)
   def rect(self):
     r = core.ModelView.rect(self)
@@ -33,7 +33,7 @@ class DeviceView(core.ModelView):
   def layout(self):
     # add a title label at the top
     if ((self.scene()) and (not self.title_proxy)):
-      title_view = core.NameLabel(self.device)
+      title_view = core.NameLabel(self.unit)
       self.title_proxy = self.scene().addWidget(title_view)
       self.title_proxy.setParentItem(self)
     r = self.boundingRect()
@@ -57,46 +57,46 @@ class DeviceView(core.ModelView):
     r.adjust(-1, -1, -1, -1)
     qp.drawRoundedRect(r, 4.0, 4.0)
     
-# show a workspace with a list of devices
+# show a workspace with a list of units
 class WorkspaceView(core.ModelView):
   def __init__(self, doc, parent=None):
-    core.ModelView.__init__(self, model=doc.devices, parent=parent)
-    # add a layout for the devices
-    self.devices_layout = DeviceListLayout(self, 
-      doc.devices, self.view_for_device)
-  # get an appropriate view for a device
-  def view_for_device(self, device):
-    if (hasattr(device, 'tracks')):
-      return(MultitrackDeviceView(device))
-    return(DeviceView(device))
+    core.ModelView.__init__(self, model=doc.units, parent=parent)
+    # add a layout for the units
+    self.units_layout = UnitListLayout(self, 
+      doc.units, self.view_for_unit)
+  # get an appropriate view for a unit
+  def view_for_unit(self, unit):
+    if (hasattr(unit, 'tracks')):
+      return(MultitrackUnitView(unit))
+    return(UnitView(unit))
   # update the placement of the layout
   def layout(self):
     r = self.rect()
     width = r.width()
     height = r.height()
-    self.devices_layout.setRect(QRectF(0, 0, width, height))
+    self.units_layout.setRect(QRectF(0, 0, width, height))
 
-# lay devices out on the workspace
-class DeviceListLayout(core.ListLayout):
+# lay units out on the workspace
+class UnitListLayout(core.ListLayout):
   def layout(self):
     y = self._rect.y()
     x = self._rect.x()
     for view in self._views:
-      device = view.device
+      unit = view.unit
       r = view.rect()
       view.setRect(QRectF(
         # use integer coordinates for sharp antialiasing
-        round(x + device.x - (r.width() / 2.0)), 
-        round(y + device.y - (r.height() / 2.0)), 
+        round(x + unit.x - (r.width() / 2.0)), 
+        round(y + unit.y - (r.height() / 2.0)), 
         r.width(), r.height()))
         
-# make a device view containing a list of tracks
-class MultitrackDeviceView(DeviceView):
+# make a unit view containing a list of tracks
+class MultitrackUnitView(UnitView):
   def __init__(self, *args, **kwargs):
-    DeviceView.__init__(self, *args, **kwargs)
+    UnitView.__init__(self, *args, **kwargs)
     self._content = track.TrackListView(
-            tracks=self.device.tracks,
-            transport=self.device.transport, 
-            view_scale=self.device.view_scale)
+            tracks=self.unit.tracks,
+            transport=self.unit.transport, 
+            view_scale=self.unit.view_scale)
     self._content.setRect(QRectF(0, 0, 300, 200))
     self._content.setParentItem(self)

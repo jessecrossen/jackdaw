@@ -7,7 +7,7 @@ from PySide.QtGui import *
 #import symbols
 import core
 from ..models.doc import ViewScale
-from ..models import doc
+from ..models.core import Selection
 import block
 
 # make a view that displays a list of tracks
@@ -82,7 +82,7 @@ class TrackListView(core.BoxSelectable, core.Interactive, core.ModelView):
   # clear the selection when clicked
   def on_click(self, event):
     if (event.modifiers() == 0):
-      doc.Selection.deselect_all()
+      Selection.deselect_all()
   @property
   def track(self):
     return(self._model)

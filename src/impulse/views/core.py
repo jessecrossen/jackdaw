@@ -4,7 +4,7 @@ from PySide.QtCore import *
 from PySide.QtGui import *
 
 from ..common import observable
-from ..models import doc
+from ..models.core import Selection
 import state
 
 # make a base class for views
@@ -176,7 +176,7 @@ class Selectable(Interactive):
       if (self.model.selected):
         event.ignore()
         return
-      doc.Selection.deselect_all()
+      Selection.deselect_all()
       self.model.selected = True
 
 # make a view allow box selection by dragging
@@ -236,7 +236,7 @@ class BoxSelectable(Interactive, ModelView):
     modifiers = event.modifiers()
     if ((modifiers != Qt.ShiftModifier) and 
         (modifiers != Qt.ControlModifier)):
-      doc.Selection.deselect_all()
+      Selection.deselect_all()
     self._select_children_in_box(self, r, modifiers, set())
   def _select_children_in_box(self, item, r, modifiers, visited):
     for child in item.childItems():
@@ -279,16 +279,16 @@ class TimeDraggable(Selectable):
   def on_drag_start_x(self, event):  
     # select the model if it isn't selected
     if (not self.model.selected):
-      doc.Selection.deselect_all()
+      Selection.deselect_all()
       self.model.selected = True
     # record the original times of all selected models
     self._drag_start_times = dict()
-    for model in doc.Selection.models:
+    for model in Selection.models:
       try:
         self._drag_start_times[model] = model.time
       except AttributeError: continue
   def on_drag_x(self, event, delta_time):
-    for model in doc.Selection.models:
+    for model in Selection.models:
       if (model in self._drag_start_times):
         model.time = self._drag_start_times[model] + delta_time
   # reset state after dragging to avoid memory leaks
@@ -304,7 +304,7 @@ class TimeDraggable(Selectable):
     if (event.modifiers() == Qt.ShiftModifier):
       delta_time = self._get_time_jump(delta_time)
     # apply to the selection
-    for model in doc.Selection.models:
+    for model in Selection.models:
       model.time += delta_time
 
 # a mixin to allow a view's pitch to be dragged vertically
@@ -315,18 +315,18 @@ class PitchDraggable(Selectable):
   def on_drag_start_y(self, event):
     # select the model if it isn't selected
     if (not self.model.selected):
-      doc.Selection.deselect_all()
+      Selection.deselect_all()
       self.model.selected = True
     # record the original pitches of all selected models
     self._drag_start_pitches = dict()
-    for model in doc.Selection.models:
+    for model in Selection.models:
       try:
         self._drag_start_pitches[model] = model.pitch
       except AttributeError: continue
   def on_drag_y(self, event, delta_y):
     sign = -1 if delta_y > 0 else 1
     delta_pitch = sign * int(math.floor(abs(delta_y)))
-    for model in doc.Selection.models:
+    for model in Selection.models:
       if (model in self._drag_start_pitches):
         model.pitch = self._drag_start_pitches[model] + delta_pitch
   # reset state after dragging to avoid memory leaks
@@ -342,7 +342,7 @@ class PitchDraggable(Selectable):
     if (event.modifiers() == Qt.ShiftModifier):
       delta_pitch *= 12
     # apply to the selection
-    for model in doc.Selection.models:
+    for model in Selection.models:
       model.pitch += delta_pitch
 
 # make a class that manages graphics items representing a list
@@ -531,7 +531,7 @@ class ViewManagerSingleton(observable.Object):
       self._end_action_timer.stop()
       self.end_action()
     if (first_one):
-      self._action_things = (things, doc.Selection)
+      self._action_things = (things, Selection)
       self._undo_stack.begin_action(self._action_things)
       self.on_change()
   def end_action(self):

@@ -1,14 +1,14 @@
 from ..common import serializable
 from core import Model, ModelList
 
-# represent a device, which can be connected to other devices
-class Device(Model):
-  def __init__(self, name='Device', x=0, y=0):
+# represent a unit, which can be connected to other units
+class Unit(Model):
+  def __init__(self, name='Unit', x=0, y=0):
     Model.__init__(self)
     self._name = name
     self._x = x
     self._y = y
-  # get and set the name of the device
+  # get and set the name of the unit
   @property
   def name(self):
     return(self._name)
@@ -17,7 +17,7 @@ class Device(Model):
     if (value != self._name):
       self._name = value
       self.on_change()
-  # get and set the position of the device on the workspace
+  # get and set the position of the unit on the workspace
   @property
   def x(self):
     return(self._x)
@@ -34,37 +34,37 @@ class Device(Model):
     if (value != self._y):
       self._y = value
       self.on_change()
-  # device serialization
+  # unit serialization
   def serialize(self):
     return({ 
       'name': self.name,
       'x': self.x,
       'y': self.y
     })
-serializable.add(Device)
+serializable.add(Unit)
 
-# represent a list of devices
-class DeviceList(ModelList):
-  def __init__(self, devices=()):
-    ModelList.__init__(self, devices)
+# represent a list of units
+class UnitList(ModelList):
+  def __init__(self, units=()):
+    ModelList.__init__(self, units)
   # track serialization
   def serialize(self):
     return({ 
-      'devices': list(self)
+      'units': list(self)
     })
-serializable.add(DeviceList)
+serializable.add(UnitList)
 
-# make a device that represents the track list of the document
-class MultitrackDevice(Device):
+# make a unit that represents the track list of the document
+class MultitrackUnit(Unit):
   def __init__(self, tracks, view_scale, transport, *args, **kwargs):
-    Device.__init__(self, *args, **kwargs)
+    Unit.__init__(self, *args, **kwargs)
     self.tracks = tracks
     self.transport = transport
     self.view_scale = view_scale
   def serialize(self):
-    obj = Device.serialize(self)
+    obj = Unit.serialize(self)
     obj['tracks'] = self.tracks
     obj['transport'] = self.transport
     obj['view_scale'] = self.view_scale
     return(obj)
-serializable.add(MultitrackDevice)
+serializable.add(MultitrackUnit)

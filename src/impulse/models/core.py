@@ -1,5 +1,62 @@
 from ..common import observable
 
+# make a singleton for managing the selection
+class SelectionSingleton(observable.Object):
+  def __init__(self):
+    observable.Object.__init__(self)
+    self._models = set()
+  @property
+  def models(self):
+    return(self._models)
+  # add a model to the selection
+  def select(self, model):
+    # don't allow an item containing this one to remain selected
+    containers = list()
+    for item in self._models:
+      if (item.contains_model(model)):
+        containers.append(item)
+    for container in containers:
+      container.selected = False
+    # deselect all descendents of the new item
+    self.deselect_children(model)
+    # select the model
+    self._models.add(model)
+    if (not model._selected):
+      model._selected = True
+      model.on_change()
+  # remove a model from the selection
+  def deselect(self, model):
+    try:
+      self._models.remove(model)
+    except KeyError: pass
+    if (model._selected):
+      model._selected = False
+      model.on_change()
+  # deselect all selected models
+  def deselect_all(self):
+    models = set(self._models)
+    for model in models:
+      self.deselect(model)
+  # remove all children of a model from the selection
+  def deselect_children(self, model):
+    if (isinstance(model, ModelList)):
+      for child in model:
+        child.selected = False
+        self.deselect_children(child)
+    elif (isinstance(model, Model)):
+      for key in dir(model):
+        # skip private stuff
+        if (key[0] == '_'): continue
+        value = getattr(model, key)
+        try:
+          value.selected = False
+        except AttributeError: continue
+        if (isinstance(value, ModelList)):
+          self.deselect_children(value)
+    
+# make a global instance
+Selection = SelectionSingleton()
+
 # make a mixin to add selectability
 class Selectable(object):
   def __init__(self):

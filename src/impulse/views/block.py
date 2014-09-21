@@ -6,7 +6,7 @@ from PySide.QtGui import *
 from ..common import observable
 # import symbols
 import core
-from ..models import doc
+from ..models.core import Selection
 from ..models.doc import ViewScale
 
 # represent a block of events on a track
@@ -259,7 +259,7 @@ class BlockMenu(QMenu):
   # get all blocks in the selection
   def get_selected_blocks(self):
     blocks = set()
-    for item in doc.Selection.models:
+    for item in Selection.models:
       if (hasattr(item, 'events')):
         blocks.add(item)
     return(blocks)
@@ -267,7 +267,7 @@ class BlockMenu(QMenu):
   def get_selected_notes(self):
     block_events = set(self.block.events)
     selected_events = set()
-    for item in doc.Selection.models:
+    for item in Selection.models:
       if ((item in block_events) and (hasattr(item, 'pitch'))):
         selected_events.add(item)
     return(selected_events)
