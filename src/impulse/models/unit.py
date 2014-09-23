@@ -54,6 +54,36 @@ class UnitList(ModelList):
     })
 serializable.add(UnitList)
 
+# represent a connection between two objects
+class Connection(Model):
+  def __init__(self, source=None, dest=None):
+    Model.__init__(self)
+    self._source = source
+    self._dest = dest
+  @property
+  def source(self):
+    return(self._source)
+  @source.setter
+  def source(self, value):
+    if (value is not self._source):
+      self._source = value
+      self.on_change()
+  @property
+  def dest(self):
+    return(self._dest)
+  @dest.setter
+  def dest(self, value):
+    if (value is not self._dest):
+      self._dest = value
+      self.on_change()
+  # connection serialization
+  def serialize(self):
+    return({ 
+      'source': self.source,
+      'dest': self.dest
+    })
+serializable.add(Connection)
+
 # make a unit that represents the track list of the document
 class MultitrackUnit(Unit):
   def __init__(self, tracks, view_scale, transport, *args, **kwargs):

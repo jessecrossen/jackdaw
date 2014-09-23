@@ -5,6 +5,8 @@ import math
 from PySide.QtCore import *
 from PySide.QtGui import *
 
+from ..models import unit
+
 import core
 import track
 
@@ -66,10 +68,100 @@ class UnitView(core.ModelView):
     r = self.boundingRect()
     r.adjust(-1, -1, -1, -1)
     qp.drawRoundedRect(r, 4.0, 4.0)
-    
+
+# show a connection between two ports
+class ConnectionView(core.Interactive, core.ModelView):
+  # the radius of the pluggable ends of the wire
+  RADIUS = 3.5
+  def __init__(self, *args, **kwargs):
+    core.ModelView.__init__(self, *args, **kwargs)
+    core.Interactive.__init__(self)
+    self._source_view = None
+    self._dest_view = None
+  @property
+  def connection(self):
+    return(self._model)
+  @property
+  def source_view(self):
+    return(self._source_view)
+  @source_view.setter
+  def source_view(self, value):
+    if (value is not self._source_view):
+      self.prepareGeometryChange()
+      self._source_view = value
+      self.update()
+  @property
+  def dest_view(self):
+    return(self._dest_view)
+  @dest_view.setter
+  def dest_view(self, value):
+    if (value is not self._dest_view):
+      self.prepareGeometryChange()
+      self._dest_view = value
+      self.update()
+  # get the local coordinates for source and destination points
+  def sourcePos(self):
+    if (not self.source_view):
+      return(QPointF(0.0, 0.0)) 
+    elif (isinstance(self.source_view, QPointF)):
+      source = self.source_view
+    else:
+      source = self.source_view.mapToScene(QPointF(0.0, 0.0))
+    return(self.mapFromScene(source))
+  def destPos(self):
+    if (not self.dest_view):
+      return(QPointF(0.0, 0.0)) 
+    elif (isinstance(self.dest_view, QPointF)):
+      dest = self.dest_view
+    else:
+      dest = self.dest_view.mapToScene(QPointF(0.0, 0.0))
+    return(self.mapFromScene(dest))
+  # get the bounding rectangle encompassing the source and destination
+  def boundingRect(self):
+    p1 = self.sourcePos()
+    p2 = self.destPos()
+    r = QRectF(p1.x(), p1.y(), p2.x() - p1.x(), p2.y() - p1.y())
+    r = r.normalized()
+    m = self.RADIUS
+    r.adjust(- m, - m, m, m)
+    return(r)
+  # draw the connection as a wire
+  def paint(self, qp, options, widget):
+    # make sure there is a parent and endpoints
+    if ((self.source_view is None) or (self.dest_view is None) or
+        (self.parentItem() is None)): return
+    # get the source and dest as points, mapping into local coordinates
+    source = self.sourcePos()
+    dest = self.destPos()
+    # draw the wire
+    pen = self.pen()
+    pen.setWidth(2.0)
+    qp.setPen(pen)
+    qp.setBrush(Qt.NoBrush)
+    path = QPainterPath()
+    path.moveTo(source)
+    curve = (dest.x() - source.x()) / 2.0
+    path.cubicTo(QPointF(source.x() + curve, source.y()),
+                 QPointF(dest.x() - curve, dest.y()),
+                 dest)
+    qp.drawPath(path)
+    # draw the endpoints
+    qp.setPen(Qt.NoPen)
+    qp.setBrush(self.brush())
+    r = self.RADIUS
+    qp.drawEllipse(source, r, r)
+    qp.drawEllipse(dest, r, r)
+
 # make a base class for input/output ports
-class UnitPortView(core.ModelView):
+class UnitPortView(core.Interactive, core.ModelView):
+  # the radius of the open ring at the end of the port
   RADIUS = 4.0
+  # the distance from the base of the port to the center of its ring
+  OFFSET = RADIUS * 3.0
+  def __init__(self, *args, **kwargs):
+    core.ModelView.__init__(self, *args, **kwargs)
+    core.Interactive.__init__(self)
+    self._dragging_connection_view = None
   @property
   def target(self):
     return(self._model)
@@ -88,27 +180,57 @@ class UnitPortView(core.ModelView):
     f = r / d
     p = QPointF(end.x() + (f * dx), end.y() + (f * dy))
     qp.drawLine(p, base)
+  # handle dragging a connection from a port
+  def on_drag_start(self, event):
+    connection = unit.Connection()
+    view = ConnectionView(connection)
+    if (isinstance(self, UnitOutputView)):
+      connection.source = self.target
+      view.source_view = self
+    else:
+      connection.dest = self.target
+      view.dest_view = self
+    node = self
+    while (node):
+      if (isinstance(node, WorkspaceView)):
+        view.setParentItem(node)
+        break
+      node = node.parentItem()
+    if (not node):
+      view.setParentItem(self)
+    self._dragging_connection_view = view
+  def on_drag(self, event, delta_x, delta_y):
+    view = self._dragging_connection_view
+    if (not view): return
+    p = event.scenePos()
+    if (view.source_view is self):
+      view.dest_view = p
+    else:
+      view.source_view = p
+  def on_drag_end(self, event):
+    self._dragging_connection_view.setParentItem(None)
+    self._dragging_connection_view = None
 
 # show an input port to a unit
 class UnitInputView(UnitPortView):
   def boundingRect(self):
     r = self.RADIUS
-    w = (r * 4.0) + 1
-    h = (r * 2.0) + 2
-    return(QRectF(- w, - (h / 2), w, h))
+    x = - (r * 2.0)
+    h = (r * 4.0)
+    return(QRectF(x, - (h / 2), self.OFFSET - x, h))
   def paint(self, qp, options, widget):
-    self.drawPort(qp, QPointF(0.0, 0.0), 
-                  QPointF(- (self.RADIUS * 3.0), 0.0))
+    self.drawPort(qp, QPointF(self.OFFSET, 0.0), 
+                      QPointF(0.0, 0.0))
 # show an output port to a unit
 class UnitOutputView(UnitPortView):
   def boundingRect(self):
     r = self.RADIUS
-    w = (r * 4.0) + 1
-    h = (r * 2.0) + 2
-    return(QRectF(0, - (h / 2), w, h))
+    w = self.OFFSET + (r * 2.0)
+    h = (r * 4.0)
+    return(QRectF(- self.OFFSET, - (h / 2), w, h))
   def paint(self, qp, options, widget):
-    self.drawPort(qp, QPointF(0.0, 0.0), 
-                  QPointF(self.RADIUS * 3.0, 0.0))
+    self.drawPort(qp, QPointF(- self.OFFSET, 0.0), 
+                      QPointF(0.0, 0.0))
 
 # lay out input/output ports for a unit
 class PortListLayout(core.ListLayout):
@@ -133,11 +255,11 @@ class PortListLayout(core.ListLayout):
 # lay out unit inputs for a list of items
 class InputListLayout(PortListLayout):
   def base_x(self):
-    return(self._rect.left())
+    return(self._rect.left() - UnitPortView.OFFSET)
 # lay out unit inputs for a list of items
 class OutputListLayout(PortListLayout):
   def base_x(self):
-    return(self._rect.right())
+    return(self._rect.right() + UnitPortView.OFFSET)
 
 # show a workspace with a list of units
 class WorkspaceView(core.ModelView):
