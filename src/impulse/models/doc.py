@@ -910,6 +910,8 @@ class ViewScale(observable.Object):
     })
   def height_of_track(self, track):
     return(len(track.pitches) * self.pitch_height)
+  def track_spacing(self):
+    return(6.0)
 serializable.add(ViewScale)
 
 # represent a document, which can contain multiple tracks

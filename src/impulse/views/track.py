@@ -12,7 +12,6 @@ import block
 
 # make a view that displays a list of tracks
 class TrackListView(core.BoxSelectable, core.Interactive, core.ModelView):
-  SPACING = 6.0
   def __init__(self, tracks, transport, view_scale=None, parent=None):
     core.ModelView.__init__(self, model=tracks, parent=parent)
     core.Interactive.__init__(self)
@@ -27,8 +26,8 @@ class TrackListView(core.BoxSelectable, core.Interactive, core.ModelView):
       lambda t: PitchKeyView(t, view_scale=view_scale))
     self.track_layout = core.VBoxLayout(self, tracks,
       lambda t: TrackView(t, view_scale=view_scale))
-    self.pitch_key_layout.spacing = self.SPACING
-    self.track_layout.spacing = self.SPACING
+    self.pitch_key_layout.spacing = self.view_scale.track_spacing()
+    self.track_layout.spacing = self.view_scale.track_spacing()
     # clip so tracks can be scrolled and zoomed without going outside the box
     self.track_layout.setFlag(QGraphicsItem.ItemClipsChildrenToShape, True)
     # add a view for the transport
@@ -46,7 +45,7 @@ class TrackListView(core.BoxSelectable, core.Interactive, core.ModelView):
     for view in self.pitch_key_layout.views:
       w = max(w, view.minimumSizeHint().width())
     self.pitch_key_layout.setRect(QRectF(0, 0, w, height))
-    x = w + (self.SPACING / 2)
+    x = w + (self.view_scale.track_spacing() / 2)
     r = QRectF(x, 0, width - x, height)
     self.track_layout.setRect(r)
     self.overlay.setRect(r)
