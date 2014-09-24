@@ -70,12 +70,16 @@ class UnitView(core.ModelView):
     qp.drawRoundedRect(r, 4.0, 4.0)
 
 # show a connection between two ports
-class ConnectionView(core.Interactive, core.ModelView):
+class ConnectionView(core.Selectable, core.ModelView):
   # the radius of the pluggable ends of the wire
   RADIUS = 3.5
+  # the minimum distance to offset the control points so that the 
+  #  wire makes smooth curves into its endpoints
+  CURVE = 40.0
   def __init__(self, *args, **kwargs):
     core.ModelView.__init__(self, *args, **kwargs)
-    core.Interactive.__init__(self)
+    core.Selectable.__init__(self)
+    self.allow_multiselect = False
     self._source_view = None
     self._dest_view = None
   @property
@@ -118,39 +122,107 @@ class ConnectionView(core.Interactive, core.ModelView):
     return(self.mapFromScene(dest))
   # get the bounding rectangle encompassing the source and destination
   def boundingRect(self):
-    p1 = self.sourcePos()
-    p2 = self.destPos()
-    r = QRectF(p1.x(), p1.y(), p2.x() - p1.x(), p2.y() - p1.y())
-    r = r.normalized()
-    m = self.RADIUS
+    points = self.curvePoints()
+    x_min = 0; x_max = 0
+    y_min = 0; y_max = 0
+    for p in points:
+      x_min = min(x_min, p.x()); x_max = max(x_max, p.x())
+      y_min = min(y_min, p.y()); y_max = max(y_max, p.y())
+    r = QRectF(x_min, y_min, x_max - x_min, y_max - y_min)
+    m = self.RADIUS + 1
     r.adjust(- m, - m, m, m)
     return(r)
+  # get the points needed to draw the wire part of the connection
+  def curvePoints(self):
+    # get the source and dest as points, mapping into local coordinates
+    source = self.sourcePos()
+    dest = self.destPos()
+    # compute a curvature that will look good
+    dx = dest.x() - source.x()
+    dy = dest.y() - source.y()
+    min_curve = min(abs(dy), self.CURVE)
+    x_curve = max(min_curve, abs(dx / 2.0))
+    y_curve = 0.0
+    if (dx < 0):
+      sign = 1.0 if dy >= 0 else -1.0
+      y_curve = (x_curve / 4.0) * sign
+    # place endpoints and control points
+    return((source, 
+            QPointF(source.x() + x_curve, source.y() + y_curve),
+            QPointF(dest.x() - x_curve, dest.y() - y_curve),
+            dest))
+  # get a path for the wire part of the connection
+  def wirePath(self):
+    path = QPainterPath()
+    (source, cp1, cp2, dest) = self.curvePoints()
+    path.moveTo(source)
+    path.cubicTo(cp1, cp2, dest)
+    return(path)
+  # define the shape to be an outset from the wire area
+  def shape(self):
+    stroker = QPainterPathStroker()
+    stroker.setWidth(2 * (self.RADIUS + 1))
+    stroker.setCapStyle(Qt.RoundCap)
+    return(stroker.createStroke(self.wirePath()))
   # draw the connection as a wire
   def paint(self, qp, options, widget):
     # make sure there is a parent and endpoints
     if ((self.source_view is None) or (self.dest_view is None) or
         (self.parentItem() is None)): return
-    # get the source and dest as points, mapping into local coordinates
-    source = self.sourcePos()
-    dest = self.destPos()
     # draw the wire
     pen = self.pen()
     pen.setWidth(2.0)
     qp.setPen(pen)
     qp.setBrush(Qt.NoBrush)
-    path = QPainterPath()
-    path.moveTo(source)
-    curve = (dest.x() - source.x()) / 2.0
-    path.cubicTo(QPointF(source.x() + curve, source.y()),
-                 QPointF(dest.x() - curve, dest.y()),
-                 dest)
-    qp.drawPath(path)
+    qp.drawPath(self.wirePath())
     # draw the endpoints
     qp.setPen(Qt.NoPen)
     qp.setBrush(self.brush())
     r = self.RADIUS
-    qp.drawEllipse(source, r, r)
-    qp.drawEllipse(dest, r, r)
+    qp.drawEllipse(self.sourcePos(), r, r)
+    qp.drawEllipse(self.destPos(), r, r)
+  # allow the ends of the connection to be dragged out of their ports
+  def on_drag_start(self, event):
+    pos = event.pos()
+    source = self.sourcePos()
+    dest = self.destPos()
+    source_dist = abs(pos.x() - source.x()) + abs(pos.y() - source.y())
+    dest_dist = abs(pos.x() - dest.x()) + abs(pos.y() - dest.y())
+    self._drag_dest = (dest_dist < source_dist)
+  def on_drag(self, event, delta_x, delta_y):
+    p = event.scenePos()
+    item = self.scene().itemAt(p)
+    if (self._drag_dest):
+      if (isinstance(item, UnitInputView)):
+        self.dest_view = item
+      else:
+        self.dest_view = p
+    else:
+      if (isinstance(item, UnitOutputView)):
+        self.source_view = item
+      else:
+        self.source_view = p
+  def on_drag_end(self, event):
+    self.finalize_connection()
+  # remove the connection when it's selected and the user presses delete
+  def keyPressEvent(self, event):
+    if ((self.connection.selected) and 
+        (event.key() == Qt.Key_Delete) or (event.key() == Qt.Key_Backspace)):
+      self.connection.source = None
+      self.connection.dest = None
+      self.setParent(None)
+    else:
+      event.ignore()
+  # finalize the view's connection or remove it
+  def finalize_connection(self):
+    if ((isinstance(self.source_view, UnitOutputView)) and 
+        (isinstance(self.dest_view, UnitInputView))):
+      self.connection.source = self.source_view.target
+      self.connection.dest = self.dest_view.target
+    else:
+      self.connection.source = None
+      self.connection.dest = None
+      self.setParent(None)
 
 # make a base class for input/output ports
 class UnitPortView(core.Interactive, core.ModelView):
@@ -185,15 +257,13 @@ class UnitPortView(core.Interactive, core.ModelView):
     connection = unit.Connection()
     view = ConnectionView(connection)
     if (isinstance(self, UnitOutputView)):
-      connection.source = self.target
       view.source_view = self
     else:
-      connection.dest = self.target
       view.dest_view = self
     node = self
     while (node):
       if (isinstance(node, WorkspaceView)):
-        view.setParentItem(node)
+        view.setParentItem(node.connection_layer)
         break
       node = node.parentItem()
     if (not node):
@@ -203,13 +273,22 @@ class UnitPortView(core.Interactive, core.ModelView):
     view = self._dragging_connection_view
     if (not view): return
     p = event.scenePos()
+    item = self.scene().itemAt(p)
     if (view.source_view is self):
-      view.dest_view = p
+      if (isinstance(item, UnitInputView)):
+        view.dest_view = item
+      else:
+        view.dest_view = p
     else:
-      view.source_view = p
+      if (isinstance(item, UnitOutputView)):
+        view.source_view = item
+      else:
+        view.source_view = p
   def on_drag_end(self, event):
-    self._dragging_connection_view.setParentItem(None)
+    view = self._dragging_connection_view
     self._dragging_connection_view = None
+    # remove the view if it didn't form a connection
+    view.finalize_connection()
 
 # show an input port to a unit
 class UnitInputView(UnitPortView):
@@ -265,6 +344,9 @@ class OutputListLayout(PortListLayout):
 class WorkspaceView(core.ModelView):
   def __init__(self, doc, parent=None):
     core.ModelView.__init__(self, model=doc.units, parent=parent)
+    # add a sub-item for connections to keep them behind the units
+    #  for visual and interaction purposes
+    self.connection_layer = QGraphicsRectItem(self)
     # add a layout for the units
     self.units_layout = UnitListLayout(self, 
       doc.units, self.view_for_unit)

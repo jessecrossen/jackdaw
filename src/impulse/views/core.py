@@ -167,10 +167,13 @@ class Interactive(object):
 class Selectable(Interactive):
   def __init__(self):
     Interactive.__init__(self)
+    self.allow_multiselect = True
   def on_click(self, event):
-    if (event.modifiers() == Qt.ShiftModifier):
+    if ((self.allow_multiselect) and 
+        (event.modifiers() == Qt.ShiftModifier)):
       self.model.selected = True
-    elif (event.modifiers() == Qt.ControlModifier):
+    elif ((self.allow_multiselect) and 
+          (event.modifiers() == Qt.ControlModifier)):
       self.model.selected = not self.model.selected
     else:
       if (self.model.selected):
