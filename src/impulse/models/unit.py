@@ -1,6 +1,8 @@
 from ..common import serializable
 from core import Model, ModelList
 
+from PySide.QtCore import *
+
 # represent a unit, which can be connected to other units
 class Unit(Model):
   def __init__(self, name='Unit', x=0, y=0):
@@ -34,6 +36,12 @@ class Unit(Model):
     if (value != self._y):
       self._y = value
       self.on_change()
+  # make a position interface for easy compatibility with QGraphicsItem
+  def pos(self):
+    return(QPointF(self.x, self.y))
+  def setPos(self, pos):
+    self.x = pos.x()
+    self.y = pos.y()
   # unit serialization
   def serialize(self):
     return({ 

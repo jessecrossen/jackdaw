@@ -4,7 +4,6 @@ from PySide.QtCore import *
 from PySide.QtGui import *
 
 from ..common import observable
-# import symbols
 import core
 from ..models.core import Selection
 from ..models.doc import ViewScale

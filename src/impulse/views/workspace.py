@@ -9,9 +9,13 @@ from ..models import unit
 
 import core
 import track
+import button
 
 class UnitView(core.ModelView):
+  # the margin to leave around the content
   MARGIN = 10.0
+  # the height of the bar at the top, containing the title and buttons
+  TOP_HEIGHT = 24.0
   def __init__(self, *args, **kwargs):
     core.ModelView.__init__(self, *args, **kwargs)
     self.title_proxy = None
@@ -19,9 +23,17 @@ class UnitView(core.ModelView):
     self._content = None
     self._input_layout = None
     self._output_layout = None
+    self.allow_delete = True
+    self._delete_button = None
+    self._drag_button = None
   @property
   def unit(self):
     return(self._model)
+  # handle the user wanting to remove the unit
+  def on_delete(self):
+    # TODO
+    pass
+  # manage the rect to keep it centered on the content size
   def rect(self):
     r = core.ModelView.rect(self)
     if (self._content):
@@ -35,21 +47,41 @@ class UnitView(core.ModelView):
       r.setHeight(h)
     return(r)
   def layout(self):
+    top_height = self.TOP_HEIGHT
     # add a title label at the top
     if ((self.scene()) and (not self.title_proxy)):
       title_view = core.NameLabel(self.unit)
       self.title_proxy = self.scene().addWidget(title_view)
       self.title_proxy.setParentItem(self)
     r = self.boundingRect()
-    title_height = 0
+    r.adjust(1, 1, -1, -1)
     if (self.title_proxy):
       title_view = self.title_proxy.widget()
-      title_view.setFixedWidth(r.width())
-      self.title_proxy.setPos(QPointF(0.0, 0.0))
+      title_view.setFixedWidth(r.width() - (2 * top_height))
       title_height = title_view.geometry().height()
+      self.title_proxy.setPos(
+        QPointF(top_height, (top_height - title_height) / 2.0))
+    # make a button to delete the unit
+    if (self.allow_delete):
+      if ((self.scene()) and (not self._delete_button)):
+        self._delete_button = button.DeleteButton(self)
+        self._delete_button.clicked.connect(self.on_delete)
+      if (self._delete_button):
+        self._delete_button.setRect(
+          QRectF(r.right() - top_height, r.top(), top_height, top_height))
+    elif (self._delete_button):
+      self._delete_button.setParentItem(None)
+      self._delete_button = None 
+    # make a button to drag the unit
+    if ((self.scene()) and (not self._drag_button)):
+      b = button.DragButton(self, self.unit)
+      self._drag_button = b
+    if (self._drag_button):
+      self._drag_button.setRect(
+        QRectF(r.left(), r.top(), top_height, top_height))
     # position the content, if any
     m = self.MARGIN
-    content_pos = QPointF(m, m + title_height)
+    content_pos = QPointF(m, m + top_height)
     if (self._content):
       self._content.setPos(content_pos)
     # position inputs and outputs left and right of the content
@@ -66,7 +98,7 @@ class UnitView(core.ModelView):
     qp.setPen(pen)
     qp.setBrush(self.brush(0.15))
     r = self.boundingRect()
-    r.adjust(-1, -1, -1, -1)
+    r.adjust(1, 1, -1, -1)
     qp.drawRoundedRect(r, 4.0, 4.0)
 
 # show a connection between two ports
@@ -82,6 +114,8 @@ class ConnectionView(core.Selectable, core.ModelView):
     self.allow_multiselect = False
     self._source_view = None
     self._dest_view = None
+    self._source_pos = QPointF(0, 0)
+    self._dest_pos = QPointF(0, 0)
   @property
   def connection(self):
     return(self._model)
@@ -91,35 +125,37 @@ class ConnectionView(core.Selectable, core.ModelView):
   @source_view.setter
   def source_view(self, value):
     if (value is not self._source_view):
-      self.prepareGeometryChange()
+      if (self._source_view is UnitPortView):
+        self._source_view.moved.disconnect(self.on_moved)
       self._source_view = value
-      self.update()
+      if (isinstance(self._source_view, UnitPortView)):
+        self._source_view.moved.connect(self.on_moved)
+      self.on_moved()
   @property
   def dest_view(self):
     return(self._dest_view)
   @dest_view.setter
   def dest_view(self, value):
     if (value is not self._dest_view):
-      self.prepareGeometryChange()
+      if (self._dest_view is UnitPortView):
+        self._dest_view.moved.disconnect(self.on_moved)
       self._dest_view = value
-      self.update()
-  # get the local coordinates for source and destination points
-  def sourcePos(self):
-    if (not self.source_view):
-      return(QPointF(0.0, 0.0)) 
-    elif (isinstance(self.source_view, QPointF)):
-      source = self.source_view
-    else:
-      source = self.source_view.mapToScene(QPointF(0.0, 0.0))
-    return(self.mapFromScene(source))
-  def destPos(self):
-    if (not self.dest_view):
-      return(QPointF(0.0, 0.0)) 
-    elif (isinstance(self.dest_view, QPointF)):
-      dest = self.dest_view
-    else:
-      dest = self.dest_view.mapToScene(QPointF(0.0, 0.0))
-    return(self.mapFromScene(dest))
+      if (isinstance(self._dest_view, UnitPortView)):
+        self._dest_view.moved.connect(self.on_moved)
+      self.on_moved()
+  # respond to the source or destination being moved
+  def on_moved(self):
+    self.prepareGeometryChange()
+    def get_pos(view):
+      if (not view):
+        return(QPointF(0.0, 0.0))
+      elif (isinstance(view, QPointF)):
+        return(self.mapFromScene(QPointF(view.x(), view.y())))
+      else:
+        return(self.mapFromScene(view.mapToScene(QPointF(0.0, 0.0))))
+    self._source_pos = get_pos(self._source_view)
+    self._dest_pos = get_pos(self._dest_view)
+    self.update()
   # get the bounding rectangle encompassing the source and destination
   def boundingRect(self):
     points = self.curvePoints()
@@ -135,8 +171,8 @@ class ConnectionView(core.Selectable, core.ModelView):
   # get the points needed to draw the wire part of the connection
   def curvePoints(self):
     # get the source and dest as points, mapping into local coordinates
-    source = self.sourcePos()
-    dest = self.destPos()
+    source = self._source_pos
+    dest = self._dest_pos
     # compute a curvature that will look good
     dx = dest.x() - source.x()
     dy = dest.y() - source.y()
@@ -179,13 +215,13 @@ class ConnectionView(core.Selectable, core.ModelView):
     qp.setPen(Qt.NoPen)
     qp.setBrush(self.brush())
     r = self.RADIUS
-    qp.drawEllipse(self.sourcePos(), r, r)
-    qp.drawEllipse(self.destPos(), r, r)
+    qp.drawEllipse(self._source_pos, r, r)
+    qp.drawEllipse(self._dest_pos, r, r)
   # allow the ends of the connection to be dragged out of their ports
   def on_drag_start(self, event):
     pos = event.pos()
-    source = self.sourcePos()
-    dest = self.destPos()
+    source = self._source_pos
+    dest = self._dest_pos
     source_dist = abs(pos.x() - source.x()) + abs(pos.y() - source.y())
     dest_dist = abs(pos.x() - dest.x()) + abs(pos.y() - dest.y())
     self._drag_dest = (dest_dist < source_dist)
@@ -213,6 +249,9 @@ class ConnectionView(core.Selectable, core.ModelView):
       self.setParent(None)
     else:
       event.ignore()
+  # deselect the connection if it loses focus
+  def focusOutEvent(self, event):
+    self.connection.selected = False
   # finalize the view's connection or remove it
   def finalize_connection(self):
     if ((isinstance(self.source_view, UnitOutputView)) and 
@@ -226,6 +265,8 @@ class ConnectionView(core.Selectable, core.ModelView):
 
 # make a base class for input/output ports
 class UnitPortView(core.Interactive, core.ModelView):
+  # a signal to be sent if the item changes its position
+  moved = Signal()
   # the radius of the open ring at the end of the port
   RADIUS = 4.0
   # the distance from the base of the port to the center of its ring
@@ -234,10 +275,16 @@ class UnitPortView(core.Interactive, core.ModelView):
     core.ModelView.__init__(self, *args, **kwargs)
     core.Interactive.__init__(self)
     self._dragging_connection_view = None
+    self.setFlag(QGraphicsItem.ItemSendsScenePositionChanges, True)
   @property
   def target(self):
     return(self._model)
-  # do generalize painting for a port
+  # signal when position changes
+  def itemChange(self, change, value):
+    if (change == QGraphicsItem.ItemScenePositionHasChanged):
+      self.moved.emit()
+    return(core.ModelView.itemChange(self, change, value))
+  # do generalized painting for a port
   def drawPort(self, qp, base, end):
     qp.setBrush(Qt.NoBrush)
     pen = self.pen()
