@@ -16,6 +16,7 @@ class TrackListView(core.BoxSelectable, core.Interactive, core.ModelView):
     core.ModelView.__init__(self, model=tracks, parent=parent)
     core.Interactive.__init__(self)
     core.BoxSelectable.__init__(self)
+    self.scrollbar_proxy = None
     self.scrollbar = None
     if (view_scale is None):
       view_scale = ViewScale()

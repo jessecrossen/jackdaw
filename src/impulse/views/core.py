@@ -9,17 +9,34 @@ import state
 
 # make a base class for views
 class View(QGraphicsObject):
+  destroyed = Signal()
   def __init__(self, parent=None):
     QGraphicsObject.__init__(self, parent)
     self._palette = QPalette()
     self._size = QSizeF(0.0, 0.0)
   def destroy(self):
-    for item in self.childItems():
+    # map attributes that refer to items
+    item_attrs = dict()
+    for p in dir(self):
+      item = getattr(self, p)
+      if (isinstance(item, QGraphicsItem)):
+        item_attrs[item] = p
+    # destroy and/or unparent all children
+    for item in self.childItems():  
       try:
         item.destroy()
       except AttributeError:
         item.setParentItem(None)
-    self.setParentItem(None)
+      # if the item contains a widget, remove it from the scene
+      if ((isinstance(item, QGraphicsProxyWidget)) and (self.scene())):
+        self.scene().removeItem(item)
+      # remove all internal references to the item
+      if (item in item_attrs):
+        setattr(self, item_attrs[item], None)
+        del item_attrs[item]
+    if (self.scene()):
+      self.scene().removeItem(self)
+    self.destroyed.emit()
   @property
   def palette(self):
     return(self._palette)
@@ -27,6 +44,15 @@ class View(QGraphicsObject):
   def palette(self, value):
     self._palette = value
     self.on_change()
+  # get the nearest item in the parent chain that has the given class
+  def parentItemWithClass(self, cls):
+    node = self.parentItem()
+    while (node):
+      if (isinstance(node, cls)):
+        return(node)
+        break
+      node = node.parentItem()
+    return(None)
   # make a qt-style getter/setter for the area of the item
   def rect(self):
     pos = self.pos()
@@ -49,7 +75,8 @@ class View(QGraphicsObject):
   # update layout when added to the scene, in case widgets need to be added
   def itemChange(self, change, value):
     if (change == QGraphicsItem.ItemSceneHasChanged):
-      self.layout()
+      if (value is not None):
+        self.layout()
     return(QGraphicsItem.itemChange(self, change, value))
   # do layout of subviews
   def layout(self):
@@ -360,6 +387,13 @@ class ListLayout(QGraphicsObject):
     self.items = items
   def destroy(self):
     self.items = None
+    self._view_map = None
+    for view in self._views:
+      try:
+        view.destroy()
+      except AttributeError:
+        view.setParentItem(None)
+    self._views = None
   @property
   def items(self):
     return(self._items)
@@ -417,7 +451,7 @@ class ListLayout(QGraphicsObject):
       try:
         view.destroy()
       except AttributeError:
-        view.setParentItem(None)
+        view.setParentItem(None)                
     # do layout if the contained items have changed
     if ((len(old) > 0) or (len(new) > 0)):
       self.layout()

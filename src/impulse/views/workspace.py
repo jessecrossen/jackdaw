@@ -31,8 +31,9 @@ class UnitView(core.ModelView):
     return(self._model)
   # handle the user wanting to remove the unit
   def on_delete(self):
-    # TODO
-    pass
+    workspace_view = self.parentItemWithClass(WorkspaceView)
+    if (workspace_view):
+      workspace_view.units.remove(self.unit)
   # manage the rect to keep it centered on the content size
   def rect(self):
     r = core.ModelView.rect(self)
@@ -125,11 +126,9 @@ class ConnectionView(core.Selectable, core.ModelView):
   @source_view.setter
   def source_view(self, value):
     if (value is not self._source_view):
-      if (self._source_view is UnitPortView):
-        self._source_view.moved.disconnect(self.on_moved)
+      self._disconnect_port_view(self._source_view)
       self._source_view = value
-      if (isinstance(self._source_view, UnitPortView)):
-        self._source_view.moved.connect(self.on_moved)
+      self._connect_port_view(self._source_view)
       self.on_moved()
   @property
   def dest_view(self):
@@ -137,12 +136,21 @@ class ConnectionView(core.Selectable, core.ModelView):
   @dest_view.setter
   def dest_view(self, value):
     if (value is not self._dest_view):
-      if (self._dest_view is UnitPortView):
-        self._dest_view.moved.disconnect(self.on_moved)
+      self._disconnect_port_view(self._dest_view)
       self._dest_view = value
-      if (isinstance(self._dest_view, UnitPortView)):
-        self._dest_view.moved.connect(self.on_moved)
+      self._connect_port_view(self._dest_view)
       self.on_moved()
+  def _connect_port_view(self, view):
+    if (isinstance(view, UnitPortView)):
+      view.moved.connect(self.on_moved)
+      view.destroyed.connect(self.on_port_destroyed)
+  def _disconnect_port_view(self, view):
+    if (view is UnitPortView):
+      view.moved.disconnect(self.on_moved)
+      view.destroyed.disconnect(self.on_port_destroyed)
+  # respond to the source or destination view being destroyed
+  def on_port_destroyed(self):
+    self.destroy()
   # respond to the source or destination being moved
   def on_moved(self):
     self.prepareGeometryChange()
@@ -307,13 +315,10 @@ class UnitPortView(core.Interactive, core.ModelView):
       view.source_view = self
     else:
       view.dest_view = self
-    node = self
-    while (node):
-      if (isinstance(node, WorkspaceView)):
-        view.setParentItem(node.connection_layer)
-        break
-      node = node.parentItem()
-    if (not node):
+    workspace_view = self.parentItemWithClass(WorkspaceView)
+    if (workspace_view):
+      view.setParentItem(workspace_view.connection_layer)
+    else:
       view.setParentItem(self)
     self._dragging_connection_view = view
   def on_drag(self, event, delta_x, delta_y):
@@ -397,6 +402,9 @@ class WorkspaceView(core.ModelView):
     # add a layout for the units
     self.units_layout = UnitListLayout(self, 
       doc.units, self.view_for_unit)
+  @property
+  def units(self):
+    return(self._model)
   # get an appropriate view for a unit
   def view_for_unit(self, unit):
     if (hasattr(unit, 'tracks')):
