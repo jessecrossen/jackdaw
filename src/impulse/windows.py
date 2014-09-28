@@ -316,10 +316,11 @@ class DocumentWindow(QMainWindow):
       }
       QScrollBar {
         background: transparent;
+        padding: 2px;
       }
       QScrollBar::handle {
         background: rgba(0, 0, 0, 64);
-        border-radius: 6px;
+        border-radius: 4px;
       }
       QScrollBar::handle:hover {
         background: rgba(0, 0, 0, 128);
