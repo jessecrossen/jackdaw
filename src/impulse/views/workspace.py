@@ -16,6 +16,8 @@ class UnitView(core.ModelView):
   MARGIN = 10.0
   # the height of the bar at the top, containing the title and buttons
   TOP_HEIGHT = 24.0
+  # the height of the bar at the bottom, containing the add and resize buttons
+  BOTTOM_HEIGHT = 24.0
   def __init__(self, *args, **kwargs):
     core.ModelView.__init__(self, *args, **kwargs)
     self.title_proxy = None
@@ -26,6 +28,11 @@ class UnitView(core.ModelView):
     self.allow_delete = True
     self._delete_button = None
     self._drag_button = None
+    self.allow_resize_width = False
+    self.allow_resize_height = False
+    self._resize_button = None
+    self.allow_add = False
+    self._add_button = None
   @property
   def unit(self):
     return(self._model)
@@ -34,6 +41,10 @@ class UnitView(core.ModelView):
     workspace_view = self.parentItemWithClass(WorkspaceView)
     if (workspace_view):
       workspace_view.units.remove(self.unit)
+  # handle the user wanting to add to the unit (this will have different 
+  #  behaviors depending on the type of unit)
+  def on_add(self):
+    pass
   # manage the rect to keep it centered on the content size
   def rect(self):
     r = core.ModelView.rect(self)
@@ -42,13 +53,16 @@ class UnitView(core.ModelView):
       m = self.MARGIN
       w = cr.width() + (m * 2)
       h = cr.height() + (m * 2)
-      if (self.title_proxy):
-        h += self.title_proxy.widget().geometry().height()
+      h += self.TOP_HEIGHT
+      if ((self.allow_resize_width) or (self.allow_resize_height) or 
+          (self.allow_add)):
+        h += self.BOTTOM_HEIGHT
       r.setWidth(w)
       r.setHeight(h)
     return(r)
   def layout(self):
     top_height = self.TOP_HEIGHT
+    bottom_height = self.BOTTOM_HEIGHT
     # add a title label at the top
     if ((self.scene()) and (not self.title_proxy)):
       title_view = core.NameLabel(self.unit)
@@ -71,15 +85,40 @@ class UnitView(core.ModelView):
         self._delete_button.setRect(
           QRectF(r.right() - top_height, r.top(), top_height, top_height))
     elif (self._delete_button):
-      self._delete_button.setParentItem(None)
-      self._delete_button = None 
+      self._delete_button.destroy()
+      self._delete_button = None
+    # make a button to add to the unit
+    if (self.allow_add):
+      if ((self.scene()) and (not self._add_button)):
+        self._add_button = button.AddButton(self)
+        self._add_button.clicked.connect(self.on_add)
+      if (self._add_button):
+        self._add_button.setRect(
+          QRectF(r.left(), r.bottom() - bottom_height, 
+                 bottom_height, bottom_height))
+    elif (self._add_button):
+      self._add_button.destroy()
+      self._add_button = None
     # make a button to drag the unit
     if ((self.scene()) and (not self._drag_button)):
-      b = button.DragButton(self, self.unit)
-      self._drag_button = b
+      self._drag_button = button.DragButton(self, self.unit)
     if (self._drag_button):
       self._drag_button.setRect(
         QRectF(r.left(), r.top(), top_height, top_height))
+    # make a button to resize the unit
+    if ((self.allow_resize_width) or (self.allow_resize_height)):
+      if ((self.scene()) and (not self._resize_button)):
+        self._resize_button = button.ResizeButton(self, 
+          target=self.unit,
+          horizontal=self.allow_resize_width, 
+          vertical=self.allow_resize_height)
+      if (self._resize_button):
+        self._resize_button.setRect(
+          QRectF(r.right() - bottom_height, r.bottom() - bottom_height, 
+                 bottom_height, bottom_height))
+    elif (self._resize_button):
+      self._resize_button.destroy()
+      self._resize_button = None
     # position the content, if any
     m = self.MARGIN
     content_pos = QPointF(m, m + top_height)
@@ -438,7 +477,6 @@ class MultitrackUnitView(UnitView):
             tracks=self.unit.tracks,
             transport=self.unit.transport, 
             view_scale=self.unit.view_scale)
-    self._content.setRect(QRectF(0, 0, 300, 200))
     self._content.setParentItem(self)
     # add inputs and outputs to the track
     self._input_layout = InputListLayout(self, self.unit.tracks,
@@ -447,6 +485,17 @@ class MultitrackUnitView(UnitView):
       lambda t: UnitOutputView(t))
     self._input_layout.y_of_view = self.y_of_track
     self._output_layout.y_of_view = self.y_of_track
+    # allow horizontal resizing
+    self.allow_resize_width = True
+    # allow tracks to be added
+    self.allow_add = True
+  def on_add(self):
+    self.unit.tracks.add_track()
+  def layout(self):
+    size = self._content.minimumSizeHint()
+    self.unit.width = max(size.width(), self.unit.width)
+    self._content.setRect(QRectF(0, 0, self.unit.width, size.height()))
+    UnitView.layout(self)
   def y_of_track(self, rect, view, index, view_count):
     y = rect.y()
     scale = self._content.view_scale

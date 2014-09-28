@@ -544,9 +544,11 @@ serializable.add(Track)
 class TrackList(ModelList):
   def __init__(self, tracks=()):
     ModelList.__init__(self, tracks)
-  
+  # add a track to the list
+  def add_track(self):
+    self.append(Track(duration=self.duration))
+  # transfer global track state to the tracks
   def on_change(self):
-    # transfer global track state to the tracks
     solos = set()
     for track in self:
       if (track.solo):
@@ -909,7 +911,7 @@ class ViewScale(observable.Object):
       'pitch_height': self.pitch_height
     })
   def height_of_track(self, track):
-    return(len(track.pitches) * self.pitch_height)
+    return(max(3, len(track.pitches)) * self.pitch_height)
   def track_spacing(self):
     return(6.0)
 serializable.add(ViewScale)
@@ -938,13 +940,10 @@ class Document(Model):
     self.units.append(unit.MultitrackUnit(
       name='Tracks',
       tracks=self.tracks, 
+      width=400,
       view_scale=self.view_scale, 
       transport=self.transport))
     self.units.add_observer(self.on_change)
-  
-  # add a track to the document
-  def add_track(self, *args):
-    self.tracks.append(Track())
 
   # save the document to a file
   def save(self):

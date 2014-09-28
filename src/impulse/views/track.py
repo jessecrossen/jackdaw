@@ -39,17 +39,27 @@ class TrackListView(core.BoxSelectable, core.Interactive, core.ModelView):
   @property
   def tracks(self):
     return(self._model)
-  def layout(self):
-    width = self._size.width()
-    height = self._size.height()
+  # return the minimum size of all tracks and controls
+  def minimumSizeHint(self):
+    w = self.pitch_key_width()
+    h = 0
+    for track in self.tracks:
+      h += self.view_scale.height_of_track(track)
+      h += self.view_scale.track_spacing()
+    if (self.scrollbar):
+      h += self.scrollbar.size().height()
+    return(QSizeF(w * 2, h))
+  def pitch_key_width(self):
     w = 30
     for view in self.pitch_key_layout.views:
       w = max(w, view.minimumSizeHint().width())
+    return(w)
+  def layout(self):
+    width = self._size.width()
+    height = self._size.height()
+    w = self.pitch_key_width()
     self.pitch_key_layout.setRect(QRectF(0, 0, w, height))
     x = w + (self.view_scale.track_spacing() / 2)
-    r = QRectF(x, 0, width - x, height)
-    self.track_layout.setRect(r)
-    self.overlay.setRect(r)
     # add a scrollbar to scroll through the timeline
     if ((not self.scrollbar) and (self.scene())):
       self.scrollbar = QScrollBar(Qt.Orientation.Horizontal)
@@ -59,8 +69,13 @@ class TrackListView(core.BoxSelectable, core.Interactive, core.ModelView):
     if (self.scrollbar):
       # position the scrollbar
       g = self.scrollbar.geometry()
-      self.scrollbar.setGeometry(0, height - g.height(), width, g.height())
+      height -= g.height()
+      self.scrollbar.setGeometry(0, height, width, g.height())
     self.update_scrollbar()
+    # position the tracks and transport so as not to overlap the scrollbar
+    r = QRectF(x, 0, width - x, height)
+    self.track_layout.setRect(r)
+    self.overlay.setRect(r)
   def update_scrollbar(self):
     if (not self.scrollbar): return
     width = self._size.width()

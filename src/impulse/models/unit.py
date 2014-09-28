@@ -5,11 +5,13 @@ from PySide.QtCore import *
 
 # represent a unit, which can be connected to other units
 class Unit(Model):
-  def __init__(self, name='Unit', x=0, y=0):
+  def __init__(self, name='Unit', x=0, y=0, width=0, height=0):
     Model.__init__(self)
     self._name = name
     self._x = x
     self._y = y
+    self._width = width
+    self._height = height
   # get and set the name of the unit
   @property
   def name(self):
@@ -36,19 +38,56 @@ class Unit(Model):
     if (value != self._y):
       self._y = value
       self.on_change()
-  # make a position interface for easy compatibility with QGraphicsItem
+  # get and set the preferred size of the unit on the workspace 
+  #  (which will not be respected by all unit types)
+  @property
+  def width(self):
+    return(self._width)
+  @width.setter
+  def width(self, value):
+    if (value != self._width):
+      self._width = value
+      self.on_change()
+  @property
+  def height(self):
+    return(self._height)
+  @height.setter
+  def height(self, value):
+    if (value != self._height):
+      self._height = value
+      self.on_change()
+  # make a position and size interfaces for easy compatibility 
+  #  with QGraphicsItem
   def pos(self):
     return(QPointF(self.x, self.y))
   def setPos(self, pos):
     self.x = pos.x()
     self.y = pos.y()
+  def boundingRect(self):
+    w = self.width
+    h = self.height
+    return(QRectF(- (w / 2), - (h / 2), w, h))
+  def rect(self):
+    w = self.width
+    h = self.height
+    return(QRectF(self.x - (w / 2), self.y - (h / 2), w, h))
+  def setRect(self, rect):
+    self.width = rect.width()
+    self.height = rect.height()
+    self.x = rect.x() + (rect.width() / 2)
+    self.y = rect.y() + (rect.height() / 2)
   # unit serialization
   def serialize(self):
-    return({ 
+    obj = { 
       'name': self.name,
       'x': self.x,
       'y': self.y
-    })
+    }
+    if (self.width > 0):
+      obj['width'] = self.width
+    if (self.height > 0):
+      obj['height'] = self.height
+    return(obj)
 serializable.add(Unit)
 
 # represent a list of units
@@ -97,8 +136,10 @@ class MultitrackUnit(Unit):
   def __init__(self, tracks, view_scale, transport, *args, **kwargs):
     Unit.__init__(self, *args, **kwargs)
     self.tracks = tracks
+    self.tracks.add_observer(self.on_change)
     self.transport = transport
     self.view_scale = view_scale
+    self.view_scale.add_observer(self.on_change)
   def serialize(self):
     obj = Unit.serialize(self)
     obj['tracks'] = self.tracks

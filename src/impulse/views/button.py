@@ -57,7 +57,97 @@ class DeleteButton(ButtonView):
     p1 = stroker.createStroke(p1)
     p2 = stroker.createStroke(p2)
     qp.drawPath(p1.united(p2))
-  
+
+# show a button for adding things
+class AddButton(ButtonView):
+  def drawIcon(self, qp, r):
+    x = r.x() + (r.width() / 2.0)
+    y = r.y() + (r.height() / 2.0)
+    p1 = QPainterPath()
+    p1.moveTo(QPointF(x, r.top()))
+    p1.lineTo(QPointF(x, r.bottom()))
+    p2 = QPainterPath()
+    p2.moveTo(QPointF(r.left(), y))
+    p2.lineTo(QPointF(r.right(), y))
+    stroker = QPainterPathStroker()
+    stroker.setWidth(3.0)
+    stroker.setCapStyle(Qt.FlatCap)
+    p1 = stroker.createStroke(p1)
+    p2 = stroker.createStroke(p2)
+    qp.drawPath(p1.united(p2))
+
+# show a button for resizing things
+class ResizeButton(ButtonView):
+  def __init__(self, parent, target=None, horizontal=True, vertical=True):
+    ButtonView.__init__(self, parent)
+    if (target is None):
+      target = parent
+    self._target = target
+    self._horizontal = horizontal
+    self._vertical = vertical
+    if ((self._horizontal) and (self._vertical)):
+      self.setCursor(Qt.SizeFDiagCursor)
+    elif (self._horizontal):
+      self.setCursor(Qt.SizeHorCursor)
+    elif (self._vertical):
+      self.setCursor(Qt.SizeVerCursor)
+    self._start_rect = None
+    self._start_bounds = None
+  def drawIcon(self, qp, r):
+    x = r.right()
+    y = r.bottom()
+    w = 2.0
+    for offset in range(1, 12, 4):
+      qp.drawPolygon([
+        QPointF(x, y - offset),
+        QPointF(x, y - (offset + w)),
+        QPointF(x - (offset + w), y),
+        QPointF(x - offset, y)
+      ])
+  # handle dragging
+  def on_drag_start(self, event):
+    self._start_rect = self._target.rect()
+    self._start_bounds = self._target.boundingRect().normalized()
+    if (self._start_bounds.width() == 0):
+      self._start_bounds.setWidth(1.0)
+    if (self._start_bounds.height() == 0):
+      self._start_bounds.setHeight(1.0)
+  def on_drag(self, event, delta_x, delta_y):
+    if (self._start_rect is not None):
+      x = self._start_rect.x()
+      y = self._start_rect.y()
+      w = max(1.0, self._start_rect.width())
+      h = max(1.0, self._start_rect.height())
+      br = self._start_bounds
+      if (self._horizontal):
+        try:
+          sx = max(0, (br.right() + delta_x) / br.right())
+        except ZeroDivisionError:
+          sx = 1.0
+        x = ((x - br.left()) + (br.left() * sx))
+        w *= sx
+      if (self._vertical):
+        try:
+          sy = max(0, (br.bottom() + delta_y) / br.bottom())
+        except ZeroDivisionError:
+          sy = 1.0
+        y = ((y - br.top()) + (br.top() * sy))
+        h *= sy
+      set_rect = False
+      if (hasattr(self._target, 'width')):
+        self._target.width = w
+      elif (self._horizontal):
+        set_rect = True
+      if (hasattr(self._target, 'height')):
+        self._target.height = h
+      elif (self._vertical):
+        set_rect = True
+      if (set_rect):
+        self._target.setRect(QRectF(x, y, w, h))
+  def on_drag_end(self, event):
+    self._start_rect = None
+    self._start_bounds = None
+
 # show a button for dragging things
 class DragButton(ButtonView):
   # the diameter of the pips to draw that indicate draggability

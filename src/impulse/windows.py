@@ -26,7 +26,9 @@ class DocumentWindow(QMainWindow):
     self._document = None
     self.document_view = None
     # build the menu and toolbar
-    self._makeMenus()
+    self._make_menus()
+    # set up stylesheets for look and feel
+    self._init_style()
     
   @property
   def document(self):
@@ -78,7 +80,7 @@ class DocumentWindow(QMainWindow):
     self.update_actions()
   
   # build the application menu and toolbar
-  def _makeMenus(self):
+  def _make_menus(self):
     menubar = self.menuBar()
     
     # file menu
@@ -298,4 +300,31 @@ class DocumentWindow(QMainWindow):
     self.zoom_out_action.setEnabled(
       (self.document_view is not None) and (self.document_view.can_zoom_out))
 
-
+  # set up stylesheets for the app
+  def _init_style(self):
+    # style scrollbars to be simple lozenges without buttons
+    self._app.setStyleSheet('''
+      QScrollBar:horizontal { height: 12px; }
+      QScrollBar::handle:horizontal { min-width: 24px; }
+      QScrollBar:vertical { width: 12px; }
+      QScrollBar::handle:vertical { min-height: 24px; }
+      QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
+        width: 0;
+      }
+      QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+        height: 0;
+      }
+      QScrollBar {
+        background: transparent;
+      }
+      QScrollBar::handle {
+        background: rgba(0, 0, 0, 64);
+        border-radius: 6px;
+      }
+      QScrollBar::handle:hover {
+        background: rgba(0, 0, 0, 128);
+      }
+      QScrollBar::add-page, QScrollBar::sub-page {
+        background: transparent;
+      }
+    ''')
