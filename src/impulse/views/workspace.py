@@ -123,11 +123,13 @@ class UnitView(core.ModelView):
     # position the content, if any
     m = self.MARGIN
     content_pos = QPointF(m, m + top_height)
+    content_height = 0.0
     if (self._content):
       self._content.setPos(content_pos)
+      content_height = self._content.boundingRect().height()
     # position inputs and outputs left and right of the content
     io_rect = QRectF(0.0, content_pos.y(), 
-                     r.width(), r.height() - content_pos.y())
+                     r.width(), content_height)
     if (self._input_layout):
       self._input_layout.setRect(io_rect)
     if (self._output_layout):
