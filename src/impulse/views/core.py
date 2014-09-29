@@ -112,7 +112,10 @@ class ModelView(View):
     return(QBrush(color))
   # get a pen based on the model's selection state
   def pen(self, alpha=1.0):
-    selected = self.model.selected
+    try:
+      selected = self.model.selected
+    except AttributeError:
+      selected = False
     role = QPalette.Highlight if selected else QPalette.WindowText
     color = self.palette.color(QPalette.Normal, role)
     if (alpha < 1.0):
@@ -400,12 +403,12 @@ class ListLayout(QGraphicsObject):
   @items.setter
   def items(self, value):
     if (value is not self._items):
-      if (self._items):
+      if (self._items is not None):
         try:
           self._items.remove_observer(self.update_views)
         except AttributeError: pass
       self._items = value
-      if (self._items):
+      if (self._items is not None):
         try:
           self._items.add_observer(self.update_views)
         except AttributeError: pass
@@ -451,7 +454,7 @@ class ListLayout(QGraphicsObject):
       try:
         view.destroy()
       except AttributeError:
-        view.setParentItem(None)                
+        view.setParentItem(None)
     # do layout if the contained items have changed
     if ((len(old) > 0) or (len(new) > 0)):
       self.layout()
@@ -482,6 +485,12 @@ class EditableLabel(QLineEdit):
     self.setAutoFillBackground(False)
     self.setStyleSheet("background-color:transparent")
     self.clickedToFocus = False
+  # return a minimal size for the label
+  def minimumSizeHint(self):
+    s = QLineEdit.sizeHint(self)
+    fm = QFontMetrics(self.font())
+    s.setWidth(fm.width('  '+self.text()))
+    return(s)
   # select all on focus
   def mousePressEvent(self, e, Parent=None):
     QLineEdit.mousePressEvent(self, e)
@@ -502,16 +511,12 @@ class NameLabel(EditableLabel):
     self._update_name()
     self.setAlignment(Qt.AlignCenter | Qt.AlignVCenter)
     self.textEdited.connect(self.on_edited)
+    self.editingFinished.connect(self._update_name)
   def _update_name(self):
     if (not self.hasFocus()):
       self.setText(self._model.name)
   def on_edited(self, text):
     self._model.name = text
-  def minimumSizeHint(self):
-    s = QLineEdit.sizeHint(self)
-    fm = QFontMetrics(self.font())
-    s.setWidth(fm.width('  '+self.text()))
-    return(s)
 
 # make a singleton for handling things like selection state
 class ViewManagerSingleton(observable.Object):

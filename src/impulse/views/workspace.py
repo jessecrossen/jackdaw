@@ -10,6 +10,7 @@ from ..models import unit
 import core
 import track
 import button
+import device
 
 class UnitView(core.ModelView):
   # the margin to leave around the content
@@ -25,7 +26,7 @@ class UnitView(core.ModelView):
     self._content = None
     self._input_layout = None
     self._output_layout = None
-    self.allow_delete = True
+    self.allow_delete = False
     self._delete_button = None
     self._drag_button = None
     self.allow_resize_width = False
@@ -448,6 +449,8 @@ class WorkspaceView(core.ModelView):
   def view_for_unit(self, unit):
     if (hasattr(unit, 'tracks')):
       return(MultitrackUnitView(unit))
+    elif (hasattr(unit, 'devices')):
+      return(DeviceListUnitView(unit))
     return(UnitView(unit))
   # update the placement of the layout
   def layout(self):
@@ -509,3 +512,18 @@ class MultitrackUnitView(UnitView):
       y += h + spacing
       i += 1
     return(y)
+    
+# make a unit view containing a list of input devices
+class DeviceListUnitView(UnitView):
+  def __init__(self, *args, **kwargs):
+    UnitView.__init__(self, *args, **kwargs)
+    self._content = device.DeviceListView(
+            devices=self.unit.devices)
+    self._content.setParentItem(self)
+    # add outputs for the devices
+    self._output_layout = OutputListLayout(self, self.unit.devices,
+      lambda t: UnitOutputView(t))
+  def layout(self):
+    size = self._content.minimumSizeHint()
+    self._content.setRect(QRectF(0, 0, size.width(), size.height()))
+    UnitView.layout(self)

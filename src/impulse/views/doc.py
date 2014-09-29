@@ -4,7 +4,6 @@ from PySide.QtGui import *
 import core
 import track
 import workspace
-#from ..midi import inputs, outputs, sampler
 
 class DocumentView(QGraphicsView):
   def __init__(self, document, parent=None):

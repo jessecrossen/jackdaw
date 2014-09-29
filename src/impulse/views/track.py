@@ -1,10 +1,8 @@
 import math
-import cairo
 
 from PySide.QtCore import *
 from PySide.QtGui import *
 
-#import symbols
 import core
 from ..models.doc import ViewScale
 from ..models.core import Selection
@@ -189,7 +187,6 @@ class PitchNameView(core.EditableLabel):
     self.pitch = pitch
     self.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
     self.textEdited.connect(self.on_edited)
-    self.editingFinished.connect(self.on_edit_finished)
   @property
   def pitch(self):
     return(self._pitch)

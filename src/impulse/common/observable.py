@@ -108,43 +108,6 @@ class List(Object):
       item.remove_observer(self.on_change)
     except AttributeError: pass
 
-## make an observable list that exposes the members of another list 
-##  after passing them through a series of filtering functions
-#class FilteredList(Object):
-#  # the class must be initialized with a source list whose contents to filter
-#  def __init__(self, source, filters=()):
-#    Object.__init__(self)
-#    self._source = source
-#    self._source.add_observer(self.update)
-#    self._filters = filters
-#  # make this hashable so it can receive callbacks
-#  def __hash__(self):
-#    return(id(self))
-#  # expose the source list as a read-only property
-#  @property
-#  def source(self):
-#    return(self._source)
-#  # expose the list of filters as a property, which can be set to a tuple
-#  #  containing a series of filter functions, each of which accepts a sequence
-#  #  and returns a filtered sequence
-#  @property
-#  def filters(self):
-#    return(self._filters)
-#  @filters.setter
-#  def filters(self, sequence):
-#    self._filters = tuple(sequence)
-#    self.update()
-#  # update the contents of the list based on changes 
-#  #  to the source list or filters
-#  def update(self):
-#    # apply filters
-#    contents = self._source
-#    for func in self._filters:
-#      contents = func(contents)
-#    # replace contents and report a change
-#    self[0:] = contents
-#    self.on_change()
-
 # make an object that exposes observable attributes for another object
 class AttributeProxy(Object):
   def __init__(self, target, from_name=None, to_name=None):

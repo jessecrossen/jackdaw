@@ -9,6 +9,7 @@ from PySide.QtCore import QAbstractAnimation, Signal
 from ..common import observable, serializable
 from core import Model, ModelList
 import unit
+from ..midi.core import DeviceAdapterList
 
 # represents a single note event with time, pitch, velocity, and duration
 #  - time and duration are in seconds
@@ -918,7 +919,8 @@ serializable.add(ViewScale)
 
 # represent a document, which can contain multiple tracks
 class Document(Model):
-  def __init__(self, tracks=None, transport=None, view_scale=None):
+  def __init__(self, tracks=None, devices=None, transport=None, view_scale=None,
+                     units=None):
     Model.__init__(self)
     # the file path to save to
     self.path = None
@@ -935,16 +937,26 @@ class Document(Model):
     if (view_scale is None):
       view_scale = ViewScale()
     self.view_scale = view_scale
+    # devices
+    if (devices is None):
+      devices = DeviceAdapterList()
+    self.devices = devices
     # a list of units on the workspace
-    self.units = unit.UnitList()
-    self.units.append(unit.MultitrackUnit(
-      name='Tracks',
-      tracks=self.tracks, 
-      width=400,
-      view_scale=self.view_scale, 
-      transport=self.transport))
+    if (units is None):
+      units = unit.UnitList()
+      units.append(unit.MultitrackUnit(
+        name='Tracks',
+        tracks=self.tracks, 
+        width=400,
+        view_scale=self.view_scale, 
+        transport=self.transport))
+      units.append(unit.DeviceListUnit(
+        name='Inputs',
+        devices=self.devices, 
+        x=-400))
+    self.units = units
     self.units.add_observer(self.on_change)
-
+    
   # save the document to a file
   def save(self):
     output_stream = open(self.path, 'w')
@@ -952,10 +964,12 @@ class Document(Model):
     output_stream.close()
   # document serialization
   def serialize(self):
-    return({ 
+    return({
+      'devices': self.devices,
       'tracks': self.tracks,
       'transport': self.transport,
-      'view_scale': self.view_scale
+      'view_scale': self.view_scale,
+      'units': self.units
     })
 serializable.add(Document)
 

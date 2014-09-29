@@ -147,3 +147,15 @@ class MultitrackUnit(Unit):
     obj['view_scale'] = self.view_scale
     return(obj)
 serializable.add(MultitrackUnit)
+
+# make a unit that represents the list of input devices
+class DeviceListUnit(Unit):
+  def __init__(self, devices, *args, **kwargs):
+    Unit.__init__(self, *args, **kwargs)
+    self.devices = devices
+    self.devices.add_observer(self.on_change)
+  def serialize(self):
+    obj = Unit.serialize(self)
+    obj['devices'] = self.devices
+    return(obj)
+serializable.add(DeviceListUnit)
