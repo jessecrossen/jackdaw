@@ -101,12 +101,30 @@ class UnitList(ModelList):
     })
 serializable.add(UnitList)
 
-# represent a connection between two objects
+# make a mixin to make a model a signal source
+class Source(object):
+  def __init__ (self):
+    self._source_type = 'audio'
+  # return the type of signal emitted by this source
+  @property
+  def source_type(self):
+    return(self._source_type)
+
+# make a mixin to make a model a signal sink
+class Sink(object):
+  def __init__ (self):
+    self._sink_type = 'audio'
+  # return the type of signal emitted by this source
+  @property
+  def sink_type(self):
+    return(self._sink_type)
+
+# represent a connection between a source and sink
 class Connection(Model):
-  def __init__(self, source=None, dest=None):
+  def __init__(self, source=None, sink=None):
     Model.__init__(self)
     self._source = source
-    self._dest = dest
+    self._sink = sink
   @property
   def source(self):
     return(self._source)
@@ -116,20 +134,66 @@ class Connection(Model):
       self._source = value
       self.on_change()
   @property
-  def dest(self):
-    return(self._dest)
-  @dest.setter
-  def dest(self, value):
-    if (value is not self._dest):
-      self._dest = value
+  def sink(self):
+    return(self._sink)
+  @sink.setter
+  def sink(self, value):
+    if (value is not self._sink):
+      self._sink = value
       self.on_change()
   # connection serialization
   def serialize(self):
     return({ 
       'source': self.source,
-      'dest': self.dest
+      'sink': self.sink
     })
 serializable.add(Connection)
+
+# represent a patch bay that maintains connections between units
+class PatchBay(ModelList):
+  def __init__(self, connections=()):
+    ModelList.__init__(self, connections)
+  def invalidate(self):
+    self._source_map = None
+    self._sink_map = None
+  # make a mapping that indexes sources by sink
+  def _make_source_map(self):
+    if (self._source_map is None):
+      self._source_map = dict()
+      for c in self:
+        if (c.sink not in self._source_map):
+          self._source_map[c.sink] = list()
+        self._source_map[c.sink].append(c.source)
+    return(self._source_map)
+  # make a mapping that indexes sinks by source
+  def _make_sink_map(self):
+    if (self._sink_map is None):
+      self._sink_map = dict()
+      for c in self:
+        if (c.source not in self._sink_map):
+          self._sink_map[c.source] = list()
+        self._sink_map[c.source].append(c.sink)
+    return(self._sink_map)
+  # get a list of all sinks connected to the given source
+  def sources_for_sink(self, sink):
+    m = self._make_source_map()
+    if (sink in m):
+      return(m[sink])
+    return(())
+  # get a list of all sources connected to the given sink
+  def sinks_for_source(self, source):
+    m = self._make_sink_map()
+    if (source in m):
+      return(m[source])
+    return(())
+    
+  # TODO: prune connections with no source and/or sink
+  
+  def serialize(self):
+    return({
+      'connections': list(self)
+    })
+serializable.add(PatchBay)
 
 # make a unit that represents the track list of the document
 class MultitrackUnit(Unit):

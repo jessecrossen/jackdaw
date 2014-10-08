@@ -156,9 +156,13 @@ class ConnectionView(core.Selectable, core.ModelView):
     core.Selectable.__init__(self)
     self.allow_multiselect = False
     self._source_view = None
-    self._dest_view = None
+    self._sink_view = None
     self._source_pos = QPointF(0, 0)
-    self._dest_pos = QPointF(0, 0)
+    self._sink_pos = QPointF(0, 0)
+  def destroy(self):
+    self._source_view = None
+    self._sink_view = None
+    core.ModelView.destroy(self)
   @property
   def connection(self):
     return(self._model)
@@ -173,15 +177,22 @@ class ConnectionView(core.Selectable, core.ModelView):
       self._connect_port_view(self._source_view)
       self.on_moved()
   @property
-  def dest_view(self):
-    return(self._dest_view)
-  @dest_view.setter
-  def dest_view(self, value):
-    if (value is not self._dest_view):
-      self._disconnect_port_view(self._dest_view)
-      self._dest_view = value
-      self._connect_port_view(self._dest_view)
+  def sink_view(self):
+    return(self._sink_view)
+  @sink_view.setter
+  def sink_view(self, value):
+    if (value is not self._sink_view):
+      self._disconnect_port_view(self._sink_view)
+      self._sink_view = value
+      self._connect_port_view(self._sink_view)
       self.on_moved()
+  @property
+  def port_type(self):
+    if (isinstance(self._source_view, UnitPortView)):
+      return(self._source_view.port_type)
+    elif (isinstance(self._sink_view, UnitPortView)):
+      return(self._sink_view.port_type)
+    return(None)
   def _connect_port_view(self, view):
     if (isinstance(view, UnitPortView)):
       view.moved.connect(self.on_moved)
@@ -190,10 +201,10 @@ class ConnectionView(core.Selectable, core.ModelView):
     if (view is UnitPortView):
       view.moved.disconnect(self.on_moved)
       view.destroyed.disconnect(self.on_port_destroyed)
-  # respond to the source or destination view being destroyed
+  # respond to the source or sink view being destroyed
   def on_port_destroyed(self):
     self.destroy()
-  # respond to the source or destination being moved
+  # respond to the source or sink being moved
   def on_moved(self):
     self.prepareGeometryChange()
     def get_pos(view):
@@ -204,9 +215,9 @@ class ConnectionView(core.Selectable, core.ModelView):
       else:
         return(self.mapFromScene(view.mapToScene(QPointF(0.0, 0.0))))
     self._source_pos = get_pos(self._source_view)
-    self._dest_pos = get_pos(self._dest_view)
+    self._sink_pos = get_pos(self._sink_view)
     self.update()
-  # get the bounding rectangle encompassing the source and destination
+  # get the bounding rectangle encompassing the source and sink
   def boundingRect(self):
     points = self.curvePoints()
     x_min = 0; x_max = 0
@@ -220,12 +231,12 @@ class ConnectionView(core.Selectable, core.ModelView):
     return(r)
   # get the points needed to draw the wire part of the connection
   def curvePoints(self):
-    # get the source and dest as points, mapping into local coordinates
+    # get the source and sink as points, mapping into local coordinates
     source = self._source_pos
-    dest = self._dest_pos
+    sink = self._sink_pos
     # compute a curvature that will look good
-    dx = dest.x() - source.x()
-    dy = dest.y() - source.y()
+    dx = sink.x() - source.x()
+    dy = sink.y() - source.y()
     min_curve = min(abs(dy), self.CURVE)
     x_curve = max(min_curve, abs(dx / 2.0))
     y_curve = 0.0
@@ -235,14 +246,14 @@ class ConnectionView(core.Selectable, core.ModelView):
     # place endpoints and control points
     return((source, 
             QPointF(source.x() + x_curve, source.y() + y_curve),
-            QPointF(dest.x() - x_curve, dest.y() - y_curve),
-            dest))
+            QPointF(sink.x() - x_curve, sink.y() - y_curve),
+            sink))
   # get a path for the wire part of the connection
   def wirePath(self):
     path = QPainterPath()
-    (source, cp1, cp2, dest) = self.curvePoints()
+    (source, cp1, cp2, sink) = self.curvePoints()
     path.moveTo(source)
-    path.cubicTo(cp1, cp2, dest)
+    path.cubicTo(cp1, cp2, sink)
     return(path)
   # define the shape to be an outset from the wire area
   def shape(self):
@@ -253,7 +264,7 @@ class ConnectionView(core.Selectable, core.ModelView):
   # draw the connection as a wire
   def paint(self, qp, options, widget):
     # make sure there is a parent and endpoints
-    if ((self.source_view is None) or (self.dest_view is None) or
+    if ((self.source_view is None) or (self.sink_view is None) or
         (self.parentItem() is None)): return
     # draw the wire
     pen = self.pen()
@@ -264,27 +275,39 @@ class ConnectionView(core.Selectable, core.ModelView):
     # draw the endpoints
     qp.setPen(Qt.NoPen)
     qp.setBrush(self.brush())
-    r = self.RADIUS
-    qp.drawEllipse(self._source_pos, r, r)
-    qp.drawEllipse(self._dest_pos, r, r)
+    self._draw_endpoint(qp, self._source_pos, self.RADIUS)
+    self._draw_endpoint(qp, self._sink_pos, self.RADIUS)
+  # draw an endpoint at the given point
+  def _draw_endpoint(self, qp, p, r):
+    port_type = self.port_type
+    # draw a square to indicate midi
+    if (port_type == 'midi'):
+      qp.drawPolygon((
+        QPointF(p.x() - r, p.y()), QPointF(p.x(), p.y() - r),
+        QPointF(p.x() + r, p.y()), QPointF(p.x(), p.y() + r)))
+    # draw a circle otherwise
+    else:
+      qp.drawEllipse(p, r, r)
   # allow the ends of the connection to be dragged out of their ports
   def on_drag_start(self, event):
     pos = event.pos()
     source = self._source_pos
-    dest = self._dest_pos
+    sink = self._sink_pos
     source_dist = abs(pos.x() - source.x()) + abs(pos.y() - source.y())
-    dest_dist = abs(pos.x() - dest.x()) + abs(pos.y() - dest.y())
-    self._drag_dest = (dest_dist < source_dist)
+    sink_dist = abs(pos.x() - sink.x()) + abs(pos.y() - sink.y())
+    self._drag_sink = (sink_dist < source_dist)
   def on_drag(self, event, delta_x, delta_y):
     p = event.scenePos()
     item = self.scene().itemAt(p)
-    if (self._drag_dest):
-      if (isinstance(item, UnitInputView)):
-        self.dest_view = item
+    if (self._drag_sink):
+      if ((isinstance(item, UnitInputView)) and 
+          (item.port_type == self.source_view.port_type)):
+        self.sink_view = item
       else:
-        self.dest_view = p
+        self.sink_view = p
     else:
-      if (isinstance(item, UnitOutputView)):
+      if ((isinstance(item, UnitOutputView)) and 
+          (item.port_type == self.sink_view.port_type)):
         self.source_view = item
       else:
         self.source_view = p
@@ -295,7 +318,7 @@ class ConnectionView(core.Selectable, core.ModelView):
     if ((self.connection.selected) and 
         (event.key() == Qt.Key_Delete) or (event.key() == Qt.Key_Backspace)):
       self.connection.source = None
-      self.connection.dest = None
+      self.connection.sink = None
       self.setParent(None)
     else:
       event.ignore()
@@ -305,13 +328,16 @@ class ConnectionView(core.Selectable, core.ModelView):
   # finalize the view's connection or remove it
   def finalize_connection(self):
     if ((isinstance(self.source_view, UnitOutputView)) and 
-        (isinstance(self.dest_view, UnitInputView))):
+        (isinstance(self.sink_view, UnitInputView))):
       self.connection.source = self.source_view.target
-      self.connection.dest = self.dest_view.target
+      self.connection.sink = self.sink_view.target
+      workspace_view = self.parentItemWithClass(WorkspaceView)
+      if (workspace_view):
+        workspace_view.patch_bay.append(self.connection)
     else:
       self.connection.source = None
-      self.connection.dest = None
-      self.setParent(None)
+      self.connection.sink = None
+      self.destroy()
 
 # make a base class for input/output ports
 class UnitPortView(core.Interactive, core.ModelView):
@@ -329,6 +355,10 @@ class UnitPortView(core.Interactive, core.ModelView):
   @property
   def target(self):
     return(self._model)
+  # get the type of signal the port accepts
+  @property
+  def port_type(self):
+    return(None)
   # signal when position changes
   def itemChange(self, change, value):
     if (change == QGraphicsItem.ItemScenePositionHasChanged):
@@ -340,9 +370,21 @@ class UnitPortView(core.Interactive, core.ModelView):
     pen = self.pen()
     pen.setWidth(2.0)
     pen.setCapStyle(Qt.FlatCap)
+    pen.setJoinStyle(Qt.MiterJoin)
     qp.setPen(pen)
     r = self.RADIUS
-    qp.drawEllipse(end, r, r)
+    # draw midi connections with square ends
+    port_type = self.port_type
+    if (port_type == 'midi'):
+      qp.drawPolygon((
+        QPointF(end.x() - r, end.y()),
+        QPointF(end.x(), end.y() - r),
+        QPointF(end.x() + r, end.y()),
+        QPointF(end.x(), end.y() + r)
+      ))
+    # draw audio connections with round ends
+    else:
+      qp.drawEllipse(end, r, r)
     dx = base.x() - end.x()
     dy = base.y() - end.y()
     d = math.sqrt(math.pow(dx, 2) + math.pow(dy, 2))
@@ -351,12 +393,13 @@ class UnitPortView(core.Interactive, core.ModelView):
     qp.drawLine(p, base)
   # handle dragging a connection from a port
   def on_drag_start(self, event):
+    # make a connection and add it to the workspace
     connection = unit.Connection()
     view = ConnectionView(connection)
     if (isinstance(self, UnitOutputView)):
       view.source_view = self
     else:
-      view.dest_view = self
+      view.sink_view = self
     workspace_view = self.parentItemWithClass(WorkspaceView)
     if (workspace_view):
       view.setParentItem(workspace_view.connection_layer)
@@ -369,12 +412,14 @@ class UnitPortView(core.Interactive, core.ModelView):
     p = event.scenePos()
     item = self.scene().itemAt(p)
     if (view.source_view is self):
-      if (isinstance(item, UnitInputView)):
-        view.dest_view = item
+      if ((isinstance(item, UnitInputView)) and 
+          (item.port_type == self.port_type)):
+        view.sink_view = item
       else:
-        view.dest_view = p
+        view.sink_view = p
     else:
-      if (isinstance(item, UnitOutputView)):
+      if ((isinstance(item, UnitOutputView)) and 
+          (item.port_type == self.port_type)):
         view.source_view = item
       else:
         view.source_view = p
@@ -383,6 +428,18 @@ class UnitPortView(core.Interactive, core.ModelView):
     self._dragging_connection_view = None
     # remove the view if it didn't form a connection
     view.finalize_connection()
+  # when added to the scene, automatically add views for any 
+  #  connections to or from the target if there are any
+  def on_added_to_scene(self):
+    core.ModelView.on_added_to_scene(self)
+    workspace_view = self.parentItemWithClass(WorkspaceView)
+    if (workspace_view):
+      patch_bay = workspace_view.patch_bay
+      if (((isinstance(self, UnitInputView)) and 
+           (len(patch_bay.sources_for_sink(self.target)) > 0)) or
+          ((isinstance(self, UnitOutputView)) and 
+           (len(patch_bay.sinks_for_source(self.target)) > 0))):
+        workspace_view.autoconnect()
 
 # show an input port to a unit
 class UnitInputView(UnitPortView):
@@ -394,6 +451,12 @@ class UnitInputView(UnitPortView):
   def paint(self, qp, options, widget):
     self.drawPort(qp, QPointF(self.OFFSET, 0.0), 
                       QPointF(0.0, 0.0))
+  @property
+  def port_type(self):
+    try:
+      return(self.target.sink_type)
+    except AttributeError:
+      return(None)
 # show an output port to a unit
 class UnitOutputView(UnitPortView):
   def boundingRect(self):
@@ -404,6 +467,12 @@ class UnitOutputView(UnitPortView):
   def paint(self, qp, options, widget):
     self.drawPort(qp, QPointF(- self.OFFSET, 0.0), 
                       QPointF(0.0, 0.0))
+  @property
+  def port_type(self):
+    try:
+      return(self.target.source_type)
+    except AttributeError:
+      return(None)
 
 # lay out input/output ports for a unit
 class PortListLayout(core.ListLayout):
@@ -444,6 +513,17 @@ class WorkspaceView(core.ModelView):
     # add a layout for the units
     self.units_layout = UnitListLayout(self, 
       doc.units, self.view_for_unit)
+    # connect to the patch bay
+    self.patch_bay = doc.patch_bay
+    self.patch_bay.add_observer(self.autoconnect)
+  def destroy(self):
+    self.patch_bay.remove_observer(self.autoconnect)
+    for item in self.connection_layer.childItems():
+      try:
+        item.destroy()
+      except AttributeError:
+        item.setParentItem(None)
+    core.ModelView.destroy(self)
   @property
   def units(self):
     return(self._model)
@@ -460,6 +540,57 @@ class WorkspaceView(core.ModelView):
     width = r.width()
     height = r.height()
     self.units_layout.setRect(QRectF(0, 0, width, height))
+  # automatically add connections for an existing port view
+  def autoconnect(self):
+    # index all connection views by source and sink
+    connection_map = dict()
+    connection_views = self.connection_layer.childItems()
+    for view in connection_views:
+      try:
+        source = view.source_view.target
+      except AttributeError:
+        source = None
+      try:
+        sink = view.sink_view.target
+      except AttributeError:
+        sink = None
+      if ((source is not None) and (sink is not None)):
+        connection_map[(source, sink)] = view
+    # create maps of input and output views only if needed
+    input_map = None
+    output_map = None
+    # find unconnected connections
+    for conn in self.patch_bay:
+      # if either end of the connection is missing, it's not valid
+      if ((conn.source is None) or (conn.sink is None)): continue
+      # skip connections we already have views for
+      if ((conn.source, conn.sink) in connection_map): continue
+      # index all port views by target
+      if ((input_map is None) or (output_map is None)):
+        input_map = dict()
+        output_map = dict()
+        self._index_port_views(self, input_map, output_map)
+      # see if we have views for the source and sink
+      if ((conn.source in output_map) and (conn.sink in input_map)):
+        source_view = output_map[conn.source]
+        sink_view = input_map[conn.sink]
+        view = ConnectionView(conn, parent=self.connection_layer)
+        view.source_view = source_view
+        view.sink_view = sink_view
+        # add it to the map so we don't do this twice when given a 
+        #  double connection
+        connection_map[(conn.source, conn.sink)] = view    
+  # index all source and destination views
+  def _index_port_views(self, node, input_map, output_map):
+    children = node.childItems()
+    for child in children:
+      if (isinstance(child, UnitInputView)):
+        input_map[child._model] = child
+      elif (isinstance(child, UnitOutputView)):
+        output_map[child._model] = child
+      else:
+        self._index_port_views(child, input_map, output_map)
+    
 # lay units out on the workspace
 class UnitListLayout(core.ListLayout):
   def layout(self):

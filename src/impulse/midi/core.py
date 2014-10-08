@@ -6,11 +6,16 @@ import yaml
 from PySide.QtCore import *
 
 from ..common import observable, serializable
+from ..models import unit
 
 # acts as a base class for MIDI device adapters
-class DeviceAdapter(observable.Object):
+class DeviceAdapter(unit.Source, unit.Sink, observable.Object):
   def __init__(self, device_name):
     observable.Object.__init__(self)
+    unit.Source.__init__(self)
+    unit.Sink.__init__(self)
+    self._source_type = 'midi'
+    self._sink_type = 'midi'
     self._device_name = device_name
     self._device = None
     self._base_time = 0.0
@@ -88,13 +93,13 @@ serializable.add(DeviceAdapter)
 # make a class to manage a list of adapters
 class DeviceAdapterList(observable.List):
   def __init__(self, adapters=()):
+    # map devices by name
+    self._name_map = dict()
     observable.List.__init__(self, adapters)
     # scan periodically for devices being plugged and unplugged
     self.scan_timer = QTimer()
     self.scan_timer.timeout.connect(self.scan)
     self.scan_timer.start(1000)
-    # map devices by name
-    self._name_map = dict()
   # get an adapter for the device with the given name
   def adapter_named(self, name):
     if (name not in self._name_map):

@@ -25,10 +25,14 @@ class DocumentWindow(QMainWindow):
     # start with no document
     self._document = None
     self.document_view = None
+    # make a stack to hold the document
+    self.stack = QStackedWidget(self)
+    self.setCentralWidget(self.stack)
     # build the menu and toolbar
     self._make_menus()
     # set up stylesheets for look and feel
     self._init_style()
+    
     
   @property
   def document(self):
@@ -54,8 +58,10 @@ class DocumentWindow(QMainWindow):
     self.control_surface = None
     # remove the document view
     if (self.document_view is not None):
-      self.setCentralWidget(QWidget(self))
+      view = self.document_view
       self.document_view = None
+      view.destroy()
+      self.stack.removeWidget(view)
     # dump the undo stack and clear the selection
     ViewManager.reset()
   def attach(self):
@@ -72,8 +78,8 @@ class DocumentWindow(QMainWindow):
     # make a view for the document
     self.document_view = views.doc.DocumentView(parent=self,
       document=self.document)
-    # add the view
-    self.setCentralWidget(self.document_view)
+    # add it to the document
+    self.stack.addWidget(self.document_view)
     # update actions when relevant object change
     self.document.view_scale.add_observer(self.update_actions)
     self.document.tracks.add_observer(self.update_actions)

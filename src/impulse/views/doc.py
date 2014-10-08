@@ -17,11 +17,12 @@ class DocumentView(QGraphicsView):
     # add a view of the document workspace
     self.workspace = workspace.WorkspaceView(document)
     self.scene.addItem(self.workspace)
-    
+  def destroy(self):
+    self.workspace.destroy()
+    self.workspace = None
   @property
   def document(self):
     return(self._document)
-    
   # control track list zoom
   ZOOMS = (8, 16, 24, 32, 48, 64, 96, 128)
   def _zoom_index(self):

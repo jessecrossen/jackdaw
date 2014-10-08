@@ -386,7 +386,7 @@ class Block(Model):
 serializable.add(Block)
 
 # represent a track, which can contain multiple blocks
-class Track(ModelList):
+class Track(unit.Source, unit.Sink, ModelList):
 
   # names of the cyclical pitch classes starting at MIDI note 0
   PITCH_CLASS_NAMES = ( 
@@ -397,6 +397,10 @@ class Track(ModelList):
                      solo=False, mute=False, arm=False,
                      level=1.0, pan=0.0, pitch_names=None):
     ModelList.__init__(self, blocks)
+    unit.Source.__init__(self)
+    unit.Sink.__init__(self)
+    self._sink_type = 'midi'
+    self._source_type = 'midi'
     self._name = name
     self._duration = duration
     self._solo = solo
@@ -590,79 +594,6 @@ class TrackList(ModelList):
       'tracks': list(self)
     })
 serializable.add(TrackList)
-
-# represent a directed patch bay that routes between two lists
-class PatchBay(observable.Object):
-  def __init__(self, connections=None):
-    observable.Object.__init__(self)
-    if (connections is None):
-      connections = set()
-    self._connections = connections
-    self._update_maps()
-  @property
-  def connections(self):
-    return(set(self._connections))
-  @connections.setter
-  def connections(self, value):
-    removed = self.connections
-    added = set()
-    for c in value:
-      if c in self._connections:
-        removed.remove(c)
-      else:
-        added.add(c)
-    for (from_what, to_what) in removed:
-      self.unpatch(from_what, to_what)
-    for (from_what, to_what) in added:
-      self.patch(from_what, to_what)
-  # make a connection between two objects
-  def patch(self, from_what, to_what):
-    connection = (from_what, to_what)
-    if (connection not in self._connections):
-      self._connections.add((from_what, to_what))
-      self._update_maps()
-      self.on_change()
-  # break a connection between two objects
-  def unpatch(self, from_what, to_what):
-    connection = (from_what, to_what)
-    if (connection in self._connections):
-      self._connections.remove(connection)
-      self._update_maps()
-      self.on_change()
-  # get the items that are connected on either side
-  @property
-  def from_items(self):
-    return(self._from_items.keys())
-  @property
-  def to_items(self):
-    return(self._to_items.keys())
-  # get the items something is connected to/from
-  def items_connected_from(self, from_what):
-    try:
-      return(set(self._from_items[from_what]))
-    except KeyError:
-      return(())
-  def items_connected_to(self, to_what):
-    try:
-      return(set(self._to_items[to_what]))
-    except KeyError:
-      return(())
-  # update the maps from items to what they're connected to
-  def _update_maps(self):
-    self._from_items = dict()
-    self._to_items = dict()
-    for (from_what, to_what) in self._connections:
-      if (from_what not in self._from_items):
-        self._from_items[from_what] = set()
-      self._from_items[from_what].add(to_what)
-      if (to_what not in self._to_items):
-        self._to_items[to_what] = set()
-      self._to_items[to_what].add(from_what)
-  def serialize(self):
-    return({
-      'connections': list(self._connections)
-    })
-serializable.add(PatchBay)
 
 # a transport to keep track of timepoints, playback, and recording
 class Transport(QAbstractAnimation):
@@ -919,8 +850,8 @@ serializable.add(ViewScale)
 
 # represent a document, which can contain multiple tracks
 class Document(Model):
-  def __init__(self, tracks=None, devices=None, transport=None, view_scale=None,
-                     units=None):
+  def __init__(self, tracks=None, devices=None, transport=None,
+                     view_scale=None, units=None, patch_bay=None):
     Model.__init__(self)
     # the file path to save to
     self.path = None
@@ -956,6 +887,11 @@ class Document(Model):
         x=-400))
     self.units = units
     self.units.add_observer(self.on_change)
+    # a list of connections between units
+    if (patch_bay is None):
+      patch_bay = unit.PatchBay()
+    self.patch_bay = patch_bay
+    self.patch_bay.add_observer(self.on_change)
     
   # save the document to a file
   def save(self):
@@ -969,7 +905,8 @@ class Document(Model):
       'tracks': self.tracks,
       'transport': self.transport,
       'view_scale': self.view_scale,
-      'units': self.units
+      'units': self.units,
+      'patch_bay': self.patch_bay
     })
 serializable.add(Document)
 

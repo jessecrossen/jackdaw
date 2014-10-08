@@ -75,9 +75,16 @@ class View(QGraphicsObject):
   # update layout when added to the scene, in case widgets need to be added
   def itemChange(self, change, value):
     if (change == QGraphicsItem.ItemSceneHasChanged):
-      if (value is not None):
-        self.layout()
+      if (value is None):
+        self.on_removed_from_scene()
+      else:
+        self.on_added_to_scene()
     return(QGraphicsItem.itemChange(self, change, value))
+  # respond to being added to or removed from a scene
+  def on_added_to_scene(self):
+    self.layout()
+  def on_removed_from_scene(self):
+    pass
   # do layout of subviews
   def layout(self):
     pass
