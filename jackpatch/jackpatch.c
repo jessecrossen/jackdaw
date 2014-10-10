@@ -36,7 +36,6 @@ typedef struct {
   PyObject *client;
   // private stuff
   jack_port_t *_port;
-  jack_client_t *_client;
   int _is_mine;
 } Port;
 
@@ -266,16 +265,14 @@ Port_init(Port *self, PyObject *args, PyObject *kwds) {
   Py_XDECREF(tmp);
   // hold a reference to the underlying client so it never goes away while its
   //  ports are being used
-  PyObject *client_obj = NULL;
-  PyArg_ParseTupleAndKeywords(args, kwds, "OS|k", kwlist, &client_obj, &name, &flags);
+  PyObject *client_obj = (PyObject *)client;
   tmp = self->client;
   Py_INCREF(client_obj);
   self->client = client_obj;
   Py_XDECREF(tmp);
-  self->_client = client;
   // make sure the client is connected
   Client_open(client);
-  if (client->_client == NULL) return(NULL);
+  if (client->_client == NULL) return(-1);
   // see if a port already exists with this name
   self->_is_mine = 0;
   self->_port = jack_port_by_name(client->_client, PyString_AsString(name));
