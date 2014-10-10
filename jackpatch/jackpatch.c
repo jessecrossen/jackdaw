@@ -34,6 +34,7 @@ typedef struct {
   // public attributes
   PyObject *name;
   PyObject *client;
+  PyObject *flags;
   // private stuff
   jack_port_t *_port;
   int _is_mine;
@@ -252,17 +253,14 @@ Port_new(PyTypeObject *type, PyObject *args, PyObject *kwds) {
 
 static int
 Port_init(Port *self, PyObject *args, PyObject *kwds) {
+  char *requested_name = NULL;
   PyObject *name = NULL, *tmp;
   Client *client = NULL;
   unsigned long flags = 0;
   static char *kwlist[] = { "client", "name", "flags", NULL };
-  if (! PyArg_ParseTupleAndKeywords(args, kwds, "O!S|k", kwlist, 
-                                    &ClientType, &client, &name, &flags))
+  if (! PyArg_ParseTupleAndKeywords(args, kwds, "O!s|k", kwlist, 
+                                    &ClientType, &client, &requested_name, &flags))
     return(-1);
-  tmp = self->name;
-  Py_INCREF(name);
-  self->name = name;
-  Py_XDECREF(tmp);
   // hold a reference to the underlying client so it never goes away while its
   //  ports are being used
   PyObject *client_obj = (PyObject *)client;
@@ -275,18 +273,26 @@ Port_init(Port *self, PyObject *args, PyObject *kwds) {
   if (client->_client == NULL) return(-1);
   // see if a port already exists with this name
   self->_is_mine = 0;
-  self->_port = jack_port_by_name(client->_client, PyString_AsString(name));
+  self->_port = jack_port_by_name(client->_client, requested_name);
   // if there's no such port, we need to create one
   if (self->_port == NULL) {
     self->_is_mine = 1;
     self->_port = jack_port_register(
-      client->_client, PyString_AsString(name), 
+      client->_client, requested_name, 
         JACK_DEFAULT_MIDI_TYPE, flags, 0);
   }
   if (self->_port == NULL) {
-    _error("Failed to create a JACK port named \"%s\"", PyString_AsString(name));
+    _error("Failed to create a JACK port named \"%s\"", requested_name);
     return(-1);
   }
+  // store the actual name of the port
+  tmp = self->name;
+  self->name = PyString_FromString(jack_port_name(self->_port));
+  Py_XDECREF(tmp);
+  // store the actual flags of the port
+  tmp = self->flags;
+  self->flags = Py_BuildValue("i", jack_port_flags(self->_port));
+  Py_XDECREF(tmp);
   return(0);
 }
 
@@ -328,6 +334,8 @@ static PyMemberDef Port_members[] = {
    "The port's unique name"},
   {"client", T_OBJECT_EX, offsetof(Port, client), READONLY,
    "The client used to create the port"},
+  {"flags", T_OBJECT_EX, offsetof(Port, flags), READONLY,
+   "The port's flags as a bitfield of JackPortFlags"},
   {NULL}  /* Sentinel */
 };
 
