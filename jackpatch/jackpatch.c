@@ -46,6 +46,7 @@ typedef struct {
   // public attributes
   PyObject *name;
   PyObject *is_open;
+  PyObject *is_active;
   // private stuff
   jack_client_t *_client;
 } Client;
@@ -62,6 +63,7 @@ Client_new(PyTypeObject *type, PyObject *args, PyObject *kwds) {
   if (self != NULL) {
     self->name = Py_None;
     self->is_open = Py_False;
+    self->is_active = Py_False;
   }
   return((PyObject *)self);
 }
@@ -114,6 +116,34 @@ Client_close(Client *self) {
 }
 
 static PyObject *
+Client_activate(Client *self) {
+  Client_open(self);
+  if (self->_client == NULL) return(NULL);
+  if (self->is_active != Py_True) {
+    int result = jack_activate(self->_client);
+    if (result != 0) {
+      _error("Failed to activate the JACK client (error %i)", result);
+      return(NULL);
+    }
+    self->is_active = Py_True;
+  }
+  Py_RETURN_NONE;
+}
+
+static PyObject *
+Client_deactivate(Client *self) {
+  if ((self->is_active == Py_True) && (self->_client != NULL)) {
+    int result = jack_deactivate(self->_client);
+    if (result != 0) {
+      _error("Failed to deactivate the JACK client (error %i)", result);
+      return(NULL);
+    }
+    self->is_active = Py_False;
+  }
+  Py_RETURN_NONE;
+}
+
+static PyObject *
 Client_get_ports(Client *self, PyObject *args, PyObject *kwds) {
   const char *name_pattern = NULL;
   const char *type_pattern = NULL;
@@ -127,22 +157,24 @@ Client_get_ports(Client *self, PyObject *args, PyObject *kwds) {
   if (self->_client == NULL) return(NULL);
   // get a list of port names
   const char **port_name = jack_get_ports(self->_client, 
-    name_pattern, type_pattern, flags);
+    name_pattern, type_pattern, flags); 
   // convert the port names into a list of Port objects
   PyObject *return_list;
   return_list = PyList_New(0);
-  while (*port_name != NULL) {
-    Port *port = (Port *)Port_new(&PortType, NULL, NULL);
-    if (port != NULL) {
-      PyObject *name = PyString_FromString(*port_name);
-      Port_init(port, Py_BuildValue("(O,S)", self, name), Py_BuildValue("{}"));
-      if (PyList_Append(return_list, (PyObject *)port) < 0) {
-        _error("Failed to append a port to the list");
-        Py_DECREF(return_list);
-        return(NULL);
+  if (port_name != NULL) {
+    while (*port_name != NULL) {
+      Port *port = (Port *)Port_new(&PortType, NULL, NULL);
+      if (port != NULL) {
+        PyObject *name = PyString_FromString(*port_name);
+        Port_init(port, Py_BuildValue("(O,S)", self, name), Py_BuildValue("{}"));
+        if (PyList_Append(return_list, (PyObject *)port) < 0) {
+          _error("Failed to append a port to the list");
+          Py_DECREF(return_list);
+          return(NULL);
+        }
       }
+      port_name++;
     }
-    port_name++;
   }
   return(return_list);
 }
@@ -155,11 +187,16 @@ Client_connect(Client *self, PyObject *args, PyObject *kwds) {
   if (! PyArg_ParseTupleAndKeywords(args, kwds, "O!O!", kwlist, 
                                   &PortType, &source, &PortType, &destination))
     return(NULL);
-  Client_open(self);
-  if (self->_client == NULL) return(NULL);
-  int result = jack_connect(self->_client, source->_port, destination->_port);
+  Client_activate(self);
+  if (self->is_active != Py_True) return(NULL);
+  int result = jack_connect(self->_client, 
+    PyString_AsString(source->name), 
+    PyString_AsString(destination->name));
   if ((result == 0) || (result == EEXIST)) return(Py_True);
-  else return(Py_False);
+  else {
+    _warn("Failed to connect JACK ports (error %i)", result);
+    return(Py_False);
+  }
 }
 
 static void
@@ -174,6 +211,8 @@ static PyMemberDef Client_members[] = {
    "The client's unique name"},
   {"is_open", T_OBJECT_EX, offsetof(Client, is_open), READONLY,
    "Whether the client is connected to JACK"},
+  {"is_active", T_OBJECT_EX, offsetof(Client, is_active), READONLY,
+   "Whether the client is activated to send and receive data"},
   {NULL}  /* Sentinel */
 };
 
@@ -182,6 +221,10 @@ static PyMethodDef Client_methods[] = {
       "Ensure the client is connected to JACK"},
     {"close", (PyCFunction)Client_close, METH_NOARGS,
       "Ensure the client is not connected to JACK"},
+    {"activate", (PyCFunction)Client_activate, METH_NOARGS,
+      "Ensure the client is ready to send and receive data"},
+    {"deactivate", (PyCFunction)Client_deactivate, METH_NOARGS,
+      "Ensure the client cannot send and receive data"},
     {"get_ports", (PyCFunction)Client_get_ports, METH_VARARGS | METH_KEYWORDS,
       "Get a list of available ports"},
     {"connect", (PyCFunction)Client_connect, METH_VARARGS | METH_KEYWORDS,
