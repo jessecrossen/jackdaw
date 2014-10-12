@@ -199,6 +199,26 @@ Client_connect(Client *self, PyObject *args, PyObject *kwds) {
   }
 }
 
+static PyObject *
+Client_disconnect(Client *self, PyObject *args, PyObject *kwds) {
+  Port *source = NULL;
+  Port *destination = NULL;
+  static char *kwlist[] = {"source", "destination", NULL};
+  if (! PyArg_ParseTupleAndKeywords(args, kwds, "O!O!", kwlist, 
+                                  &PortType, &source, &PortType, &destination))
+    return(NULL);
+  Client_activate(self);
+  if (self->is_active != Py_True) return(NULL);
+  int result = jack_disconnect(self->_client, 
+    PyString_AsString(source->name), 
+    PyString_AsString(destination->name));
+  if ((result == 0) || (result == EEXIST)) return(Py_True);
+  else {
+    _warn("Failed to disconnect JACK ports (error %i)", result);
+    return(Py_False);
+  }
+}
+
 static void
 Client_dealloc(Client* self) {
   Client_close(self);
@@ -229,6 +249,8 @@ static PyMethodDef Client_methods[] = {
       "Get a list of available ports"},
     {"connect", (PyCFunction)Client_connect, METH_VARARGS | METH_KEYWORDS,
       "Connect a source and destination port"},
+    {"disconnect", (PyCFunction)Client_disconnect, METH_VARARGS | METH_KEYWORDS,
+      "Disconnect a source and destination port"},
     {NULL, NULL, 0, NULL}  /* Sentinel */
 };
 
