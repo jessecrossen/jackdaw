@@ -15,7 +15,7 @@ while (1)
 	# get all jack_umidi processes
 	ps -A -o command | grep 'jack_umidi' | \
 		# extract the device name from processes that have one \
-		sed -n -e 's~^.*\(/dev/umidi[0-9]*\.0\).*$~\1~p' | sort > "$current"
+		sed -n -e 's~^.*\(/dev/umidi[0-9]*\.0\).*$~\1~p' | sort | uniq > "$current"
 	# find devices that aren't represented in the process list
 	diff "$current" "$target" | \
 		# make commands to start jack_umidi for each one \
