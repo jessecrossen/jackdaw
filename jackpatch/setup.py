@@ -30,10 +30,11 @@ setup(
 	ext_modules = [
 		Extension('jackpatch', 
 		  [ 'jackpatch.c' ],
-		  libraries=['jack'])
+		  libraries=['jack'],
+		  include_dirs=['/usr/local/include/'])
 	],
 	data_files = [ ( 'share/jack-'+version, [ ] ) ],
-	platforms = ['linux'],
+	platforms = ['linux', 'freebsd'],
 	long_description='''jackpatch provides Python bindings for the MIDI and patchbay functionality of the JACK audio connection kit.''',
 	classifiers=[ "Development Status :: 3 - Alpha",
             "Topic :: Multimedia :: Sound/Audio :: MIDI" ],
