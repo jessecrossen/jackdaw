@@ -1,5 +1,5 @@
 import time
-import alsamidi
+import jackpatch
 import re
 import yaml
 
@@ -29,7 +29,7 @@ class DeviceAdapter(unit.Source, unit.Sink, observable.Object):
   @property
   def short_device_name(self):
     m = re.match(
-      '^(.*?)(\\s+([Pp]ort|[Mm][Ii][Dd][Ii]|[0-9:]+|\\s+)*)?$', 
+      r'^(.*?)([Pp]ort|[Mm][Ii][Dd][Ii]|[0-9:]+|[TtRr][Xx]|\.|\s+)*$', 
       self.device_name)
     return(m.group(1))
   # get and set the current backing device
@@ -45,20 +45,15 @@ class DeviceAdapter(unit.Source, unit.Sink, observable.Object):
   @property
   def is_plugged(self):
     return(self.device is not None)
-  # return whether the device is connected
-  @property
-  def is_connected(self):
-    if (not self.device): return(False)
-    return(self.device.is_connected)
   # return whether input/output ports are available for the device
   @property
   def has_input(self):
     if (not self.device): return(False)
-    return(self.device.is_input)
+    return((self.device.flags | jackpatch.JackPortIsInput) != 0)
   @property
   def has_output(self):
     if (not self.device): return(False)
-    return(self.device.is_output)
+    return((self.device.flags | jackpatch.JackPortIsOutput) != 0)
   # return the complete device name
   @property
   def name(self):
@@ -96,6 +91,8 @@ class DeviceAdapterList(observable.List):
     # map devices by name
     self._name_map = dict()
     observable.List.__init__(self, adapters)
+    # make a client connection to jack
+    self._client = jackpatch.Client('impulse-inputs')
     # scan periodically for devices being plugged and unplugged
     self.scan_timer = QTimer()
     self.scan_timer.timeout.connect(self.scan)
@@ -116,7 +113,7 @@ class DeviceAdapterList(observable.List):
   def scan(self):
     not_found = set(self._name_map.keys())
     # make sure all plugged-in devices have adapters
-    devices = alsamidi.get_devices()
+    devices = self._client.get_ports(type_pattern='.*midi.*')
     for device in devices:
       name = device.name
       if (name in not_found):
