@@ -5,6 +5,7 @@
 
 #include <jack/jack.h>
 #include <jack/midiport.h>
+#include <jack/transport.h>
 
 // the size of buffers to use for various purposes
 #define BUFFER_SIZE 1024
@@ -35,7 +36,7 @@ static void _warn(const char *format, ...) {
   PyErr_WarnEx(PyExc_RuntimeWarning, message, 2);
 }
 
-// MIDI MESSAGE QUEUE *********************************************************
+// STORAGE TYPES **************************************************************
 
 // define a struct to store queued MIDI messages, with a self-pointer that can
 //  be used to manage the queue as a linked list
@@ -50,10 +51,6 @@ typedef struct {
   unsigned char data[];
 } Message;
 
-// FORWARD DEFINITIONS ********************************************************
-
-// TODO: add a transport object to interface with the JACK transport
-
 static PyTypeObject PortType;
 typedef struct {
   PyObject_HEAD
@@ -66,6 +63,14 @@ typedef struct {
   int _is_mine;
 } Port;
 
+static PyTypeObject TransportType;
+typedef struct {
+  PyObject_HEAD
+  // public attributes
+  PyObject *client;
+  // private stuff
+} Transport;
+
 static PyTypeObject ClientType;
 typedef struct {
   PyObject_HEAD
@@ -73,6 +78,7 @@ typedef struct {
   PyObject *name;
   PyObject *is_open;
   PyObject *is_active;
+  PyObject *transport;
   // private stuff
   jack_client_t *_client;
   int _send_port_count;
@@ -86,8 +92,12 @@ typedef struct {
   pthread_mutex_t _midi_receive_queue_lock;
 } Client;
 
+// FORWARD DECLARATIONS *******************************************************
+
 static PyObject * Port_new(PyTypeObject *type, PyObject *args, PyObject *kwds);
 static int Port_init(Port *self, PyObject *args, PyObject *kwds);
+static PyObject * Transport_new(PyTypeObject *type, PyObject *args, PyObject *kwds);
+static int Transport_init(Transport *self, PyObject *args, PyObject *kwds);
 
 // CLIENT *********************************************************************
 
@@ -96,9 +106,12 @@ Client_new(PyTypeObject *type, PyObject *args, PyObject *kwds) {
   Client *self;
   self = (Client *)type->tp_alloc(type, 0);
   if (self != NULL) {
+    // attributes
     self->name = Py_None;
     self->is_open = Py_False;
     self->is_active = Py_False;
+    self->transport = Py_None;
+    // private stuff
     self->_send_port_count = 0;
     self->_send_ports = malloc(sizeof(jack_port_t *) * MAX_PORTS_PER_CLIENT);
     self->_midi_send_queue_head = NULL;
@@ -121,6 +134,15 @@ Client_init(Client *self, PyObject *args, PyObject *kwds) {
   Py_INCREF(name);
   self->name = name;
   Py_XDECREF(tmp);
+  // add a transport for the client
+  Transport *transport = (Transport *)Transport_new(&TransportType, NULL, NULL);
+  if (transport != NULL) {
+    Transport_init(transport, Py_BuildValue("(O)", self), Py_BuildValue("{}"));
+    tmp = self->transport;
+    Py_INCREF(transport);
+    self->transport = (PyObject *)transport;
+    Py_XDECREF(tmp);
+  }
   return(0);
 }
 
@@ -248,6 +270,11 @@ Client_receive_messages_for_port(Client *self, jack_port_t *port,
   int event_count = jack_midi_get_event_count(port_buffer);
   // if there are no events for the port, we can skip receiving
   if (event_count == 0) return;
+  // get the time at the start of the block so event times are synced 
+  //  to the transport
+  jack_position_t pos;
+  jack_transport_query(self->_client, &pos);
+  jack_nframes_t start_frame = pos.frame;
   // make sure the queue doesn't get changed while we're adding to it
   pthread_mutex_t *lock = &(self->_midi_receive_queue_lock);
   pthread_mutex_lock(lock);
@@ -274,8 +301,7 @@ Client_receive_messages_for_port(Client *self, jack_port_t *port,
     // set up the message
     message->next = NULL;
     message->port = port;
-    // TODO: add transport time
-    message->time = event.time;
+    message->time = start_frame + event.time;
     message->data_size = event.size;
     memcpy(message->data, event.buffer, event.size);
     // attach it to the queue
@@ -294,7 +320,6 @@ Client_receive_messages_for_port(Client *self, jack_port_t *port,
 // process a block of events for a client
 static int
 Client_process(jack_nframes_t nframes, void *self_ptr) {
-  // TODO: we need a lock here to keep python threads from modifying stuff
   int i;
   jack_port_t *port;
   Client *self = (Client *)self_ptr;
@@ -349,27 +374,40 @@ Client_deactivate(Client *self) {
   Py_RETURN_NONE;
 }
 
-// use a client to list ports (this will also list ports owned by other clients)
+// use a client to list ports (this will also list ports owned by other 
+//  clients unless the "mine" parameter is set to True)
 static PyObject *
 Client_get_ports(Client *self, PyObject *args, PyObject *kwds) {
   const char *name_pattern = NULL;
   const char *type_pattern = NULL;
   unsigned long flags = 0;
-  static char *kwlist[] = {"name_pattern", "type_pattern", "flags", NULL};
-  if (! PyArg_ParseTupleAndKeywords(args, kwds, "|ssk", kwlist, 
-                                    &name_pattern, &type_pattern, &flags))
+  PyObject *mine = Py_False;
+  static char *kwlist[] = {"name_pattern", "type_pattern", "flags", "mine", NULL};
+  if (! PyArg_ParseTupleAndKeywords(args, kwds, "|sskO", kwlist, 
+                                    &name_pattern, &type_pattern, &flags, &mine))
     return(NULL);
+  // see if we're only listing the ports of this client
+  int mine_only = PyObject_IsTrue(mine);
   // make sure we're connected to JACK
   Client_open(self);
   if (self->_client == NULL) return(NULL);
   // get a list of port names
   const char **port_name = jack_get_ports(self->_client, 
-    name_pattern, type_pattern, flags); 
+    name_pattern, type_pattern, flags);
   // convert the port names into a list of Port objects
   PyObject *return_list;
   return_list = PyList_New(0);
   if (port_name != NULL) {
     while (*port_name != NULL) {
+      // discard outside ports if requested
+      if (mine_only) {
+        jack_port_t *port_handle = jack_port_by_name(self->_client, *port_name);
+        if ((port_handle == NULL) || 
+            (! jack_port_is_mine(self->_client, port_handle))) {
+          port_name++;
+          continue;
+        }
+      }
       Port *port = (Port *)Port_new(&PortType, NULL, NULL);
       if (port != NULL) {
         PyObject *name = PyString_FromString(*port_name);
@@ -464,6 +502,8 @@ static PyMemberDef Client_members[] = {
    "Whether the client is connected to JACK"},
   {"is_active", T_OBJECT_EX, offsetof(Client, is_active), READONLY,
    "Whether the client is activated to send and receive data"},
+  {"transport", T_OBJECT_EX, offsetof(Client, transport), READONLY,
+   "A Transport that interfaces with the JACK transport via this client"},
   {NULL}  /* Sentinel */
 };
 
@@ -527,6 +567,187 @@ static PyTypeObject ClientType = {
     Client_new,                    /* tp_new */
 };
 
+// TRANSPORT ******************************************************************
+
+static PyObject *
+Transport_new(PyTypeObject *type, PyObject *args, PyObject *kwds) {
+  Transport *self;
+  self = (Transport *)type->tp_alloc(type, 0);
+  if (self != NULL) {
+    self->client = Py_None;
+  }
+  return((PyObject *)self);
+}
+
+static int
+Transport_init(Transport *self, PyObject *args, PyObject *kwds) {
+  PyObject *client=NULL, *tmp;
+  static char *kwlist[] = {"client", NULL};
+  if (! PyArg_ParseTupleAndKeywords(args, kwds, "O!", kwlist, 
+                                    &ClientType, &client))
+    return(-1);
+  tmp = self->client;
+  Py_INCREF(client);
+  self->client = client;
+  Py_XDECREF(tmp);
+  return(0);
+}
+
+// clean up allocated data for a transport
+static void
+Transport_dealloc(Transport* self) {
+  Py_XDECREF(self->client);  
+  self->ob_type->tp_free((PyObject*)self);
+}
+
+// get the current time of the transport
+static PyObject *
+Transport_get_time(Transport *self, void *closure) {
+  // make sure the client is connected to JACK
+  Client *client = (Client *)self->client;
+  Client_open(client);
+  // get the current transport position in frames
+  jack_nframes_t nframes = jack_get_current_transport_frame(client->_client);
+  // convert it to seconds and return
+  jack_nframes_t sample_rate = jack_get_sample_rate(client->_client);
+  double time = (double)nframes / (double)sample_rate;
+  return(PyFloat_FromDouble(time));
+}
+// set the current time of the transport
+static int
+Transport_set_time(Transport *self, PyObject *value, void *closure) {
+  if (value == NULL) {
+    PyErr_SetString(PyExc_TypeError, "Cannot delete the time attribute");
+    return -1;
+  }
+  double time = PyFloat_AsDouble(value);
+  if (PyErr_Occurred()) return(-1);
+  // guard against negative transport locations
+  if (time < 0.0) time = 0.0;
+  // make sure the client is connected to JACK
+  Client *client = (Client *)self->client;
+  Client_open(client);
+  // convert the time to frames
+  jack_nframes_t sample_rate = jack_get_sample_rate(client->_client);
+  jack_nframes_t nframes = (jack_nframes_t)((double)sample_rate * time);
+  // request that JACK update the position
+  int result = jack_transport_locate(client->_client, nframes);
+  // warn if that failed
+  if (result != 0) {
+    _warn("Failed to set transport location to %f (error %d)", time, result);
+  }
+  return(0);
+}
+
+// start the transport rolling
+static PyObject *
+Transport_start(Transport *self) {
+  // make sure the client is connected to JACK
+  Client *client = (Client *)self->client;
+  Client_open(client);
+  // set the transport state
+  jack_transport_start(client->_client);
+  Py_RETURN_NONE;
+}
+// stop the transport rolling
+static PyObject *
+Transport_stop(Transport *self) {
+  // make sure the client is connected to JACK
+  Client *client = (Client *)self->client;
+  Client_open(client);
+  // set the transport state
+  jack_transport_stop(client->_client);
+  Py_RETURN_NONE;
+}
+
+// get whether the transport is rolling
+static PyObject *
+Transport_get_is_rolling(Transport *self, void *closure) {
+  // make sure the client is connected to JACK
+  Client *client = (Client *)self->client;
+  Client_open(client);
+  // get the transport state
+  jack_transport_state_t state = jack_transport_query(client->_client, NULL);
+  if (state == JackTransportRolling) Py_RETURN_TRUE;
+  else Py_RETURN_FALSE;
+}
+// start/stop the transport by setting its rolling state
+static int
+Transport_set_is_rolling(Transport *self, PyObject *value, void *closure) {
+  if (PyObject_IsTrue(value)) {
+    Transport_start(self);
+  }
+  else {
+    Transport_stop(self);
+  }
+  return(0);
+}
+
+static PyMemberDef Transport_members[] = {
+  {"client", T_OBJECT_EX, offsetof(Transport, client), READONLY,
+   "The client the transport uses to communicate with JACK"},
+  {NULL}  /* Sentinel */
+};
+
+static PyGetSetDef Transport_getset[] = {
+  {"time", (getter)Transport_get_time, (setter)Transport_set_time, 
+    "The transport's current position in seconds", NULL},
+  {"is_rolling", (getter)Transport_get_is_rolling, 
+                 (setter)Transport_set_is_rolling, 
+    "Whether the transport is currently advancing its time", NULL},
+  {NULL}  /* Sentinel */
+};
+
+static PyMethodDef Transport_methods[] = {
+
+    {"start", (PyCFunction)Transport_start, METH_NOARGS,
+      "Start the transport rolling if it isn't already"},
+    {"stop", (PyCFunction)Transport_stop, METH_NOARGS,
+      "Stop the transport rolling if it is"},
+    {NULL, NULL, 0, NULL}  /* Sentinel */
+};
+
+static PyTypeObject TransportType = {
+    PyObject_HEAD_INIT(NULL)
+    0,                             /*ob_size*/
+    "jackpatch.Transport",         /*tp_name*/  
+    sizeof(Transport),             /*tp_basicsize*/
+    0,                             /*tp_itemsize*/
+    (destructor)Transport_dealloc, /*tp_dealloc*/
+    0,                             /*tp_print*/
+    0,                             /*tp_getattr*/
+    0,                             /*tp_setattr*/
+    0,                             /*tp_compare*/
+    0,                             /*tp_repr*/
+    0,                             /*tp_as_number*/
+    0,                             /*tp_as_sequence*/
+    0,                             /*tp_as_mapping*/
+    0,                             /*tp_hash */
+    0,                             /*tp_call*/
+    0,                             /*tp_str*/
+    0,                             /*tp_getattro*/
+    0,                             /*tp_setattro*/
+    0,                             /*tp_as_buffer*/
+    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE, /*tp_flags*/
+    "Represents a JACK transport", /* tp_doc */
+    0,                             /* tp_traverse */
+    0,                             /* tp_clear */
+    0,                             /* tp_richcompare */
+    0,                             /* tp_weaklistoffset */
+    0,                             /* tp_iter */
+    0,                             /* tp_iternext */
+    Transport_methods,             /* tp_methods */
+    Transport_members,             /* tp_members */
+    Transport_getset,              /* tp_getset */
+    0,                             /* tp_base */
+    0,                             /* tp_dict */
+    0,                             /* tp_descr_get */
+    0,                             /* tp_descr_set */
+    0,                             /* tp_dictoffset */
+    (initproc)Transport_init,      /* tp_init */
+    0,                             /* tp_alloc */
+    Transport_new,                 /* tp_new */
+};
 
 // PORT ***********************************************************************
 
@@ -624,6 +845,16 @@ Port_send(Port *self, PyObject *args) {
   if (! PySequence_Check(data)) {
     PyErr_SetString(PyExc_TypeError, 
       "Port.send expects argument 1 to be a sequence");
+    return(NULL);
+  }
+  if (! self->_is_mine) {
+    _error("Only ports created by jackpatch can send MIDI messages");
+    return(NULL);
+  }
+  int flags = jack_port_flags(self->_port);
+  if ((flags & JackPortIsOutput) == 0) {
+    _error("Only output ports can send MIDI messages");
+    return(NULL);
   }
   // the client needs to be activated for sending to work
   Client *client = (Client *)self->client;
@@ -694,6 +925,15 @@ Port_send(Port *self, PyObject *args) {
 
 static PyObject *
 Port_receive(Port *self) {
+  if (! self->_is_mine) {
+    _error("Only ports created by jackpatch can receive MIDI messages");
+    return(NULL);
+  }
+  int flags = jack_port_flags(self->_port);
+  if ((flags & JackPortIsInput) == 0) {
+    _error("Only input ports can receive MIDI messages");
+    return(NULL);
+  }
   // the client needs to be activated for receiving to work
   Client *client = (Client *)self->client;
   Client_activate(client);
@@ -824,6 +1064,8 @@ initjackpatch(void) {
   PortType.tp_new = PyType_GenericNew;
   if (PyType_Ready(&ClientType) < 0)
       return;
+  if (PyType_Ready(&TransportType) < 0)
+      return;
   if (PyType_Ready(&PortType) < 0)
       return;
 
@@ -844,6 +1086,8 @@ initjackpatch(void) {
   // add classes
   Py_INCREF(&ClientType);
   PyModule_AddObject(m, "Client", (PyObject *)&ClientType);
+  Py_INCREF(&TransportType);
+  PyModule_AddObject(m, "Transport", (PyObject *)&TransportType);
   Py_INCREF(&PortType);
   PyModule_AddObject(m, "Port", (PyObject *)&PortType);
 }
