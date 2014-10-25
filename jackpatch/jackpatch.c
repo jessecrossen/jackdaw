@@ -404,7 +404,7 @@ Client_get_ports(Client *self, PyObject *args, PyObject *kwds) {
         jack_port_t *port_handle = jack_port_by_name(self->_client, *port_name);
         if ((port_handle == NULL) || 
             (! jack_port_is_mine(self->_client, port_handle))) {
-          port_name++;
+          free((void *)port_name++);
           continue;
         }
       }
@@ -418,7 +418,7 @@ Client_get_ports(Client *self, PyObject *args, PyObject *kwds) {
           return(NULL);
         }
       }
-      port_name++;
+      free((void *)port_name++);
     }
   }
   return(return_list);
