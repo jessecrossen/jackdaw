@@ -1,6 +1,7 @@
 #include <Python.h>
 #include "structmember.h"
 #include <stdarg.h>
+#include <pthread.h>
 
 #include <jack/jack.h>
 #include <jack/midiport.h>
@@ -51,6 +52,8 @@ typedef struct {
 
 // FORWARD DEFINITIONS ********************************************************
 
+// TODO: add a transport object to interface with the JACK transport
+
 static PyTypeObject PortType;
 typedef struct {
   PyObject_HEAD
@@ -75,10 +78,12 @@ typedef struct {
   int _send_port_count;
   jack_port_t **_send_ports;
   Message *_midi_send_queue_head;
+  pthread_mutex_t _midi_send_queue_lock;
   int _receive_port_count;
   jack_port_t **_receive_ports;
   Message *_midi_receive_queue_head;
   Message *_midi_receive_queue_tail;
+  pthread_mutex_t _midi_receive_queue_lock;
 } Client;
 
 static PyObject * Port_new(PyTypeObject *type, PyObject *args, PyObject *kwds);
@@ -169,6 +174,11 @@ Client_send_messages_for_port(Client *self, jack_port_t *port,
   }
   // clear the buffer for writing
   jack_midi_clear_buffer(port_buffer);
+  // if the queue is empty, we can skip traversing it
+  if (self->_midi_send_queue_head == NULL) return;
+  // ensure the send queue isn't changed while we're traversing it
+  pthread_mutex_t *lock = &(self->_midi_send_queue_lock);
+  pthread_mutex_lock(lock);
   // send messages
   Message *last = NULL;
   Message *message = self->_midi_send_queue_head;
@@ -216,6 +226,8 @@ Client_send_messages_for_port(Client *self, jack_port_t *port,
     last = message;
     message = (Message *)message->next;
   }
+  // release the queue for changes
+  pthread_mutex_unlock(lock);
 }
 
 // receive and enqueue messages for one of a client's ports
@@ -234,8 +246,13 @@ Client_receive_messages_for_port(Client *self, jack_port_t *port,
   }
   // get the number of events to receive for this block
   int event_count = jack_midi_get_event_count(port_buffer);
-  jack_midi_event_t event;
+  // if there are no events for the port, we can skip receiving
+  if (event_count == 0) return;
+  // make sure the queue doesn't get changed while we're adding to it
+  pthread_mutex_t *lock = &(self->_midi_receive_queue_lock);
+  pthread_mutex_lock(lock);
   // receive events
+  jack_midi_event_t event;
   for (int i = 0; i < event_count; i++) {
     result = jack_midi_event_get(&event, port_buffer, i);
     if (result != 0) {
@@ -270,11 +287,14 @@ Client_receive_messages_for_port(Client *self, jack_port_t *port,
     }
     self->_midi_receive_queue_tail = message;
   }
+  // free the queue for updates
+  pthread_mutex_unlock(lock);
 }
 
 // process a block of events for a client
 static int
 Client_process(jack_nframes_t nframes, void *self_ptr) {
+  // TODO: we need a lock here to keep python threads from modifying stuff
   int i;
   jack_port_t *port;
   Client *self = (Client *)self_ptr;
@@ -629,6 +649,9 @@ Port_send(Port *self, PyObject *args) {
     *mdata = (unsigned char)(value & 0xFF);
     mdata++;
   }
+  // ensure the send queue isn't changed while we're traversing it
+  pthread_mutex_t *lock = &(client->_midi_send_queue_lock);
+  pthread_mutex_lock(lock);
   // if the queue is empty, begin it with the message
   if (client->_midi_send_queue_head == NULL) {
     client->_midi_send_queue_head = message;
@@ -665,6 +688,7 @@ Port_send(Port *self, PyObject *args) {
       last->next = message;
     }
   }
+  pthread_mutex_unlock(lock);
   Py_RETURN_NONE;
 }
 
@@ -673,8 +697,13 @@ Port_receive(Port *self) {
   // the client needs to be activated for receiving to work
   Client *client = (Client *)self->client;
   Client_activate(client);
+  // skip receiving if the queue is empty
+  if (client->_midi_receive_queue_head == NULL) Py_RETURN_NONE;
+  // ensure the receive queue isn't changed while we're adding to it
+  pthread_mutex_t *lock = &(client->_midi_receive_queue_lock);
+  pthread_mutex_lock(lock);
   // get the current sample rate for time conversions
-  jack_nframes_t sample_rate = jack_get_sample_rate(client->_client);
+  jack_nframes_t sample_rate = jack_get_sample_rate(client->_client);  
   // pull events from the receive queue for the client
   Message *last = NULL;
   Message *message = client->_midi_receive_queue_head;
@@ -706,12 +735,15 @@ Port_receive(Port *self) {
         client->_midi_receive_queue_tail = last;
       }
       free(message);
+      // open the queue for changes before we return
+      pthread_mutex_unlock(lock);
       // return the message
       return(tuple);
     }
     last = message;
     message = (Message *)message->next;
   }
+  pthread_mutex_unlock(lock);
   // if we get here, there were no messages for this port
   Py_RETURN_NONE;
 }
