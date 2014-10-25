@@ -412,6 +412,7 @@ Client_get_ports(Client *self, PyObject *args, PyObject *kwds) {
       if (port != NULL) {
         PyObject *name = PyString_FromString(*port_name);
         Port_init(port, Py_BuildValue("(O,S)", self, name), Py_BuildValue("{}"));
+        Py_XDECREF(name);
         if (PyList_Append(return_list, (PyObject *)port) < 0) {
           _error("Failed to append a port to the list");
           Py_DECREF(return_list);
@@ -606,6 +607,7 @@ Transport_get_time(Transport *self, void *closure) {
   // make sure the client is connected to JACK
   Client *client = (Client *)self->client;
   Client_open(client);
+  if (client->_client == NULL) return(NULL);
   // get the current transport position in frames
   jack_nframes_t nframes = jack_get_current_transport_frame(client->_client);
   // convert it to seconds and return
@@ -627,6 +629,7 @@ Transport_set_time(Transport *self, PyObject *value, void *closure) {
   // make sure the client is connected to JACK
   Client *client = (Client *)self->client;
   Client_open(client);
+  if (client->_client == NULL) return(-1);
   // convert the time to frames
   jack_nframes_t sample_rate = jack_get_sample_rate(client->_client);
   jack_nframes_t nframes = (jack_nframes_t)((double)sample_rate * time);
@@ -645,6 +648,7 @@ Transport_start(Transport *self) {
   // make sure the client is connected to JACK
   Client *client = (Client *)self->client;
   Client_open(client);
+  if (client->_client == NULL) return(NULL);
   // set the transport state
   jack_transport_start(client->_client);
   Py_RETURN_NONE;
@@ -655,6 +659,7 @@ Transport_stop(Transport *self) {
   // make sure the client is connected to JACK
   Client *client = (Client *)self->client;
   Client_open(client);
+  if (client->_client == NULL) return(NULL);
   // set the transport state
   jack_transport_stop(client->_client);
   Py_RETURN_NONE;
@@ -666,6 +671,7 @@ Transport_get_is_rolling(Transport *self, void *closure) {
   // make sure the client is connected to JACK
   Client *client = (Client *)self->client;
   Client_open(client);
+  if (client->_client == NULL) return(NULL);
   // get the transport state
   jack_transport_state_t state = jack_transport_query(client->_client, NULL);
   if (state == JackTransportRolling) Py_RETURN_TRUE;
@@ -988,6 +994,38 @@ Port_receive(Port *self) {
   Py_RETURN_NONE;
 }
 
+// get all ports connected to the given port
+static PyObject *
+Port_get_connections(Port *self) {
+  // make sure we're connected to JACK
+  Client *client = (Client *)self->client;
+  Client_open(client);
+  if (client->_client == NULL) return(NULL);
+  // get a list of port names connected to this port
+  const char **port_name = jack_port_get_all_connections(
+    client->_client, self->_port);
+  // convert the port names into a list of Port objects
+  PyObject *return_list;
+  return_list = PyList_New(0);
+  if (port_name != NULL) {
+    while (*port_name != NULL) {
+      Port *port = (Port *)Port_new(&PortType, NULL, NULL);
+      if (port != NULL) {
+        PyObject *name = PyString_FromString(*port_name);
+        Port_init(port, Py_BuildValue("(O,S)", client, name), Py_BuildValue("{}"));
+        Py_XDECREF(name);
+        if (PyList_Append(return_list, (PyObject *)port) < 0) {
+          _error("Failed to append a port to the list");
+          Py_DECREF(return_list);
+          return(NULL);
+        }
+      }
+      free((void *)port_name++);
+    }
+  }
+  return(return_list);
+}
+
 static PyMemberDef Port_members[] = {
   {"name", T_OBJECT_EX, offsetof(Port, name), READONLY,
    "The port's unique name"},
@@ -1003,6 +1041,8 @@ static PyMethodDef Port_methods[] = {
       "Send a tuple of ints as a MIDI message to the port"},
     {"receive", (PyCFunction)Port_receive, METH_NOARGS,
       "Receive a MIDI message from the port"},
+    {"get_connections", (PyCFunction)Port_get_connections, METH_NOARGS,
+      "Get all the ports connected to this one"},
     {NULL, NULL, 0, NULL}  /* Sentinel */
 };
 
