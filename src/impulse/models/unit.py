@@ -173,9 +173,9 @@ class Connection(Model):
       self.on_change()
   # lazy-load a jack client to make patchbay connections
   def get_jack_client(self):
-    if (jack_client is None):
-      jack_client = jackpatch.Client('jackdaw-patchbay')
-    return(jack_client)
+    if (Connection.jack_client is None):
+      Connection.jack_client = jackpatch.Client('jackdaw-patchbay')
+    return(Connection.jack_client)
   # propagate port and connection changes to JACK
   def on_change(self):
     source_port = self._source.source_port if self._source else None

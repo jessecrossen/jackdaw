@@ -3,6 +3,7 @@
 import time
 import yaml
 import copy
+import jackpatch
 
 from PySide.QtCore import QAbstractAnimation, Signal
 
@@ -411,6 +412,17 @@ class Track(unit.Source, unit.Sink, ModelList):
     if (pitch_names is None): 
       pitch_names = dict()
     self._pitch_names = pitch_names
+    # make a client and ports to connect to JACK
+    self._client = jackpatch.Client('jackdaw-track')
+    self._client.activate()
+    self.source_port = jackpatch.Port(
+      client=self._client, 
+      name='playback',
+      flags=jackpatch.JackPortIsOutput)
+    self.sink_port = jackpatch.Port(
+      client=self._client, 
+      name='record',
+      flags=jackpatch.JackPortIsInput)
   # invalidate cached data
   def invalidate(self):
     self._pitches = None

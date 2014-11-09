@@ -301,13 +301,15 @@ class ConnectionView(core.Selectable, core.ModelView):
     item = self.scene().itemAt(p)
     if (self._drag_sink):
       if ((isinstance(item, UnitInputView)) and 
-          (item.port_type == self.source_view.port_type)):
+          (item.port_type == self.source_view.port_type) and
+          (item.port is not self.source_view.port)):
         self.sink_view = item
       else:
         self.sink_view = p
     else:
       if ((isinstance(item, UnitOutputView)) and 
-          (item.port_type == self.sink_view.port_type)):
+          (item.port_type == self.sink_view.port_type) and
+          (item.port is not self.sink_view.port)):
         self.source_view = item
       else:
         self.source_view = p
@@ -413,13 +415,15 @@ class UnitPortView(core.Interactive, core.ModelView):
     item = self.scene().itemAt(p)
     if (view.source_view is self):
       if ((isinstance(item, UnitInputView)) and 
-          (item.port_type == self.port_type)):
+          (item.port_type == self.port_type) and 
+          (item.port is not self.port)):
         view.sink_view = item
       else:
         view.sink_view = p
     else:
       if ((isinstance(item, UnitOutputView)) and 
-          (item.port_type == self.port_type)):
+          (item.port_type == self.port_type) and 
+          (item.port is not self.port)):
         view.source_view = item
       else:
         view.source_view = p
@@ -452,6 +456,12 @@ class UnitInputView(UnitPortView):
     self.drawPort(qp, QPointF(self.OFFSET, 0.0), 
                       QPointF(0.0, 0.0))
   @property
+  def port(self):
+    try:
+      return(self.target.sink_port)
+    except AttributeError:
+      return(None)
+  @property
   def port_type(self):
     try:
       return(self.target.sink_type)
@@ -467,6 +477,12 @@ class UnitOutputView(UnitPortView):
   def paint(self, qp, options, widget):
     self.drawPort(qp, QPointF(- self.OFFSET, 0.0), 
                       QPointF(0.0, 0.0))
+  @property
+  def port(self):
+    try:
+      return(self.target.source_port)
+    except AttributeError:
+      return(None)
   @property
   def port_type(self):
     try:

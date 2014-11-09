@@ -40,6 +40,8 @@ class DeviceAdapter(unit.Source, unit.Sink, observable.Object):
   def device(self, device):
     if (device is not self._device):
       self._device = device
+      self._source_port = self._device if self.has_output else None
+      self._sink_port = self._device if self.has_input else None
       self.on_change()
   # return whether the device is currently plugged in to the system
   @property
@@ -117,6 +119,8 @@ class DeviceAdapterList(observable.List):
     devices = self._client.get_ports(type_pattern='.*midi.*')
     for device in devices:
       name = device.name
+      # ignore ports created by this application
+      if (name.startswith('jackdaw')): continue
       if (name in not_found):
         not_found.remove(name)
       adapter = self.adapter_named(name)
