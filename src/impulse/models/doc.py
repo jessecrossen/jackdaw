@@ -5,7 +5,7 @@ import yaml
 import copy
 import jackpatch
 
-from PySide.QtCore import QAbstractAnimation, Signal
+from PySide.QtCore import Signal, QTimer
 
 from ..common import observable, serializable
 from core import Model, ModelList
@@ -415,13 +415,11 @@ class Track(unit.Source, unit.Sink, ModelList):
     # make a client and ports to connect to JACK
     self._client = jackpatch.Client('jackdaw-track')
     self._client.activate()
-    self.source_port = jackpatch.Port(
-      client=self._client, 
+    self.source_port = jackpatch.Port(client=self._client, 
       name='playback',
       flags=jackpatch.JackPortIsOutput)
-    self.sink_port = jackpatch.Port(
-      client=self._client, 
-      name='record',
+    self.sink_port = jackpatch.Port(client=self._client, 
+      name='capture',
       flags=jackpatch.JackPortIsInput)
   # invalidate cached data
   def invalidate(self):
@@ -608,32 +606,20 @@ class TrackList(ModelList):
 serializable.add(TrackList)
 
 # a transport to keep track of timepoints, playback, and recording
-class Transport(QAbstractAnimation):
-  # make this observable
-  changed = Signal()
-  def add_observer(self, slot):
-    self.changed.connect(slot)
-  def remove_observer(self, slot):
-    self.changed.disconnect(slot)
-  def on_change(self):
-    self.changed.emit()
+class Transport(observable.Object):
   # regular init stuff
   def __init__(self, time=0.0, cycling=False, marks=None):
-    QAbstractAnimation.__init__(self)
+    observable.Object.__init__(self)
+    # get a bridge to the JACK transport
+    self._client = jackpatch.Client('jackdaw-transport')
+    self._transport = jackpatch.Transport(client=self._client)
+    # make a timer to update the transport model when the time changes
+    self._update_timer = QTimer(self)
+    self._update_timer.setInterval(500)
+    self._update_timer.timeout.connect(self.update)
     # set up internal state
-    self._playing = False
     self._recording = False
-    self._running = None
     self._cycling = cycling
-    # store the time
-    self._time = time
-    self._last_played_to = time
-    self._last_display_update = 0
-    self._start_time = None
-    # keep a timer that updates when the time is running
-    self._run_dispatcher = None
-    # the minimum time resolution to send display updates
-    self.display_interval = 0.05 # seconds
     # store all time marks
     if (marks is None):
       marks = [ ]
@@ -644,11 +630,20 @@ class Transport(QAbstractAnimation):
     self.cycle_start_time = None
     self._cycle_end_time = None
     self.cycle_end_time = None
+    # store the time
+    self._local_time = None
+    self.time = time
+    self._last_played_to = time
+    self._last_display_update = 0
+    self._start_time = None
+    self._local_is_rolling = None
     # the amount to change time by when the skip buttons are pressed
     self.skip_delta = 1.0 # seconds
-  # make the duration indeterminite so it keeps running as long as needed
-  def duration(self):
-    return(-1)
+    # the amount of time to allow between updates of the display
+    self.display_interval = 0.05 # seconds
+    # start updating
+    self._update_timer.start()
+    self.update()
   # add methods for easy button binding
   def play(self, *args):
     self.playing = True
@@ -660,14 +655,13 @@ class Transport(QAbstractAnimation):
   # whether play mode is on
   @property
   def playing(self):
-    return(self._playing)
+    return((self.is_rolling) and (not self.recording))
   @playing.setter
   def playing(self, value):
     value = (value == True)
-    if (self._playing != value):
+    if (self.playing != value):
       self.recording = False
-      self._playing = value
-      if (self.playing):
+      if (value):
         self.start()
       else:
         self.pause()
@@ -675,18 +669,24 @@ class Transport(QAbstractAnimation):
   # whether record mode is on
   @property
   def recording(self):
-    return(self._recording)
+    return((self.is_rolling) and (self._recording))
   @recording.setter
   def recording(self, value):
     value = (value == True)
     if (self._recording != value):
       self.playing = False
       self._recording = value
-      if (self.recording):
+      if (self._recording):
         self.start()
       else:
         self.pause()
       self.on_change()
+  # whether the transport is playing or recording
+  @property
+  def is_rolling(self):
+    if (self._local_is_rolling is not None):
+      return(self._local_is_rolling)
+    return(self._transport.is_rolling)
   # whether cycle mode is on
   @property
   def cycling(self):
@@ -701,14 +701,19 @@ class Transport(QAbstractAnimation):
   # get the current timepoint of the transport
   @property
   def time(self):
-    return(float(self.currentTime()) / 1000.0)
-    return(t)
+    if (self._local_time is not None):
+      return(self._local_time)
+    return(self._transport.time)
   @time.setter
   def time(self, t):
     # don't allow the time to be set while recording
     if (self._recording): return
-    self._time = max(0.0, t)
-    self.setCurrentTime(int(round(t * 1000)))
+    # don't let the time be negative
+    t = max(0.0, t)
+    # record the local time setting so we can use it while the transport 
+    #  updates to the new location
+    self._local_time = t
+    self._transport.time = t
     self.update_cycle_bounds()
     self.on_change()
   # start the time moving forward
@@ -716,18 +721,29 @@ class Transport(QAbstractAnimation):
     self._last_played_to = self.time
     # establish the cycle region
     self.update_cycle_bounds()
-    # start the update timer
-    if (self._running is None):
-      QAbstractAnimation.start(self, QAbstractAnimation.KeepWhenStopped)
-    else:
-      self.resume()
-    self._running = True
+    self._local_is_rolling = True
+    self._transport.start()
+    self.update()
+  # stop time moving forward
   def pause(self):
-    self._running = False
-    QAbstractAnimation.pause(self)
-  def updateCurrentTime(self, t):
-    if (self._running): 
-      current_time = self.time
+    self._local_is_rolling = False
+    self._transport.stop()
+    self.update()
+  def update(self):
+    # clear the locally stored settings because now we're checking 
+    #  the real transport
+    self._local_time = None
+    is_rolling = self.is_rolling
+    self._local_is_rolling = None
+    current_time = self.time
+    # update infrequently when not running and frequently when running
+    if (not is_rolling):
+      if (self._update_timer.interval() != 500):
+        self._update_timer.setInterval(500)
+        self.on_change()
+    else:
+      if (self._update_timer.interval() != 50):
+        self._update_timer.setInterval(50)
       # do cycling
       if ((self.cycling) and (self._cycle_end_time is not None) and 
           (current_time > self._cycle_end_time)):
@@ -740,13 +756,11 @@ class Transport(QAbstractAnimation):
         self.time = current_time
       # play up to the current time
       self.on_play_to(current_time)
-      # notify for a display update if the minimum interval has passed
-      elapsed = current_time - self._last_display_update
-      if (abs(elapsed) >= self.display_interval):
-        self.on_change()
-        self._last_display_update = current_time
-    else:
+    # notify for a display update if the minimum interval has passed
+    elapsed = current_time - self._last_display_update
+    if (abs(elapsed) >= self.display_interval):
       self.on_change()
+      self._last_display_update = current_time
   # handle the playback of the span after and including self._last_played_to
   #  and up to but not including the given time
   def on_play_to(self, end_time):
