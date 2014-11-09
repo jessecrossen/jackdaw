@@ -1,6 +1,6 @@
 import math
 import time
-import alsamidi
+#import alsamidi
 
 from ..common import observable
 from ..models import doc
@@ -111,11 +111,11 @@ class Recorder(observable.Object):
     self._active_tracks = active_tracks
     # update input preview connections
     old_previews = self._preview_connections.difference(preview_connections)
-    for (source, dest) in old_previews:
-      alsamidi.disconnect_devices(source.device, dest.device)
+    #for (source, dest) in old_previews:
+    #  alsamidi.disconnect_devices(source.device, dest.device)
     new_previews = preview_connections.difference(self._preview_connections)
-    for (source, dest) in new_previews:
-      alsamidi.connect_devices(source.device, dest.device)
+    #for (source, dest) in new_previews:
+    #  alsamidi.connect_devices(source.device, dest.device)
     self._preview_connections = preview_connections
     self._updating = False
   # start recording

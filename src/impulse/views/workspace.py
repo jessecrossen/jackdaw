@@ -651,11 +651,33 @@ class DeviceListUnitView(UnitView):
   def __init__(self, *args, **kwargs):
     UnitView.__init__(self, *args, **kwargs)
     self._content = device.DeviceListView(
-            devices=self.unit.devices)
+      devices=self.unit.devices, 
+      require_input=self.unit.require_input,
+      require_output=self.unit.require_output)
     self._content.setParentItem(self)
-    # add outputs for the devices
-    self._output_layout = OutputListLayout(self, self.unit.devices,
-      lambda t: UnitOutputView(t))
+    # add inputs and outputs for the devices
+    self._input_layout = InputListLayout(self, self.unit.devices, 
+                                            self.input_view_for_device)
+    self._output_layout = OutputListLayout(self, self.unit.devices, 
+                                            self.output_view_for_device)
+  def input_view_for_device(self, device):
+    if (not device.has_input):
+      if (self.unit.require_input):
+        return(None)
+      # if the unit has no input, return a placeholder
+      return(core.ModelView(device))
+    if ((self.unit.require_output) and (not device.has_output)):
+      return(None)
+    return(UnitInputView(device))
+  def output_view_for_device(self, device):
+    if (not device.has_output):
+      if (self.unit.require_output):
+        return(None)
+      # if the unit has no output, return a placeholder
+      return(core.ModelView(device))
+    if ((self.unit.require_input) and (not device.has_input)):
+      return(None)
+    return(UnitOutputView(device))
   def layout(self):
     size = self._content.minimumSizeHint()
     self._content.setRect(QRectF(0, 0, size.width(), size.height()))

@@ -884,6 +884,8 @@ class Document(Model):
       units.append(unit.DeviceListUnit(
         name='Inputs',
         devices=self.devices, 
+        require_input=False,
+        require_output=True,
         x=-400))
     self.units = units
     self.units.add_observer(self.on_change)

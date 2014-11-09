@@ -1,3 +1,5 @@
+import jackpatch
+
 from ..common import serializable
 from core import Model, ModelList
 
@@ -103,28 +105,56 @@ serializable.add(UnitList)
 
 # make a mixin to make a model a signal source
 class Source(object):
-  def __init__ (self):
+  def __init__(self):
     self._source_type = 'audio'
+    self._source_port = None
   # return the type of signal emitted by this source
   @property
   def source_type(self):
     return(self._source_type)
+  # get/set the JACK port, if any, for this source
+  @property
+  def source_port(self):
+    return(self._source_port)
+  @source_port.setter
+  def source_port(self, port):
+    if (port is not self._source_port):
+      self._source_port = port
+      try:
+        self.on_change()
+      except AttributeError: pass
 
 # make a mixin to make a model a signal sink
 class Sink(object):
-  def __init__ (self):
+  def __init__(self):
     self._sink_type = 'audio'
+    self._sink_port = None
   # return the type of signal emitted by this source
   @property
   def sink_type(self):
     return(self._sink_type)
+  # get/set the JACK port, if any, for this sink
+  @property
+  def sink_port(self):
+    return(self._sink_port)
+  @sink_port.setter
+  def sink_port(self, port):
+    if (port is not self._sink_port):
+      self._sink_port = port
+      try:
+        self.on_change()
+      except AttributeError: pass
 
 # represent a connection between a source and sink
 class Connection(Model):
+  # keep a central JACK client for managing connections between ports
+  jack_client = None
   def __init__(self, source=None, sink=None):
     Model.__init__(self)
     self._source = source
     self._sink = sink
+    self._connected_source_port = None
+    self._connected_sink_port = None
   @property
   def source(self):
     return(self._source)
@@ -141,6 +171,36 @@ class Connection(Model):
     if (value is not self._sink):
       self._sink = value
       self.on_change()
+  # lazy-load a jack client to make patchbay connections
+  def get_jack_client(self):
+    if (jack_client is None):
+      jack_client = jackpatch.Client('jackdaw-patchbay')
+    return(jack_client)
+  # propagate port and connection changes to JACK
+  def on_change(self):
+    source_port = self._source.source_port if self._source else None
+    sink_port = self._sink.sink_port if self._sink else None
+    if ((self._connected_source_port is not source_port) and 
+        (self._connected_sink_port is not sink_port)):
+      client = self.get_jack_client()
+      if ((self._connected_source_port is not None) and 
+          (self._connected_sink_port is not None)):
+        client.disconnect(self._connected_source_port, 
+                          self._connected_sink_port)
+      if ((source_port is not None) and 
+          (sink_port is not None)):
+        client.connect(source_port, sink_port)
+      self._connected_source_port = source_port
+      self._connected_sink_port = sink_port
+    # do normal change actions
+    Model.on_change(self)
+  # disconnect when deleted
+  def __del__(self):
+    if ((self._connected_source_port is not None) and 
+          (self._connected_sink_port is not None)):
+      client = self.get_jack_client()
+      client.disconnect(self._connected_source_port, 
+                        self._connected_sink_port)
   # connection serialization
   def serialize(self):
     return({ 
@@ -212,14 +272,19 @@ class MultitrackUnit(Unit):
     return(obj)
 serializable.add(MultitrackUnit)
 
-# make a unit that represents the list of input devices
+# make a unit that represents a list of MIDI devices
 class DeviceListUnit(Unit):
-  def __init__(self, devices, *args, **kwargs):
+  def __init__(self, devices, require_input=False, require_output=False, 
+               *args, **kwargs):
     Unit.__init__(self, *args, **kwargs)
     self.devices = devices
+    self.require_input = require_input
+    self.require_output = require_output
     self.devices.add_observer(self.on_change)
   def serialize(self):
     obj = Unit.serialize(self)
     obj['devices'] = self.devices
+    obj['require_input'] = self.require_input
+    obj['require_output'] = self.require_output
     return(obj)
 serializable.add(DeviceListUnit)

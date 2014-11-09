@@ -29,7 +29,7 @@ class DeviceAdapter(unit.Source, unit.Sink, observable.Object):
   @property
   def short_device_name(self):
     m = re.match(
-      r'^(.*?)([Pp]ort|[Mm][Ii][Dd][Ii]|[0-9:]+|[TtRr][Xx]|\.|\s+)*$', 
+      r'^(.*?)([Pp]ort|[Mm][Ii][Dd][Ii]|[0-9:#]+|[TtRr][Xx]|\.|\s+)*$', 
       self.device_name)
     return(m.group(1))
   # get and set the current backing device
@@ -49,11 +49,11 @@ class DeviceAdapter(unit.Source, unit.Sink, observable.Object):
   @property
   def has_input(self):
     if (not self.device): return(False)
-    return((self.device.flags | jackpatch.JackPortIsInput) != 0)
+    return((self.device.flags & jackpatch.JackPortIsInput) != 0)
   @property
   def has_output(self):
     if (not self.device): return(False)
-    return((self.device.flags | jackpatch.JackPortIsOutput) != 0)
+    return((self.device.flags & jackpatch.JackPortIsOutput) != 0)
   # return the complete device name
   @property
   def name(self):
@@ -92,11 +92,9 @@ class DeviceAdapterList(observable.List):
     self._name_map = dict()
     observable.List.__init__(self, adapters)
     # make a client connection to jack
-    self._client = jackpatch.Client('impulse-inputs')
-    # scan periodically for devices being plugged and unplugged
-    self.scan_timer = QTimer()
-    self.scan_timer.timeout.connect(self.scan)
-    self.scan_timer.start(1000)
+    self._client = jackpatch.Client('jackdaw-devices')
+    # scan for devices on a regular basis
+    self.startTimer(1000)
   # get an adapter for the device with the given name
   def adapter_named(self, name):
     if (name not in self._name_map):
@@ -109,6 +107,9 @@ class DeviceAdapterList(observable.List):
   def _remove_item(self, item):
     del self._name_map[item.device_name]
     observable.List._remove_item(self, item)
+  # respond to timer events by scanning for devices
+  def timerEvent(self, event):
+    self.scan()
   # scan for changes to the set of plugged in devices
   def scan(self):
     not_found = set(self._name_map.keys())
@@ -134,5 +135,3 @@ class DeviceAdapterList(observable.List):
       'adapters': list(self)
     })
 serializable.add(DeviceAdapterList)
-
-

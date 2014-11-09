@@ -5,13 +5,21 @@ from PySide.QtGui import *
 
 import core
 
-# make a view that displays a list of input devices
+# make a view that displays a list of midi devices
 class DeviceListView(core.ModelView):
-  def __init__(self, devices, parent=None):
+  def __init__(self, devices, require_input=False, require_output=False, 
+                     parent=None):
     core.ModelView.__init__(self, model=devices, parent=parent)
-    self.device_layout = core.VBoxLayout(self, devices,
-      lambda d: DeviceView(d))
+    self.require_input = require_input
+    self.require_output = require_output
+    self.device_layout = core.VBoxLayout(self, devices, self.view_for_device)
     self.device_layout.spacing = 6.0
+  def view_for_device(self, device):
+    if ((self.require_input) and (not device.has_input)):
+      return(None)
+    if ((self.require_output) and (not device.has_output)):
+      return(None)
+    return(DeviceView(device))
   @property
   def devices(self):
     return(self._model)
