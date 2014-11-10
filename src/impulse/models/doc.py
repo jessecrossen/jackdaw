@@ -10,7 +10,7 @@ from PySide.QtCore import Signal, QTimer
 from ..common import observable, serializable
 from core import Model, ModelList
 import unit
-from ..midi.core import DeviceAdapterList
+from ..midi.core import DeviceAdapterList, InputHandler
 
 # represents a single note event with time, pitch, velocity, and duration
 #  - time and duration are in seconds
@@ -386,6 +386,97 @@ class Block(Model):
     })
 serializable.add(Block)
 
+# interprets note and control channel messages and adds them to a track
+class NoteInputHandler(InputHandler):
+  def __init__(self, port, track, transport=None):
+    InputHandler.__init__(self, port=port, target=track)
+    # listen to a transport so we know when we're recording
+    self._transport = None
+    self.transport = transport
+    # listen to the target so we know when it's armed
+    if (self.target):
+      self.target.add_observer(self.on_state_change)
+    # hold a set of notes for all "voices" currently playing, keyed by pitch
+    self._playing_notes = dict()
+    # make a block to place recorded notes into
+    self._target_block = None
+  # listen for when the transport state changes
+  @property
+  def transport(self):
+    return(self._transport)
+  @transport.setter
+  def transport(self, value):
+    if (value is not self._transport):
+      if (self._transport):
+        self._transport.remove_observer(self.on_state_change)
+      self._transport = value
+      if (self._transport):
+        self._transport.add_observer(self.on_state_change)
+      self.on_state_change()
+  # when the transport is recording and the track is armed, make a block to 
+  #  record notes into and remove it otherwise
+  def on_state_change(self):
+    # determine whether we should be recording notes
+    record = ((self.transport is not None) and (self.transport.recording) and 
+              (self.target is not None) and (self.target.arm))
+    # create and destroy the target block when the recording state changes
+    if ((record) and (self._target_block is None)):
+      self._target_block = Block(EventList(), time=self.transport.time)
+      self.target.append(self._target_block)
+    elif ((not record) and (self._target_block is not None)):
+      duration = max(0, self.transport.time - self._target_block.time)
+      self._target_block.duration = duration
+      self._target_block.events.duration = duration
+      self._target_block = None
+    # extend the target block when the transport time changes
+    current_time = self.transport.time
+    base_time = 0.0
+    if (self._target_block):
+      base_time = self._target_block.time
+      self._target_block.duration = max(
+        self._target_block.duration, current_time - base_time)
+    # extend open notes when the transport time changes
+    for note in self._playing_notes.itervalues():
+      note.duration = max(note.duration, 
+        current_time - (base_time + note.time))
+  @property
+  def playing_notes(self):
+    return(self._playing_notes.values())
+  def end_all_notes(self):
+    self._playing_notes = dict()
+  # interpret messages
+  def handle_message(self, data, time):
+    if (len(data) != 3): return
+    (status, data1, data2) = data
+    kind = (status & 0xF0) >> 4
+    channel = (status & 0x0F)
+    # get the start time of the target block, if any
+    base_time = 0.0
+    if (self._target_block is not None):
+      base_time = self._target_block.time
+    # get note on/off messages
+    if ((kind == 0x08) or (kind == 0x09)):
+      pitch = data1
+      velocity = data2 / 127.0
+      # note on
+      if (kind == 0x09):
+        note = Note(time=(time - base_time), 
+                    pitch=pitch, velocity=velocity, duration=0)
+        self._playing_notes[pitch] = note
+        if (self._target_block is not None):
+          self._target_block.events.append(note)
+      # note off
+      elif (kind == 0x08):
+        try:
+          note = self._playing_notes[pitch]
+        # this indicates a note-off with no prior note-on, not a big deal
+        except KeyError: return
+        note.duration = max(0, time - (base_time + note.time))
+        del self._playing_notes[pitch]
+    # report unexpected messages
+    else:
+      print('%s: Unhandled message type %02X' % (self.name, status))
+
 # represent a track, which can contain multiple blocks
 class Track(unit.Source, unit.Sink, ModelList):
 
@@ -396,7 +487,8 @@ class Track(unit.Source, unit.Sink, ModelList):
 
   def __init__(self, blocks=(), duration=60, name='Track',
                      solo=False, mute=False, arm=False,
-                     level=1.0, pan=0.0, pitch_names=None):
+                     level=1.0, pan=0.0, pitch_names=None,
+                     transport=None):
     ModelList.__init__(self, blocks)
     unit.Source.__init__(self)
     unit.Sink.__init__(self)
@@ -421,6 +513,10 @@ class Track(unit.Source, unit.Sink, ModelList):
     self.sink_port = jackpatch.Port(client=self._client, 
       name='capture',
       flags=jackpatch.JackPortIsInput)
+    # add a handler for incoming notes
+    self._transport = transport
+    self._input_handler = NoteInputHandler(
+      port=self.sink_port, track=self, transport=self.transport)
   # invalidate cached data
   def invalidate(self):
     self._pitches = None
@@ -514,6 +610,16 @@ class Track(unit.Source, unit.Sink, ModelList):
     if (self._pan != value):
       self._pan = value
       self.on_change()
+  # get and set the time transport the track is placed on
+  @property
+  def transport(self):
+    return(self._transport)
+  @transport.setter
+  def transport(self, value):
+    if (value != self._transport):
+      self._transport = value
+      self._input_handler.transport = self._transport
+      self.on_change()
   # get a list of unique times for all the notes in the track
   @property
   def times(self):
@@ -532,7 +638,7 @@ class Track(unit.Source, unit.Sink, ModelList):
   # get a list of unique pitches for all the notes in the track
   @property
   def pitches(self):
-    if (self._pitches == None):
+    if (self._pitches is None):
       pitches = set()
       for block in self:
         for pitch in block.pitches:
@@ -551,14 +657,17 @@ class Track(unit.Source, unit.Sink, ModelList):
       'arm': self.arm,
       'level': self.level,
       'pan': self.pan,
-      'pitch_names': self.pitch_names
+      'pitch_names': self.pitch_names,
+      'transport': self.transport
     })
 serializable.add(Track)
 
 # represent a list of tracks
 class TrackList(ModelList):
-  def __init__(self, tracks=()):
+  def __init__(self, tracks=(), transport=None):
     ModelList.__init__(self, tracks)
+    self._transport = transport
+    self.on_change()
   # add a track to the list
   def add_track(self):
     self.append(Track(duration=self.duration))
@@ -574,6 +683,9 @@ class TrackList(ModelList):
     else:
       for track in self:
         track.enabled = not track.mute
+    # bind all tracks to the transport
+    for track in self:
+      track.transport = self.transport
     ModelList.on_change(self)
   # invalidate cached data
   def invalidate(self):
@@ -598,10 +710,20 @@ class TrackList(ModelList):
       self._times = list(times)
       self._times.sort()
     return(self._times)
+  # get and set the transport
+  @property
+  def transport(self):
+    return(self._transport)
+  @transport.setter
+  def transport(self, value):
+    if (value is not self._transport):
+      self._transport = value
+      self.on_change()
   # track serialization
   def serialize(self):
     return({ 
-      'tracks': list(self)
+      'tracks': list(self),
+      'transport': self.transport
     })
 serializable.add(TrackList)
 
@@ -881,15 +1003,15 @@ class Document(Model):
     Model.__init__(self)
     # the file path to save to
     self.path = None
-    # tracks
-    if (tracks is None):
-      tracks = TrackList()
-    self.tracks = tracks
-    self.tracks.add_observer(self.on_change)
     # transport
     if (transport is None):
       transport = Transport()
     self.transport = transport
+    # tracks
+    if (tracks is None):
+      tracks = TrackList(transport=self.transport)
+    self.tracks = tracks
+    self.tracks.add_observer(self.on_change)
     # time scale
     if (view_scale is None):
       view_scale = ViewScale()

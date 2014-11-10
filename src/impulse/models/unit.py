@@ -178,8 +178,8 @@ class Connection(Model):
     return(Connection.jack_client)
   # propagate port and connection changes to JACK
   def on_change(self):
-    source_port = self._source.source_port if self._source else None
-    sink_port = self._sink.sink_port if self._sink else None
+    source_port = self._source.source_port if (self._source is not None) else None
+    sink_port = self._sink.sink_port if (self._sink is not None) else None
     if ((self._connected_source_port is not source_port) and 
         (self._connected_sink_port is not sink_port)):
       client = self.get_jack_client()

@@ -139,3 +139,32 @@ class DeviceAdapterList(observable.List):
       'adapters': list(self)
     })
 serializable.add(DeviceAdapterList)
+
+# handles input from MIDI devices
+class InputHandler(observable.Object):
+  def __init__(self, port, target):
+    observable.Object.__init__(self)
+    # store the source port and the target to send data to
+    self._port = port
+    self._target = target
+    # add an idle timer to check for input
+    self._timer = QTimer()
+    self._timer.setInterval(0)
+    self._timer.timeout.connect(self.receive)
+    self._timer.start()
+  @property
+  def port(self):
+    return(self._port)
+  @property
+  def target(self):
+    return(self._target)
+  # check for input
+  def receive(self):
+    while (True):
+      result = self._port.receive()
+      if (result is None): break
+      (data, time) = result
+      self.handle_message(data, time)
+  # handle input, reimplement to pass data to the target
+  def handle_message(data, time):
+    pass
