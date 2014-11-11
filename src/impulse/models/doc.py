@@ -387,7 +387,7 @@ class Block(Model):
 serializable.add(Block)
 
 # interprets note and control channel messages and adds them to a track
-class NoteInputHandler(InputHandler):
+class TrackInputHandler(InputHandler):
   def __init__(self, port, track, transport=None):
     InputHandler.__init__(self, port=port, target=track)
     # listen to a transport so we know when we're recording
@@ -475,7 +475,7 @@ class NoteInputHandler(InputHandler):
         del self._playing_notes[pitch]
     # report unexpected messages
     else:
-      print('%s: Unhandled message type %02X' % (self.name, status))
+      print('Unhandled message type %02X' % status)
 
 # represent a track, which can contain multiple blocks
 class Track(unit.Source, unit.Sink, ModelList):
@@ -515,7 +515,7 @@ class Track(unit.Source, unit.Sink, ModelList):
       flags=jackpatch.JackPortIsInput)
     # add a handler for incoming notes
     self._transport = transport
-    self._input_handler = NoteInputHandler(
+    self._input_handler = TrackInputHandler(
       port=self.sink_port, track=self, transport=self.transport)
   # invalidate cached data
   def invalidate(self):
@@ -991,7 +991,7 @@ class ViewScale(observable.Object):
       'pitch_height': self.pitch_height
     })
   def height_of_track(self, track):
-    return(max(3, len(track.pitches)) * self.pitch_height)
+    return(max(4, len(track.pitches)) * self.pitch_height)
   def track_spacing(self):
     return(6.0)
 serializable.add(ViewScale)

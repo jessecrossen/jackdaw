@@ -21,6 +21,8 @@ class TrackListView(core.BoxSelectable, core.Interactive, core.ModelView):
     self.view_scale = view_scale
     self.view_scale.add_observer(self.update_scrollbar)
     self.transport = transport
+    self.toggle_layout = core.VBoxLayout(self, tracks,
+      lambda t: TrackToggleView(t, view_scale=view_scale))
     self.pitch_key_layout = core.VBoxLayout(self, tracks,
       lambda t: PitchKeyView(t, view_scale=view_scale))
     self.track_layout = core.VBoxLayout(self, tracks,
@@ -39,8 +41,9 @@ class TrackListView(core.BoxSelectable, core.Interactive, core.ModelView):
     return(self._model)
   # return the minimum size of all tracks and controls
   def minimumSizeHint(self):
-    w = self.pitch_key_width()
-    h = 0
+    w = h = 0
+    w += self.pitch_key_width()
+    w += self.toggle_width()
     for track in self.tracks:
       h += self.view_scale.height_of_track(track)
       h += self.view_scale.track_spacing()
@@ -52,12 +55,18 @@ class TrackListView(core.BoxSelectable, core.Interactive, core.ModelView):
     for view in self.pitch_key_layout.views:
       w = max(w, view.minimumSizeHint().width())
     return(w)
+  def toggle_width(self):
+    return(self.view_scale.pitch_height)
   def layout(self):
     width = self._size.width()
     height = self._size.height()
+    x = 0
+    w = self.toggle_width()
+    self.toggle_layout.setRect(QRectF(x, 0, w, height))
+    x += w + (self.view_scale.track_spacing() / 2)
     w = self.pitch_key_width()
-    self.pitch_key_layout.setRect(QRectF(0, 0, w, height))
-    x = w + (self.view_scale.track_spacing() / 2)
+    self.pitch_key_layout.setRect(QRectF(x, 0, w, height))
+    x += w + (self.view_scale.track_spacing() / 2)
     # add a scrollbar to scroll through the timeline
     if ((not self.scrollbar) and (self.scene())):
       self.scrollbar = QScrollBar(Qt.Orientation.Horizontal)
@@ -175,7 +184,113 @@ class TrackView(core.ModelView):
     r = self.rect()
     width = r.width()
     height = r.height()
+    # draw a background depending on track state
+    background = None
+    block_opacity = 1.0
+    if (self.track.arm):
+      background = QColor(255, 0, 0)
+      block_opacity = 0.75
+    elif (not self.track.enabled):
+      background = self.palette.color(QPalette.Normal, QPalette.WindowText)
+      block_opacity = 0.50
+    if (background is not None):
+      qp.setPen(Qt.NoPen)
+      background.setAlphaF(0.25)
+      qp.setBrush(QBrush(background))
+      qp.drawRect(QRectF(0.0, 0.0, width, height))
+    # position the block layout
     self.block_layout.setRect(QRectF(0, 0, width, height))
+    # dim the block layout when muted
+    self.block_layout.setOpacity(block_opacity)
+
+# a view to show arm/mute/solo buttons for the track
+class TrackToggleView(core.ModelView):
+  def __init__(self, track, view_scale, parent=None):
+    core.ModelView.__init__(self, model=track, parent=parent)
+    self.view_scale = view_scale
+    self.view_scale.add_observer(self.update)
+    self.spacing = 4
+    self.arm_button = None
+    self.mute_button = None
+    self.solo_button = None
+    self.button_proxies = list()
+  def rect(self):
+    r = core.ModelView.rect(self)
+    r.setHeight(self.view_scale.height_of_track(self.track))
+    return(r)
+  def layout(self):
+    if (not self.scene()): return
+    r = self.rect()
+    width = r.width()
+    height = r.height()
+    # make a view for the track name
+    if (not self.arm_button):
+      self.arm_button = self.add_button('R')
+      self.arm_button.toggled.connect(self.on_arm)
+      self.arm_button.setStyleSheet('''
+        * { font-size: 12px }
+        *:checked {
+          background: red;
+          color: white;
+          font-weight: bold;
+        }
+      ''')
+    if (not self.mute_button):
+      self.mute_button = self.add_button('M')
+      self.mute_button.toggled.connect(self.on_mute)
+      self.mute_button.setStyleSheet('''
+        * { font-size: 12px }
+        *:checked {
+          background: rgba(0, 0, 0, 192);
+          color: white;
+          font-weight: bold;
+        }
+      ''')
+    if (not self.solo_button):
+      self.solo_button = self.add_button('S')
+      self.solo_button.toggled.connect(self.on_solo)
+      self.solo_button.setStyleSheet('''
+        * { font-size: 12px }
+        *:checked {
+          background: yellow;
+          font-weight: bold;
+        }
+      ''')
+    # update button state
+    self.arm_button.setChecked(self.track.arm)
+    self.mute_button.setChecked(self.track.mute)
+    self.solo_button.setChecked(self.track.solo)
+    # position buttons in a vertically centered block
+    num_buttons = len(self.button_proxies)
+    buttons_height = (num_buttons * width) + ((num_buttons - 1) * self.spacing)
+    y = round((height / 2.0) - (buttons_height / 2.0))
+    for proxy in self.button_proxies:
+      button = proxy.widget()
+      button.setFixedHeight(width)
+      button.setFixedWidth(width)
+      proxy.setPos(QPointF(0.0, y))
+      y += width + self.spacing
+  # add a proxied button widget and return it
+  def add_button(self, label):
+    button = QPushButton()
+    button.setText(label)
+    button.setFlat(True)
+    button.setCheckable(True)
+    button.setFocusPolicy(Qt.NoFocus)
+    proxy = self.scene().addWidget(button)
+    proxy.setParentItem(self)
+    self.button_proxies.append(proxy)
+    return(button)
+  # respond to buttons being toggled
+  def on_arm(self, toggled):
+    self.track.arm = toggled
+  def on_mute(self, toggled):
+    self.track.mute = toggled
+  def on_solo(self, toggled):
+    self.track.solo = toggled
+  @property
+  def track(self):
+    return(self._model)
 
 # show an editable label for a pitch on the track
 class PitchNameView(core.EditableLabel):
