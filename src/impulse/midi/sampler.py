@@ -47,6 +47,11 @@ class Instrument(observable.Object):
     self._path_loading = False
     self._path_loaded = False
     self.path = path
+  def __del__(self):
+    observable.Object.__del__(self)
+    if (self._channel is not None):
+      self._sampler.release_channel(self._channel)
+      self._channel = None
   @property
   def channel(self):
     return(self._channel)
