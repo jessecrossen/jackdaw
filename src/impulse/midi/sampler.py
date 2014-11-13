@@ -6,6 +6,9 @@ import subprocess
 import fcntl
 import atexit
 import socket
+import jackpatch
+
+from PySide.QtCore import *
 
 import core
 import outputs
@@ -30,15 +33,19 @@ def _escape(s):
 
 # manage a sampler-based instrument
 class Instrument(observable.Object):
-  def __init__(self, sampler, port=0, path=None):
+  def __init__(self, path=None, sampler=None):
     observable.Object.__init__(self)
+    if (sampler is None):
+      global LinuxSampler
+      sampler = LinuxSampler
     self._sampler = sampler
-    self._path = None
-    self._channel = None
-    self._port = port
     self._progress = 0
     self._progress_timer = None
-    self._engine = None
+    self._path = None
+    self._channel = None
+    self._channel_connected = False
+    self._path_loading = False
+    self._path_loaded = False
     self.path = path
   @property
   def channel(self):
@@ -48,123 +55,251 @@ class Instrument(observable.Object):
     return(self._path)
   @path.setter
   def path(self, value):
-    if (isinstance(value, Gio.File)):
-      value = value.get_path()
     if (value != self._path):
+      self._path_loading = False
+      self._path_loaded = False
       self._path = value
-      self._attach()
+      self._attach()    
   # add a sampler channel for the instrument and load a sample file, if any
   def _attach(self):
-    # if we already have a channel, we can go straight to loading an instrument
-    if (self._channel is not None):
-      self._load_engine()
-    # otherwise request a new channel from the sampler
-    else:
-      self._sampler.call('ADD CHANNEL', self._on_channel_add)
-  def _on_channel_add(self, result):
-    m = re.match('OK\[(.*)\]', result)
-    if (m):
-      self._channel = int(m.group(1))
-      self._set_io()
-  # connect an input/output devices for the channel
-  def _set_io(self):
-    self._sampler.call(
-      'SET CHANNEL AUDIO_OUTPUT_DEVICE %d %d' % 
-        (self.channel, self._sampler.output_id), 
-          self._on_output_set)
-  def _on_output_set(self, result):
-    if (result.startswith('OK')):
-      # create a port if there isn't one
-      if (self._port >= self._sampler.input_ports):
-        self._sampler.add_port(self._on_output_set)
-        return
-      # connect to the port
-      self._sampler.call(
-        'ADD CHANNEL MIDI_INPUT %d %d %d' % 
-          (self.channel, self._sampler.device_id, self._port), 
-            self._on_input_set)
-  def _on_input_set(self, result):
-    if (result.startswith('OK')):
-      self._load_engine()
-      # make the device show up in the device list
-      core.DevicePool.scan()
-  # load a sampler engine for the channel
-  def _load_engine(self):
     if (self._path is None): return
     m = re.search('\.([^.]+)$', self._path)
     if (not m):
-      self._sampler._warn(
+      self._sampler.warn(
         'Unable to find a sampler engine for "%s"' % self._path)
-    ext = m.group(1).upper()
-    if (ext in self._sampler.engines):
-      if (ext != self._engine):
-        self._engine = ext
-        self._sampler.call('LOAD ENGINE %s %d' % 
-          (self._engine, self._channel), self._on_engine_load)
-    else:
-      self._sampler._warn(
-        'Engine "%s" is not one of the available engines ("%s")' % 
-          (ext, '","'.join(self._sampler.engines)))
-  def _on_engine_load(self, result):
-    if (result == 'OK'):
-      self._load_path()
+    engine = m.group(1).upper()
+    # make sure we have a channel with the right engine
+    if ((self._channel is None) or (self._channel.engine != engine)):
+      if (self._channel is not None):
+        self._channel.remove_observer(self._load_path)
+        self._sampler.release_channel(self._channel)
+      self._channel = self._sampler.allocate_channel_with_engine(engine)
+    # once the channel is ready, load the instrument file onto it
+    self._channel.add_observer(self._load_path)
+    self._load_path()
   # load a new instrument
   def _load_path(self):
+    # if the path is already loaded, we don't need to do anything
+    if ((self._path_loading) or (self._path_loaded)): return
+    # make sure we have a file to load
     if (self._path is None): return
-    # rename the input port to match the new instrument
-    name = os.path.basename(self._path)
-    name = name.split('.')
-    if (len(name) > 0):
-      name = '.'.join(name[:-1])
-    else:
-      name = name[0]
-    if (len(name) > 16):
-      name = name[0:16]
-    self._sampler.call(
-      'SET MIDI_INPUT_PORT_PARAMETER %d %d NAME="%s"' %
-              (self._sampler.device_id, self._port, name))
+    # make sure the channel is ready
+    if (not self._channel.is_ready): return
     # stop the progress timer if an instrument was being loaded
     if (self._progress_timer is not None):
-      GLib.source_remove(self._progress_timer)
+      self._progress_timer.stop()
       self._progress_timer = None
     # reset the progress
     self._progress = 0
     # start loading the instrument from the current path
+    self._path_loading = True
     self._sampler.call('LOAD INSTRUMENT NON_MODAL "%s" 0 %d' %
-      (_escape(self._path), self.channel), self._on_load_start)
+      (_escape(self._path), self._channel._channel_id), self._on_load_start)
   # handle the instrument beginning to load
   def _on_load_start(self, result):
     if (result.startswith('OK')):
-      self._progress_timer = GLib.timeout_add(500, self._update_progress)
+      self._path_loading = True
+      self._progress_timer = QTimer(self)
+      self._progress_timer.timeout.connect(self._update_progress)
+      self._progress_timer.start(500)
+    else:
+      self._path_loading = False
   # check for progress in loading the instrument
   def _update_progress(self):
+    # see if we're finished loading
     if ((self._progress >= 100) or (self._progress < 0)):
+      self._progress_timer.stop()
       self._progress_timer = None
-      return(False)
-    self._sampler.call('GET CHANNEL INFO %d' % self.channel, 
+      self._path_loading = False
+      self._path_loaded = (self._progress >= 100)
+      return
+    # ask for another progress report
+    self._sampler.call('GET CHANNEL INFO %d' % self._channel.channel_id, 
       self._on_progress)
-  def _on_progress(self, info):
-    if ((info) and ('INSTRUMENT_STATUS' in info)):
-      self._progress = info['INSTRUMENT_STATUS']  
+  def _on_progress(self, result):
+    if ((result) and ('INSTRUMENT_STATUS' in result)):
+      self._progress = int(result['INSTRUMENT_STATUS'])  
+
+# manage a MIDI input device in LinuxSampler
+class SamplerInput(observable.Object):
+  def __init__(self, sampler=None):
+    observable.Object.__init__(self)
+    if (sampler is None):
+      global LinuxSampler
+      sampler = LinuxSampler
+    self._sampler = sampler
+    self._input_id = None
+    self._allocate()
+  @property
+  def input_id(self):
+    return(self._input_id)
+  # allocate a midi input device
+  def _allocate(self):
+    self._sampler.call('CREATE MIDI_INPUT_DEVICE JACK', self._on_created)
+  # handle the creation of the input device
+  def _on_created(self, result):
+    if (result.startswith('OK') or (result.startswith('WRN'))):
+      m = re.match('OK\[(.*)\]', result)
+      if (m):
+        self._input_id = int(m.group(1))
+        self.on_change()
+      self.on_change()
+    else:
+      self._sampler.warn('failed to connect MIDI input: %s' % result)    
+
+# manage an audio output device in LinuxSampler
+class SamplerOutput(observable.Object):
+  def __init__(self, engine='GIG', sampler=None):
+    observable.Object.__init__(self)
+    if (sampler is None):
+      global LinuxSampler
+      sampler = LinuxSampler
+    self._sampler = sampler
+    self._output_id = None
+    self._allocate()
+  @property
+  def output_id(self):
+    return(self._output_id)
+  # allocate an audio output device
+  def _allocate(self):
+    self._sampler.call('CREATE AUDIO_OUTPUT_DEVICE JACK', self._on_created)
+  # handle the creation of the audio output device
+  def _on_created(self, result):
+    if (result.startswith('OK') or (result.startswith('WRN'))):
+      m = re.match('OK\[(.*)\]', result)
+      self._output_id = int(m.group(1))
+      self.on_change()
+    else:
+      self._sampler.warn('failed to connect audio output: %s' % result)
+
+# manage a sampler "channel" in LinuxSampler
+class SamplerChannel(observable.Object):
+  def __init__(self, engine='GIG', sampler=None):
+    observable.Object.__init__(self)
+    if (sampler is None):
+      global LinuxSampler
+      sampler = LinuxSampler
+    self._sampler = sampler
+    self._channel_id = None
+    self._engine = engine
+    self._engine_loaded = False
+    # start with no input or output
+    self._input = None
+    self._input_connected = False
+    self._input_connecting = False
+    self._output = None
+    self._output_connected = False
+    self._output_connecting = False
+    # load the right sampler engine and allocate a channel id
+    self._allocate()
+  @property
+  def channel_id(self):
+    return(self._channel_id)
+  @property
+  def engine(self):
+    return(self._engine)
+  @property
+  def is_ready(self):
+    return(self._engine_loaded and 
+           self._input_connected and 
+           self._output_connected)
+  # allocate a new sampler channel
+  def _allocate(self):
+    self._sampler.call('ADD CHANNEL', self._on_channel_add)
+  def _on_channel_add(self, result):
+    m = re.match('OK\[(.*)\]', result)
+    if (m):
+      self._channel_id = int(m.group(1))
+      self.on_change()
+      self._load_engine()
+    else:
+      self._sampler.warn('failed to add channel: %s' % str(result))
+  # load a sampler engine for the channel
+  def _load_engine(self):
+    self._sampler.call('LOAD ENGINE %s %d' % 
+      (self.engine, self.channel_id), self._on_engine_load)
+  def _on_engine_load(self, result):
+    if (result == 'OK'):
+      self._engine_loaded = True
+      self.on_change()
+    else:
+      self._sampler.warn('failed to load sampler engine %s: %s' % 
+                            (self.engine, str(result)))
+  # make a property to get or set the input device
+  @property
+  def input(self):
+    return(self._input)
+  @input.setter
+  def input(self, value):
+    if (value is self._input): return
+    if (self._input is not None):
+      self._input.remove_observer(self)
+      self._input_connected = False
+    self._input = value
+    if (self._input is not None):
+      self._input.add_observer(self._connect_input)
+      self._connect_input()
+  # connect the input when it's available
+  def _connect_input(self):
+    if ((not self._input_connected) and 
+        (not self._input_connecting) and 
+        (self._input.input_id is not None)):
+      self._input_connecting = True
+      self._sampler.call(
+        'SET CHANNEL MIDI_INPUT_DEVICE %d %d' % 
+          (self.channel_id, self._input.input_id), self._on_input_set)
+  def _on_input_set(self, result):
+    self._input_connecting = False
+    if (result.startswith('OK')):
+      self._input_connected = True
+      self.on_change()
+    else:
+      self._sampler.warn('failed to set channel input: %s' % str(result))
+  # make a property to get or set the output device
+  @property
+  def output(self):
+    return(self._output)
+  @output.setter
+  def output(self, value):
+    if (value is self._output): return
+    if (self._output is not None):
+      self._output.remove_observer(self)
+      self._output_connected = False
+    self._output = value
+    if (self._output is not None):
+      self._output.add_observer(self._connect_output)
+      self._connect_output()
+  # connect the output when it's available
+  def _connect_output(self):
+    if ((not self._output_connected) and 
+        (not self._output_connecting) and 
+        (self._output.output_id is not None)):
+      self._output_connecting = True
+      self._sampler.call(
+        'SET CHANNEL AUDIO_OUTPUT_DEVICE %d %d' % 
+          (self.channel_id, self._output.output_id), self._on_output_set)
+  def _on_output_set(self, result):
+    self._output_connecting = False
+    if (result.startswith('OK')):
+      self._output_connected = True
+      self.on_change()
+    else:
+      self._sampler.warn('failed to set channel output: %s' % str(result))
 
 # manage a LinuxSampler process acting as a backend for sample playback
 class LinuxSamplerSingleton(observable.Object):
-  def __init__(self, verbose=False,
-      allowed_outputs=('ALSA', 'JACK', 'OSS'),
-      allowed_inputs=('ALSA',)):
+  def __init__(self, verbose=False):
     observable.Object.__init__(self)
     self.verbose = verbose
     self.address = '0.0.0.0'
     self.port = '8888'
     self.device_id = None
-    self.allowed_inputs = allowed_inputs
-    self.allowed_outputs = allowed_outputs
     self._reset()
   # log activity
   def _log(self, message):
     if (self.verbose):
       print(message)
-  def _warn(self, message):
+  def warn(self, message):
     sys.stderr.write('WARNING: LinuxSampler: '+message+'\n')
   # reset state
   def _reset(self):
@@ -175,11 +310,6 @@ class LinuxSamplerSingleton(observable.Object):
     # status flags about the sampler
     self.started = False
     self.ready = False
-    self.input_connected = False
-    self.input_ports = 0
-    self.next_input_port = 0
-    self.output_connected = False
-    self.output_id = 0
     # a socket for communicating with the sampler
     self.connection = None
     self._received = ''
@@ -189,11 +319,11 @@ class LinuxSamplerSingleton(observable.Object):
     # info about the server
     self.server_info = dict()
     self.engines = list()
-    # active timeouts
-    self.status_timeout = None
-    self._receive_timeout = None
-    # a list for instrument managers, each one handling a channel
-    self._instruments = list()
+    # active timers
+    self._status_timer = None
+    self._receive_timer = None
+    # a list of unused sampler channels
+    self._unused_channels_by_engine = dict()
     # when started, check the status of the connection by asking for info
     self.call('GET SERVER INFO', self._on_server_info)
     # see what engines are available
@@ -211,15 +341,17 @@ class LinuxSamplerSingleton(observable.Object):
     set_nonblocking(self.process.stdout)
     set_nonblocking(self.process.stderr)
     atexit.register(self.stop)
-    self.status_timeout = GLib.timeout_add(1000, self._check_status)
+    self._status_timer = QTimer(self)
+    self._status_timer.timeout.connect(self._check_status)
+    self._status_timer.start(1000)
   # stop running the service
   def stop(self):
     if (not self.process): return
     # stop timeouts
-    if (self.status_timeout):
-      GLib.source_remove(self.status_timeout)
-    elif (self._receive_timeout):
-      GLib.source_remove(self._receive_timeout)
+    if (self._status_timer):
+      self._status_timer.stop()
+    elif (self._receive_timer):
+      self._receive_timer.stop()
     if (self.connection):
       self._log('closing connection')
       try:
@@ -243,7 +375,7 @@ class LinuxSamplerSingleton(observable.Object):
     # if the process dies, stop checking its status
     if (self.process.poll()):
       self.process = None
-      self.status_timeout = None
+      self._status_timer = None
       return(False)
     try:
       self._stdout += self.process.stdout.read()
@@ -278,7 +410,7 @@ class LinuxSamplerSingleton(observable.Object):
         self.on_change()
         self._on_start()
   def _on_error(self, error):
-    self._warn(error)
+    self.warn(error)
   # respond to the sampler being started
   def _on_start(self):
     self.connection = socket.create_connection((self.address, self.port))
@@ -298,7 +430,9 @@ class LinuxSamplerSingleton(observable.Object):
       bytes = self.connection.send(command)
       command = command[bytes:]
     # listen for the response
-    self._receive_timeout = GLib.timeout_add(100, self._receive)
+    self._receive_timer = QTimer(self)
+    self._receive_timer.timeout.connect(self._receive)
+    self._receive_timer.start(100)
   def _next_call(self):
     # send the next call in the queue if there is one
     if (len(self._queued_calls) > 0):
@@ -325,7 +459,7 @@ class LinuxSamplerSingleton(observable.Object):
       line = lines[0]
       # detect errors
       if ((line.startswith('WRN')) or (line.startswith('ERR'))):
-        self._warn(line)
+        self.warn(line)
       # handle list-like responses
       command = self._pending_call[0]
       if (command.startswith('LIST')):
@@ -353,7 +487,7 @@ class LinuxSamplerSingleton(observable.Object):
     self._pending_call = None
     # send the next call in the queue if there is one
     if (not self._next_call()):
-      self._receive_timeout = None
+      self._receive_timer = None
     return(False)
   # respond to getting the first info from the server
   def _on_server_info(self, info):
@@ -362,87 +496,24 @@ class LinuxSamplerSingleton(observable.Object):
     self._log('sampler is ready')
     self.ready = True
     self.on_change()
-    # connect automatically for input and output
-    self._connect_output()
-    self._connect_input()
   def _on_engines(self, engines):
     self.engines = engines
-  # set up audio output
-  def _connect_output(self):
-    def on_connected(result):
-      if (result.startswith('OK') or (result.startswith('WRN'))):
-        m = re.match('OK\[(.*)\]', result)
-        if (m):
-          self.output_id = int(m.group(1))
-        self.output_connected = True
-        self.on_change()
-      else:
-        self._warn('failed to connect audio output: %s' % result)
-    def on_drivers(drivers):
-      if (not (len(drivers) > 0)):
-        self._warn('No audio output drivers available.')
-        return
-      for driver in self.allowed_outputs:
-        if (driver in drivers):
-          self.call('CREATE AUDIO_OUTPUT_DEVICE %s' % driver, on_connected)
-          return
-      self._warn('None of the preferred output drivers (%s) are available.' %
-                  ', '.join(self.allowed_outputs))
-    self.call('LIST AVAILABLE_AUDIO_OUTPUT_DRIVERS', on_drivers)
-  # set up midi input
-  def _connect_input(self):
-    def on_connected(result):
-      if (result.startswith('OK') or (result.startswith('WRN'))):
-        self.input_ports += 1
-        m = re.match('OK\[(.*)\]', result)
-        if (m):
-          self.device_id = int(m.group(1))
-          # rename the port, without a callback because this is optional
-          self.call(
-            'SET MIDI_INPUT_PORT_PARAMETER %d 0 NAME="LinuxSampler 0"' %
-              self.device_id)
-        self.input_connected = True
-        self.on_change()
-      else:
-        self._warn('failed to connect MIDI input: %s' % result)
-    def on_driver_info(driver):
-      def closure(info):
-        args = list()
-        if ('PARAMETERS' in info):
-          params = info['PARAMETERS'].split(',')
-          if ('NAME' in params):
-            args.append('NAME=LinuxSampler')
-        self.call('CREATE MIDI_INPUT_DEVICE %s %s' % 
-          (driver, ' '.join(args)), on_connected)
-      return(closure)
-    def on_drivers(drivers):
-      if (not (len(drivers) > 0)):
-        self._warn('No MIDI input drivers available.')
-        return
-      for driver in self.allowed_inputs:
-        if (driver in drivers):
-          self.call('GET MIDI_INPUT_DRIVER INFO %s' % driver, 
-                    on_driver_info(driver))
-          return
-      self._warn('None of the preferred input drivers (%s) are available.' %
-                  ', '.join(self.allowed_inputs))
-    self.call('LIST AVAILABLE_MIDI_INPUT_DRIVERS', on_drivers)
-  # expand the number of available ports and call the given callback
-  def add_port(self, callback=None):
-    def on_port_added(result):
-      if (result.startswith('OK')):
-        self.input_ports += 1
-        if (callback is not None):
-          callback(result)
-    self.call('SET MIDI_INPUT_DEVICE_PARAMETER %d PORTS=%d' %
-      (self.device_id, self.input_ports + 1), on_port_added)
-  # get the next unused instrument, if any
-  def get_instrument(self):
-    instrument = Instrument(self, port=self.next_input_port)
-    self.next_input_port += 1
-    self._instruments.append(instrument)
-    self.on_change()
-    return(instrument)
+  # allocate a new sampler channel or get an unused one from the pool
+  def allocate_channel_with_engine(self, engine):
+    if (engine in self._unused_channels_by_engine):
+      channels = self._unused_channels_by_engine[engine]
+      if (len(channels) > 0):
+        return(channels.pop())
+    # make the channel and give it input and output
+    channel = SamplerChannel(engine=engine, sampler=self)
+    channel.input = SamplerInput(sampler=self)
+    channel.output = SamplerOutput(sampler=self)
+    return(channel)
+  # release a previously allocated channel for reuse
+  def release_channel(self, channel):
+    if (channel.engine not in self._unused_channels_by_engine):
+      self._unused_channels_by_engine[channel.engine] = list()
+    self._unused_channels_by_engine[channel.engine].append(channel)
 
 # make a singleton instance of the sampler backend
 LinuxSampler = LinuxSamplerSingleton(verbose=False)

@@ -7,7 +7,7 @@ from PySide.QtGui import *
 
 from impulse import windows
 from impulse.models import doc
-# from impulse.midi import sampler
+from impulse.midi import sampler
 
 def dummy_document():
   d = doc.Document()
@@ -36,7 +36,7 @@ class App(QApplication):
     self._window.show()
     self._window.document = dummy_document()
     # start the sampler engine
-    #sampler.LinuxSampler.start()
+    sampler.LinuxSampler.start()
 
 app = App()
 sys.exit(app.exec_())

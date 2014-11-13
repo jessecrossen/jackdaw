@@ -54,4 +54,21 @@ class DocumentView(QGraphicsView):
   @property
   def can_zoom_out(self):
     return(self._document.view_scale.pixels_per_second > self.ZOOMS[0])
-    
+  # show a context menu with document actions
+  def contextMenuEvent(self, e):
+    menu = DocumentMenu(parent=self, document=self.document)
+    menu.exec_(e.globalPos())
+
+class DocumentMenu(QMenu):
+  def __init__(self, document, parent=None):
+    QMenu.__init__(self, parent)
+    self.document = document
+    add_menu = self.addMenu('Add')
+    add_sampler_action = QAction('Sampler', self)
+    add_sampler_action.setStatusTip('Add a sampler unit')
+    add_sampler_action.triggered.connect(self.on_add_sampler)
+    add_menu.addAction(add_sampler_action)
+  # add a sampler
+  def on_add_sampler(self, *args):
+    # TODO
+    pass
