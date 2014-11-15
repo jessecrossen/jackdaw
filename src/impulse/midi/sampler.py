@@ -12,7 +12,8 @@ from PySide.QtCore import *
 
 import core
 import outputs
-from ..common import observable
+from ..common import observable, serializable
+from ..models import unit
 
 # provide extensions for sample instruments
 EXTENSIONS = ('gig', 'sfz', 'sf2')
@@ -32,9 +33,13 @@ def _escape(s):
   return(out)
 
 # manage a sampler-based instrument
-class Instrument(observable.Object):
+class Instrument(observable.Object, unit.Source, unit.Sink):
   def __init__(self, path=None, sampler=None):
     observable.Object.__init__(self)
+    unit.Source.__init__(self)
+    unit.Sink.__init__(self)
+    self._source_type = 'audio'
+    self._sink_type = 'midi'
     if (sampler is None):
       global LinuxSampler
       sampler = LinuxSampler
@@ -123,24 +128,38 @@ class Instrument(observable.Object):
       self._on_progress)
   def _on_progress(self, result):
     if ((result) and ('INSTRUMENT_STATUS' in result)):
-      self._progress = int(result['INSTRUMENT_STATUS'])  
+      self._progress = int(result['INSTRUMENT_STATUS'])
+  def serialize(self):
+    return({ 
+      'path': self.path
+    })
+serializable.add(Instrument)
 
 # manage a MIDI input device in LinuxSampler
 class SamplerInput(observable.Object):
-  def __init__(self, sampler=None):
+  def __init__(self, sampler=None, name=None):
     observable.Object.__init__(self)
     if (sampler is None):
       global LinuxSampler
       sampler = LinuxSampler
     self._sampler = sampler
+    self._name = name
     self._input_id = None
+    # this is used to cache the JACK port associated with the input
+    self.port = None
     self._allocate()
   @property
   def input_id(self):
     return(self._input_id)
+  @property
+  def name(self):
+    return(self._name)
   # allocate a midi input device
   def _allocate(self):
-    self._sampler.call('CREATE MIDI_INPUT_DEVICE JACK', self._on_created)
+    command = 'CREATE MIDI_INPUT_DEVICE JACK'
+    if (self._name is not None):
+      command += ' NAME='+self._name
+    self._sampler.call(command, self._on_created)
   # handle the creation of the input device
   def _on_created(self, result):
     if (result.startswith('OK') or (result.startswith('WRN'))):
@@ -154,20 +173,29 @@ class SamplerInput(observable.Object):
 
 # manage an audio output device in LinuxSampler
 class SamplerOutput(observable.Object):
-  def __init__(self, engine='GIG', sampler=None):
+  def __init__(self, engine='GIG', sampler=None, name=None):
     observable.Object.__init__(self)
     if (sampler is None):
       global LinuxSampler
       sampler = LinuxSampler
     self._sampler = sampler
+    self._name = name
     self._output_id = None
+    # this is used to cache the JACK ports associated with the output
+    self.ports = None
     self._allocate()
   @property
   def output_id(self):
     return(self._output_id)
+  @property
+  def name(self):
+    return(self._name)
   # allocate an audio output device
   def _allocate(self):
-    self._sampler.call('CREATE AUDIO_OUTPUT_DEVICE JACK', self._on_created)
+    command = 'CREATE AUDIO_OUTPUT_DEVICE JACK'
+    if (self._name is not None):
+      command += ' NAME='+self._name
+    self._sampler.call(command, self._on_created)
   # handle the creation of the audio output device
   def _on_created(self, result):
     if (result.startswith('OK') or (result.startswith('WRN'))):
@@ -192,9 +220,11 @@ class SamplerChannel(observable.Object):
     self._input = None
     self._input_connected = False
     self._input_connecting = False
+    self._input_port = None
     self._output = None
     self._output_connected = False
     self._output_connecting = False
+    self._output_ports = None
     # load the right sampler engine and allocate a channel id
     self._allocate()
   @property
@@ -241,6 +271,7 @@ class SamplerChannel(observable.Object):
       self._input.remove_observer(self)
       self._input_connected = False
     self._input = value
+    self._input_port = self._input.port
     if (self._input is not None):
       self._input.add_observer(self._connect_input)
       self._connect_input()
@@ -257,6 +288,14 @@ class SamplerChannel(observable.Object):
     self._input_connecting = False
     if (result.startswith('OK')):
       self._input_connected = True
+      # attempt to bind to the input to a JACK port
+      if (self._input_port is None):
+        ports = self._sampler._client.get_ports(
+          name_pattern=self._input.name+':.*',
+          flags=jackpatch.JackPortIsInput)
+        if (len(ports) > 0):
+          self._input.port = ports[0]
+          self._input_port = self._input.port
       self.on_change()
     else:
       self._sampler.warn('failed to set channel input: %s' % str(result))
@@ -271,6 +310,7 @@ class SamplerChannel(observable.Object):
       self._output.remove_observer(self)
       self._output_connected = False
     self._output = value
+    self._output_ports = self._output.ports
     if (self._output is not None):
       self._output.add_observer(self._connect_output)
       self._connect_output()
@@ -287,6 +327,13 @@ class SamplerChannel(observable.Object):
     self._output_connecting = False
     if (result.startswith('OK')):
       self._output_connected = True
+      if (self._output_ports is None):
+        ports = self._sampler._client.get_ports(
+          name_pattern=self._output.name+':.*',
+          flags=jackpatch.JackPortIsOutput)
+        if (len(ports) > 0):
+          self._output.ports = ports
+          self._output_ports = self._output.ports
       self.on_change()
     else:
       self._sampler.warn('failed to set channel output: %s' % str(result))
@@ -299,6 +346,8 @@ class LinuxSamplerSingleton(observable.Object):
     self.address = '0.0.0.0'
     self.port = '8888'
     self.device_id = None
+    # make a JACK client for querying ports
+    self._client = jackpatch.Client('jackdaw-sampler')
     self._reset()
   # log activity
   def _log(self, message):
@@ -329,6 +378,8 @@ class LinuxSamplerSingleton(observable.Object):
     self._receive_timer = None
     # a list of unused sampler channels
     self._unused_channels_by_engine = dict()
+    # a unique numeric id to assign created input/output ports
+    self._unique_port_id = 1
     # when started, check the status of the connection by asking for info
     self.call('GET SERVER INFO', self._on_server_info)
     # see what engines are available
@@ -509,10 +560,13 @@ class LinuxSamplerSingleton(observable.Object):
       channels = self._unused_channels_by_engine[engine]
       if (len(channels) > 0):
         return(channels.pop())
+    # make a name for the channel's input/output JACK client
+    name = 'LinuxSampler-'+str(self._unique_port_id)
+    self._unique_port_id += 1
     # make the channel and give it input and output
     channel = SamplerChannel(engine=engine, sampler=self)
-    channel.input = SamplerInput(sampler=self)
-    channel.output = SamplerOutput(sampler=self)
+    channel.input = SamplerInput(sampler=self, name=name)
+    channel.output = SamplerOutput(sampler=self, name=name)
     return(channel)
   # release a previously allocated channel for reuse
   def release_channel(self, channel):
