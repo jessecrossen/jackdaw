@@ -132,9 +132,6 @@ class DeviceAdapterList(observable.List):
       adapter.device = None
   # adapter list serialization
   def serialize(self):
-    names = list()
-    for adapter in self:
-      names
     return({ 
       'adapters': list(self)
     })

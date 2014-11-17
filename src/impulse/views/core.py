@@ -480,6 +480,39 @@ class VBoxLayout(ListLayout):
       r = view.rect()
       view.setRect(QRectF(x, y, w, r.height()))
       y += r.height() + self.spacing
+      
+# make a view that has an editable name
+class NamedModelView(ModelView):
+  def __init__(self, *args, **kwargs):
+    ModelView.__init__(self, *args, **kwargs)
+    self.name_proxy = None
+  # get the minimum size needed to display the name
+  def minimumSizeHint(self):
+    if (self.name_proxy):
+      name_view = self.name_proxy.widget()
+      return(name_view.minimumSizeHint())
+    return(QSizeF(0, 0))
+  # provide a height for layout in the parent
+  def rect(self):
+    r = ModelView.rect(self)
+    r.setHeight(self.minimumSizeHint().height())
+    return(r)
+  def layout(self):
+    if ((self.scene()) and (not self.name_proxy)):
+      name_view = NameLabel(self.model)
+      self.name_proxy = self.scene().addWidget(name_view)
+      self.name_proxy.setParentItem(self)
+    if (self.name_proxy):
+      r = self.boundingRect()
+      name_view = self.name_proxy.widget()
+      name_view.setFixedWidth(r.width())
+      self.name_proxy.setPos(QPointF(0.0, 0.0))
+  def paint(self, qp, options, widget):
+    r = self.boundingRect()
+    qp.setPen(Qt.NoPen)
+    color = self.palette.color(QPalette.Normal, QPalette.Base)
+    qp.setBrush(QBrush(color))
+    qp.drawRoundedRect(r, 4.0, 4.0)
 
 # make a transparent line edit that looks like a label but can be edited
 class EditableLabel(QLineEdit):

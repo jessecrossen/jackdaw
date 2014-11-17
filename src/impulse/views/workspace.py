@@ -11,6 +11,7 @@ import core
 import track
 import button
 import device
+import sampler
 
 class UnitView(core.ModelView):
   # the margin to leave around the content
@@ -188,6 +189,15 @@ class ConnectionView(core.Selectable, core.ModelView):
       self.on_moved()
   @property
   def port_type(self):
+    if ((isinstance(self._source_view, UnitPortView)) and 
+        (isinstance(self._sink_view, UnitPortView))):
+      # if either end of an audio connection is mono, only mono data 
+      #  can pass over it
+      if ((self._source_view.port_type == 'mono') or 
+          (self._sink_view.port_type == 'mono')):
+        return('mono')
+      else:
+        return(self._source_view.port_type)
     if (isinstance(self._source_view, UnitPortView)):
       return(self._source_view.port_type)
     elif (isinstance(self._sink_view, UnitPortView)):
@@ -271,7 +281,15 @@ class ConnectionView(core.Selectable, core.ModelView):
     pen.setWidth(2.0)
     qp.setPen(pen)
     qp.setBrush(Qt.NoBrush)
-    qp.drawPath(self.wirePath())
+    # if the connection is carrying stereo data (i.e. both ends are stereo)
+    #  draw it as a doubled line
+    if (self.port_type == 'stereo'):
+      stroker = QPainterPathStroker()
+      stroker.setWidth(4.0)
+      stroker.setCapStyle(Qt.FlatCap)
+      qp.drawPath(stroker.createStroke(self.wirePath()))
+    else:
+      qp.drawPath(self.wirePath())
     # draw the endpoints
     qp.setPen(Qt.NoPen)
     qp.setBrush(self.brush())
@@ -392,7 +410,15 @@ class UnitPortView(core.Interactive, core.ModelView):
     d = math.sqrt(math.pow(dx, 2) + math.pow(dy, 2))
     f = r / d
     p = QPointF(end.x() + (f * dx), end.y() + (f * dy))
-    qp.drawLine(p, base)
+    # draw a double line if the port is stereo
+    if (port_type == 'stereo'):
+      dx = (dx / d) * 2
+      dy = (dy / d) * 2
+      qp.drawLine(QPointF(p.x() + dy, p.y() - dx), QPointF(base.x() + dy, base.y() - dx))
+      qp.drawLine(QPointF(p.x() - dy, p.y() + dx), QPointF(base.x() - dy, base.y() + dx))
+    # otherwise draw a single line
+    else:
+      qp.drawLine(p, base)
   # handle dragging a connection from a port
   def on_drag_start(self, event):
     # make a connection and add it to the workspace
@@ -549,6 +575,8 @@ class WorkspaceView(core.ModelView):
       return(MultitrackUnitView(unit))
     elif (hasattr(unit, 'devices')):
       return(DeviceListUnitView(unit))
+    elif (hasattr(unit, 'instruments')):
+      return(InstrumentListUnitView(unit))
     return(UnitView(unit))
   # update the placement of the layout
   def layout(self):
@@ -694,6 +722,23 @@ class DeviceListUnitView(UnitView):
     if ((self.unit.require_input) and (not device.has_input)):
       return(None)
     return(UnitOutputView(device))
+  def layout(self):
+    size = self._content.minimumSizeHint()
+    self._content.setRect(QRectF(0, 0, size.width(), size.height()))
+    UnitView.layout(self)
+
+# make a unit view containing a list of sampler instruments
+class InstrumentListUnitView(UnitView):
+  def __init__(self, *args, **kwargs):
+    UnitView.__init__(self, *args, **kwargs)
+    self._content = sampler.InstrumentListView(
+      instruments=self.unit.instruments)
+    self._content.setParentItem(self)
+    # add inputs and outputs for the instruments
+    self._input_layout = InputListLayout(self, self.unit.instruments, 
+                                         lambda t: UnitInputView(t))
+    self._output_layout = OutputListLayout(self, self.unit.instruments, 
+                                           lambda t: UnitOutputView(t))
   def layout(self):
     size = self._content.minimumSizeHint()
     self._content.setRect(QRectF(0, 0, size.width(), size.height()))

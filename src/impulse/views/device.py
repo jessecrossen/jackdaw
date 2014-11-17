@@ -34,39 +34,13 @@ class DeviceListView(core.ModelView):
     self.device_layout.setRect(self.boundingRect())
 
 # make a view that displays an input device
-class DeviceView(core.ModelView):
+class DeviceView(core.NamedModelView):
   def __init__(self, device, parent=None):
-    core.ModelView.__init__(self, model=device, parent=parent)
-    self.name_proxy = None
+    core.NamedModelView.__init__(self, model=device, parent=parent)
   @property
   def device(self):
     return(self._model)
-  # get the minimum size needed to display the device
-  def minimumSizeHint(self):
-    if (self.name_proxy):
-      name_view = self.name_proxy.widget()
-      return(name_view.minimumSizeHint())
-    return(QSizeF(0, 0))
-  # provide a height for layout in the parent
-  def rect(self):
-    r = core.ModelView.rect(self)
-    r.setHeight(self.minimumSizeHint().height())
-    return(r)
   def layout(self):
-    if ((self.scene()) and (not self.name_proxy)):
-      name_view = core.NameLabel(self.device)
-      self.name_proxy = self.scene().addWidget(name_view)
-      self.name_proxy.setParentItem(self)
-    if (self.name_proxy):
-      r = self.boundingRect()
-      name_view = self.name_proxy.widget()
-      name_view.setFixedWidth(r.width())
-      self.name_proxy.setPos(QPointF(0.0, 0.0))
+    core.NamedModelView.layout(self)
     # fade the view if the device is unplugged
     self.setOpacity(1.0 if self.device.is_plugged else 0.5)
-  def paint(self, qp, options, widget):
-    r = self.boundingRect()
-    qp.setPen(Qt.NoPen)
-    color = self.palette.color(QPalette.Normal, QPalette.Base)
-    qp.setBrush(QBrush(color))
-    qp.drawRoundedRect(r, 4.0, 4.0)

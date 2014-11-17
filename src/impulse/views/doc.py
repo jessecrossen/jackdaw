@@ -4,6 +4,8 @@ from PySide.QtGui import *
 import core
 import track
 import workspace
+from ..models import unit
+from ..midi import sampler
 
 class DocumentView(QGraphicsView):
   def __init__(self, document, parent=None):
@@ -56,13 +58,16 @@ class DocumentView(QGraphicsView):
     return(self._document.view_scale.pixels_per_second > self.ZOOMS[0])
   # show a context menu with document actions
   def contextMenuEvent(self, e):
-    menu = DocumentMenu(parent=self, document=self.document)
+    menu = DocumentMenu(parent=self, 
+                        document=self.document,
+                        scene_pos=self.mapToScene(e.pos()))
     menu.exec_(e.globalPos())
 
 class DocumentMenu(QMenu):
-  def __init__(self, document, parent=None):
+  def __init__(self, document, scene_pos, parent=None):
     QMenu.__init__(self, parent)
     self.document = document
+    self.scene_pos = scene_pos
     add_menu = self.addMenu('Add')
     add_sampler_action = QAction('Sampler', self)
     add_sampler_action.setStatusTip('Add a sampler unit')
@@ -70,5 +75,13 @@ class DocumentMenu(QMenu):
     add_menu.addAction(add_sampler_action)
   # add a sampler
   def on_add_sampler(self, *args):
-    # TODO
-    pass
+    (path, group) = QFileDialog.getOpenFileName(self,
+      "Open Project", "~", "Instrument Files (*.gig *.sfz *.sf2);;All Files (*.*)")
+    if (len(path) == 0): return
+    instrument = sampler.Instrument(path=path)
+    instruments = sampler.InstrumentList([ instrument ])
+    self.document.units.append(unit.InstrumentListUnit(
+        name='Sampler',
+        instruments=instruments,
+        x=self.scene_pos.x(),
+        y=self.scene_pos.y()))

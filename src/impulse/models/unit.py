@@ -106,13 +106,13 @@ serializable.add(UnitList)
 # make a mixin to make a model a signal source
 class Source(object):
   def __init__(self):
-    self._source_type = 'audio'
+    self._source_type = 'mono'
     self._source_port = None
   # return the type of signal emitted by this source
   @property
   def source_type(self):
     return(self._source_type)
-  # get/set the JACK port, if any, for this source
+  # get/set the JACK port or tuple of ports that send data
   @property
   def source_port(self):
     return(self._source_port)
@@ -127,13 +127,13 @@ class Source(object):
 # make a mixin to make a model a signal sink
 class Sink(object):
   def __init__(self):
-    self._sink_type = 'audio'
+    self._sink_type = 'mono'
     self._sink_port = None
   # return the type of signal emitted by this source
   @property
   def sink_type(self):
     return(self._sink_type)
-  # get/set the JACK port, if any, for this sink
+  # get/set the JACK port or tuple of ports that accept data
   @property
   def sink_port(self):
     return(self._sink_port)
@@ -161,7 +161,15 @@ class Connection(Model):
   @source.setter
   def source(self, value):
     if (value is not self._source):
+      if (self._source is not None):
+        try:
+          self._source.remove_observer(self.on_change)
+        except AttributeError: pass
       self._source = value
+      if (self._source is not None):
+        try:
+          self._source.add_observer(self.on_change)
+        except AttributeError: pass
       self.on_change()
   @property
   def sink(self):
@@ -169,7 +177,15 @@ class Connection(Model):
   @sink.setter
   def sink(self, value):
     if (value is not self._sink):
+      if (self._sink is not None):
+        try:
+          self._sink.remove_observer(self.on_change)
+        except AttributeError: pass
       self._sink = value
+      if (self._sink is not None):
+        try:
+          self._sink.add_observer(self.on_change)
+        except AttributeError: pass
       self.on_change()
   # lazy-load a jack client to make patchbay connections
   def get_jack_client(self):
@@ -288,3 +304,15 @@ class DeviceListUnit(Unit):
     obj['require_output'] = self.require_output
     return(obj)
 serializable.add(DeviceListUnit)
+
+# make a unit that represents a list of sampler instruments
+class InstrumentListUnit(Unit):
+  def __init__(self, instruments, *args, **kwargs):
+    Unit.__init__(self, *args, **kwargs)
+    self.instruments = instruments
+    self.instruments.add_observer(self.on_change)
+  def serialize(self):
+    obj = Unit.serialize(self)
+    obj['instruments'] = self.instruments
+    return(obj)
+serializable.add(InstrumentListUnit)

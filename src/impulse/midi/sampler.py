@@ -34,15 +34,16 @@ def _escape(s):
 
 # manage a sampler-based instrument
 class Instrument(observable.Object, unit.Source, unit.Sink):
-  def __init__(self, path=None, sampler=None):
+  def __init__(self, path=None, name='Instrument', sampler=None):
     observable.Object.__init__(self)
     unit.Source.__init__(self)
     unit.Sink.__init__(self)
-    self._source_type = 'audio'
+    self._source_type = 'stereo'
     self._sink_type = 'midi'
     if (sampler is None):
       global LinuxSampler
       sampler = LinuxSampler
+    self._name = name
     self._sampler = sampler
     self._progress = 0
     self._progress_timer = None
@@ -53,10 +54,27 @@ class Instrument(observable.Object, unit.Source, unit.Sink):
     self._path_loaded = False
     self.path = path
   def __del__(self):
-    observable.Object.__del__(self)
     if (self._channel is not None):
       self._sampler.release_channel(self._channel)
       self._channel = None
+  @property
+  def name(self):
+    return(self._name)
+  @name.setter
+  def name(self, value):
+    if (value != self._name):
+      self._name = value
+      self.on_change()
+  @property
+  def sink_port(self):
+    if (self._channel is None):
+      return(None)
+    return(self._channel.input_port)
+  @property
+  def source_port(self):
+    if (self._channel is None):
+      return(None)
+    return(self._channel.output_port)
   @property
   def channel(self):
     return(self._channel)
@@ -69,6 +87,7 @@ class Instrument(observable.Object, unit.Source, unit.Sink):
       self._path_loading = False
       self._path_loaded = False
       self._path = value
+      self._name = 'Instrument'
       self._attach()    
   # add a sampler channel for the instrument and load a sample file, if any
   def _attach(self):
@@ -78,14 +97,17 @@ class Instrument(observable.Object, unit.Source, unit.Sink):
       self._sampler.warn(
         'Unable to find a sampler engine for "%s"' % self._path)
     engine = m.group(1).upper()
+    self.name = os.path.basename(self._path)
     # make sure we have a channel with the right engine
     if ((self._channel is None) or (self._channel.engine != engine)):
       if (self._channel is not None):
         self._channel.remove_observer(self._load_path)
+        self._channel.remove_observer(self.on_change)
         self._sampler.release_channel(self._channel)
       self._channel = self._sampler.allocate_channel_with_engine(engine)
     # once the channel is ready, load the instrument file onto it
     self._channel.add_observer(self._load_path)
+    self._channel.add_observer(self.on_change)
     self._load_path()
   # load a new instrument
   def _load_path(self):
@@ -131,9 +153,20 @@ class Instrument(observable.Object, unit.Source, unit.Sink):
       self._progress = int(result['INSTRUMENT_STATUS'])
   def serialize(self):
     return({ 
+      'name': self.name,
       'path': self.path
     })
 serializable.add(Instrument)
+
+class InstrumentList(observable.List):
+  def __init__(self, instruments=()):
+    observable.List.__init__(self, instruments)
+  # adapter list serialization
+  def serialize(self):
+    return({ 
+      'instruments': list(self)
+    })
+serializable.add(InstrumentList)
 
 # manage a MIDI input device in LinuxSampler
 class SamplerInput(observable.Object):
@@ -181,8 +214,8 @@ class SamplerOutput(observable.Object):
     self._sampler = sampler
     self._name = name
     self._output_id = None
-    # this is used to cache the JACK ports associated with the output
-    self.ports = None
+    # this is used to cache the JACK port(s) associated with the output
+    self.port = None
     self._allocate()
   @property
   def output_id(self):
@@ -224,7 +257,7 @@ class SamplerChannel(observable.Object):
     self._output = None
     self._output_connected = False
     self._output_connecting = False
-    self._output_ports = None
+    self._output_port = None
     # load the right sampler engine and allocate a channel id
     self._allocate()
   @property
@@ -238,6 +271,12 @@ class SamplerChannel(observable.Object):
     return(self._engine_loaded and 
            self._input_connected and 
            self._output_connected)
+  @property
+  def input_port(self):
+    return(self._input_port)
+  @property
+  def output_port(self):
+    return(self._output_port)
   # allocate a new sampler channel
   def _allocate(self):
     self._sampler.call('ADD CHANNEL', self._on_channel_add)
@@ -310,7 +349,7 @@ class SamplerChannel(observable.Object):
       self._output.remove_observer(self)
       self._output_connected = False
     self._output = value
-    self._output_ports = self._output.ports
+    self._output_port = self._output.port
     if (self._output is not None):
       self._output.add_observer(self._connect_output)
       self._connect_output()
@@ -327,13 +366,15 @@ class SamplerChannel(observable.Object):
     self._output_connecting = False
     if (result.startswith('OK')):
       self._output_connected = True
-      if (self._output_ports is None):
+      if (self._output_port is None):
         ports = self._sampler._client.get_ports(
           name_pattern=self._output.name+':.*',
           flags=jackpatch.JackPortIsOutput)
-        if (len(ports) > 0):
-          self._output.ports = ports
-          self._output_ports = self._output.ports
+        if (len(ports) == 1):
+          self._output.port = ports[0]
+        elif (len(ports) >= 2):
+          self._output.port = tuple(ports[0:2])
+        self._output_port = self._output.port
       self.on_change()
     else:
       self._sampler.warn('failed to set channel output: %s' % str(result))
