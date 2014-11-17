@@ -3,16 +3,16 @@ import math
 from PySide.QtCore import *
 from PySide.QtGui import *
 
-import core
+import view
 
 # make a view that displays a list of midi devices
-class DeviceListView(core.ModelView):
+class DeviceListView(view.ModelView):
   def __init__(self, devices, require_input=False, require_output=False, 
                      parent=None):
-    core.ModelView.__init__(self, model=devices, parent=parent)
+    view.ModelView.__init__(self, model=devices, parent=parent)
     self.require_input = require_input
     self.require_output = require_output
-    self.device_layout = core.VBoxLayout(self, devices, self.view_for_device)
+    self.device_layout = view.VBoxLayout(self, devices, self.view_for_device)
     self.device_layout.spacing = 6.0
   def view_for_device(self, device):
     if ((self.require_input) and (not device.has_input)):
@@ -34,13 +34,13 @@ class DeviceListView(core.ModelView):
     self.device_layout.setRect(self.boundingRect())
 
 # make a view that displays an input device
-class DeviceView(core.NamedModelView):
+class DeviceView(view.NamedModelView):
   def __init__(self, device, parent=None):
-    core.NamedModelView.__init__(self, model=device, parent=parent)
+    view.NamedModelView.__init__(self, model=device, parent=parent)
   @property
   def device(self):
     return(self._model)
   def layout(self):
-    core.NamedModelView.layout(self)
+    view.NamedModelView.layout(self)
     # fade the view if the device is unplugged
     self.setOpacity(1.0 if self.device.is_plugged else 0.5)

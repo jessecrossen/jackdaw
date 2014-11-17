@@ -6,10 +6,9 @@ import yaml
 from PySide.QtCore import *
 from PySide.QtGui import *
 
-from models import doc, controllers
-import views.doc
-from views.core import ViewManager
-# from midi import inputs, sampler
+import doc
+from doc_view import DocumentView
+from view import ViewManager
 
 class DocumentWindow(QMainWindow):
   def __init__(self, app=None):
@@ -65,18 +64,8 @@ class DocumentWindow(QMainWindow):
     # dump the undo stack and clear the selection
     ViewManager.reset()
   def attach(self):
-    # make a mixer and transport
-    self.mixer = controllers.Mixer(self.document.tracks)
-#    self.control_surface = inputs.NanoKONTROL2(
-#      transport=self.document.transport, mixer=self.mixer)
-    # add record/playback controllers
-#    self.recorder = controllers.Recorder(
-#      transport=self.document.transport)
-#    self.player = controllers.Player(
-#      transport=self.document.transport,
-#      output_patch_bay=self.document.output_patch_bay)
     # make a view for the document
-    self.document_view = views.doc.DocumentView(parent=self,
+    self.document_view = DocumentView(parent=self,
       document=self.document)
     # add it to the document
     self.stack.addWidget(self.document_view)

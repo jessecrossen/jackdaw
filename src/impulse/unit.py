@@ -1,7 +1,7 @@
 import jackpatch
 
-from ..common import serializable
-from core import Model, ModelList
+import serializable
+from model import Model, ModelList
 
 from PySide.QtCore import *
 

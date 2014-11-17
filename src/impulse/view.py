@@ -3,8 +3,8 @@ import math
 from PySide.QtCore import *
 from PySide.QtGui import *
 
-from ..common import observable
-from ..models.core import Selection
+import observable
+from model import Selection
 import state
 
 # make a base class for views

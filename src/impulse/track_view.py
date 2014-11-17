@@ -3,17 +3,17 @@ import math
 from PySide.QtCore import *
 from PySide.QtGui import *
 
-import core
-from ..models.doc import ViewScale
-from ..models.core import Selection
-import block
+import view
+from doc import ViewScale
+from model import Selection
+from block_view import BlockView
 
 # make a view that displays a list of tracks
-class TrackListView(core.BoxSelectable, core.Interactive, core.ModelView):
+class TrackListView(view.BoxSelectable, view.Interactive, view.ModelView):
   def __init__(self, tracks, transport, view_scale=None, parent=None):
-    core.ModelView.__init__(self, model=tracks, parent=parent)
-    core.Interactive.__init__(self)
-    core.BoxSelectable.__init__(self)
+    view.ModelView.__init__(self, model=tracks, parent=parent)
+    view.Interactive.__init__(self)
+    view.BoxSelectable.__init__(self)
     self.scrollbar_proxy = None
     self.scrollbar = None
     if (view_scale is None):
@@ -21,11 +21,11 @@ class TrackListView(core.BoxSelectable, core.Interactive, core.ModelView):
     self.view_scale = view_scale
     self.view_scale.add_observer(self.update_scrollbar)
     self.transport = transport
-    self.toggle_layout = core.VBoxLayout(self, tracks,
+    self.toggle_layout = view.VBoxLayout(self, tracks,
       lambda t: TrackToggleView(t, view_scale=view_scale))
-    self.pitch_key_layout = core.VBoxLayout(self, tracks,
+    self.pitch_key_layout = view.VBoxLayout(self, tracks,
       lambda t: PitchKeyView(t, view_scale=view_scale))
-    self.track_layout = core.VBoxLayout(self, tracks,
+    self.track_layout = view.VBoxLayout(self, tracks,
       lambda t: TrackView(t, view_scale=view_scale))
     self.pitch_key_layout.spacing = self.view_scale.track_spacing()
     self.track_layout.spacing = self.view_scale.track_spacing()
@@ -110,9 +110,9 @@ class TrackListView(core.BoxSelectable, core.Interactive, core.ModelView):
     return(self._model)
 
 # an overlay for a track list that shows the state of the transport
-class TransportView(core.ModelView):
+class TransportView(view.ModelView):
   def __init__(self, transport, view_scale=None, parent=None):
-    core.ModelView.__init__(self, model=transport, parent=parent)
+    view.ModelView.__init__(self, model=transport, parent=parent)
     self.view_scale = view_scale
     self.view_scale.add_observer(self.update)
   @property
@@ -135,9 +135,9 @@ class TransportView(core.ModelView):
       qp.drawLine(QPointF(x, 0.0), QPointF(x, height))
 
 # do layout of blocks in a track
-class TrackLayout(core.ListLayout):
+class TrackLayout(view.ListLayout):
   def __init__(self, *args, **kwargs):
-    core.ListLayout.__init__(self, *args, **kwargs)
+    view.ListLayout.__init__(self, *args, **kwargs)
   @property
   def track(self):
     return(self._items)
@@ -154,16 +154,16 @@ class TrackLayout(core.ListLayout):
       view.setRect(QRectF(x, y, w, h))
 
 # show a track
-class TrackView(core.ModelView):
+class TrackView(view.ModelView):
   def __init__(self, track, view_scale=None, parent=None):
-    core.ModelView.__init__(self, model=track, parent=parent)
+    view.ModelView.__init__(self, model=track, parent=parent)
     if (view_scale is None):
       view_scale = ViewScale()
     self.view_scale = view_scale
     self.view_scale.add_observer(self.on_scale)
     # add a layout for the blocks
     self.block_layout = TrackLayout(self, track, 
-      lambda b: block.BlockView(b, track=track))
+      lambda b: BlockView(b, track=track))
     self.on_scale()
   @property
   def track(self):
@@ -176,7 +176,7 @@ class TrackView(core.ModelView):
     self.block_layout.setTransform(t)
   # provide a height for layout in the parent
   def rect(self):
-    r = core.ModelView.rect(self)
+    r = view.ModelView.rect(self)
     r.setHeight(self.view_scale.height_of_track(self.track))
     return(r)
   # update the placement of the layout
@@ -204,9 +204,9 @@ class TrackView(core.ModelView):
     self.block_layout.setOpacity(block_opacity)
 
 # a view to show arm/mute/solo buttons for the track
-class TrackToggleView(core.ModelView):
+class TrackToggleView(view.ModelView):
   def __init__(self, track, view_scale, parent=None):
-    core.ModelView.__init__(self, model=track, parent=parent)
+    view.ModelView.__init__(self, model=track, parent=parent)
     self.view_scale = view_scale
     self.view_scale.add_observer(self.update)
     self.spacing = 4
@@ -215,7 +215,7 @@ class TrackToggleView(core.ModelView):
     self.solo_button = None
     self.button_proxies = list()
   def rect(self):
-    r = core.ModelView.rect(self)
+    r = view.ModelView.rect(self)
     r.setHeight(self.view_scale.height_of_track(self.track))
     return(r)
   def layout(self):
@@ -293,9 +293,9 @@ class TrackToggleView(core.ModelView):
     return(self._model)
 
 # show an editable label for a pitch on the track
-class PitchNameView(core.EditableLabel):
+class PitchNameView(view.EditableLabel):
   def __init__(self, track, pitch, parent=None):
-    core.EditableLabel.__init__(self, parent)
+    view.EditableLabel.__init__(self, parent)
     # link to the track and index
     self._track = track
     self._pitch = None
@@ -329,10 +329,10 @@ class PitchNameView(core.EditableLabel):
     return(s)
 
 # show names for the pitches on a track
-class PitchKeyView(core.ModelView):
+class PitchKeyView(view.ModelView):
   SPACING = 6.0
   def __init__(self, track, view_scale=None, parent=None):
-    core.ModelView.__init__(self, model=track, parent=parent)
+    view.ModelView.__init__(self, model=track, parent=parent)
     if (view_scale is None):
       view_scale = ViewScale()
     self.view_scale = view_scale
@@ -343,7 +343,7 @@ class PitchKeyView(core.ModelView):
     return(self._model)
   # provide a height for layout in the parent
   def rect(self):
-    r = core.ModelView.rect(self)
+    r = view.ModelView.rect(self)
     r.setHeight(self.view_scale.height_of_track(self.track))
     return(r)
   def layout(self):
@@ -352,7 +352,7 @@ class PitchKeyView(core.ModelView):
     h = self.view_scale.pitch_height
     # make a view for the track name
     if (not self.track_name_proxy):
-      self.track_name_proxy = self.scene().addWidget(core.NameLabel(self.track))
+      self.track_name_proxy = self.scene().addWidget(view.NameLabel(self.track))
       self.track_name_proxy.setParentItem(self)
       self.track_name_proxy.setRotation(-90)
     name_view = self.track_name_proxy.widget()
@@ -369,9 +369,9 @@ class PitchKeyView(core.ModelView):
         proxy = self.pitch_view_proxies[i]
         proxy.widget().pitch = pitch
       else:
-        view = PitchNameView(track=self.track, pitch=pitch)
-        view.editingFinished.connect(self.request_resize)
-        proxy = self.scene().addWidget(view)
+        name_view = PitchNameView(track=self.track, pitch=pitch)
+        name_view.editingFinished.connect(self.request_resize)
+        proxy = self.scene().addWidget(name_view)
         proxy.setParentItem(self)
         self.pitch_view_proxies.append(proxy)
       proxy.widget().setFixedHeight(self.view_scale.pitch_height)

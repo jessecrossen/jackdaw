@@ -1,19 +1,18 @@
- 
 import math
 
 from PySide.QtCore import *
 from PySide.QtGui import *
 
-import core
+import view
 
 # make a view that displays a list of sampler instruments
-class InstrumentListView(core.ModelView):
+class InstrumentListView(view.ModelView):
   def __init__(self, instruments, require_input=False, require_output=False, 
                      parent=None):
-    core.ModelView.__init__(self, model=instruments, parent=parent)
+    view.ModelView.__init__(self, model=instruments, parent=parent)
     self.require_input = require_input
     self.require_output = require_output
-    self.instrument_layout = core.VBoxLayout(self, instruments, 
+    self.instrument_layout = view.VBoxLayout(self, instruments, 
       lambda i: InstrumentView(i))
     self.instrument_layout.spacing = 6.0
   @property
@@ -30,9 +29,9 @@ class InstrumentListView(core.ModelView):
     self.instrument_layout.setRect(self.boundingRect())
 
 # make a view that displays a sampler instrument
-class InstrumentView(core.NamedModelView):
+class InstrumentView(view.NamedModelView):
   def __init__(self, instrument, parent=None):
-    core.NamedModelView.__init__(self, model=instrument, parent=parent)
+    view.NamedModelView.__init__(self, model=instrument, parent=parent)
   @property
   def instrument(self):
     return(self._model)

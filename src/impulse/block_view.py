@@ -3,17 +3,17 @@ import math
 from PySide.QtCore import *
 from PySide.QtGui import *
 
-from ..common import observable
-import core
-from ..models.core import Selection
-from ..models.doc import ViewScale
+import observable
+import view
+from model import Selection
+from doc import ViewScale
 
 # represent a block of events on a track
-class BlockView(core.BoxSelectable, core.TimeDraggable, core.ModelView):
+class BlockView(view.BoxSelectable, view.TimeDraggable, view.ModelView):
   def __init__(self, block, track=None, parent=None):
-    core.ModelView.__init__(self, block, parent)
-    core.TimeDraggable.__init__(self)
-    core.BoxSelectable.__init__(self)
+    view.ModelView.__init__(self, block, parent)
+    view.TimeDraggable.__init__(self)
+    view.BoxSelectable.__init__(self)
     self._track = track
     self.note_layouts = list()
     self.repeat_view = BlockRepeatView(self.block.repeat, self)
@@ -95,11 +95,11 @@ class BlockView(core.BoxSelectable, core.TimeDraggable, core.ModelView):
     menu.popup(e.screenPos())
 
 # do layout for notes in a block
-class NoteLayout(core.ListLayout):
+class NoteLayout(view.ListLayout):
   def __init__(self, parent, notes, track):
     self._track = track
     self._track.add_observer(self.layout)
-    core.ListLayout.__init__(self, parent, notes, self.note_view_for_event)
+    view.ListLayout.__init__(self, parent, notes, self.note_view_for_event)
   def note_view_for_event(self, event):
     try:
       p = event.pitch
@@ -121,18 +121,18 @@ class NoteLayout(core.ListLayout):
       view.setRect(QRectF(note.time, y, note.duration, 1.0))
 
 # represent a note event in a block
-class NoteView(core.TimeDraggable, core.PitchDraggable, core.ModelView):
+class NoteView(view.TimeDraggable, view.PitchDraggable, view.ModelView):
   RADIUS = 2.0
   def __init__(self, note, parent=None):
-    core.ModelView.__init__(self, note, parent)
-    core.TimeDraggable.__init__(self)
-    core.PitchDraggable.__init__(self)
+    view.ModelView.__init__(self, note, parent)
+    view.TimeDraggable.__init__(self)
+    view.PitchDraggable.__init__(self)
   @property
   def note(self):
     return(self._model)
   # ensure the note always has some width
   def rect(self):
-    r = core.ModelView.rect(self)
+    r = view.ModelView.rect(self)
     if (r.width() < 0.001):
       r.setWidth(0.001)
     sr = self.mapRectToScene(r)
@@ -162,11 +162,11 @@ class NoteView(core.TimeDraggable, core.PitchDraggable, core.ModelView):
     qp.drawRoundedRect(QRectF(0.0, 0.0, width, height), rx, ry)
 
 # represent the start of a block
-class BlockStartView(core.TimeDraggable, core.ModelView):
+class BlockStartView(view.TimeDraggable, view.ModelView):
   WIDTH = 6.0
   def __init__(self, model, parent=None):
-    core.ModelView.__init__(self, model, parent)
-    core.TimeDraggable.__init__(self)
+    view.ModelView.__init__(self, model, parent)
+    view.TimeDraggable.__init__(self)
   def boundingRect(self):
     r = self.mapRectFromScene(QRectF(0.0, 0.0, self.WIDTH, 0.0))
     return(QRectF(0.0, 0.0, r.width(), self.rect().height()))
@@ -185,11 +185,11 @@ class BlockStartView(core.TimeDraggable, core.ModelView):
       QPointF(w, h), QPointF(0.0, h)
     ]))
 # represent the end of a block
-class BlockEndView(core.TimeDraggable, core.ModelView):
+class BlockEndView(view.TimeDraggable, view.ModelView):
   WIDTH = 6.0
   def __init__(self, model, parent=None):
-    core.ModelView.__init__(self, model, parent)
-    core.TimeDraggable.__init__(self)
+    view.ModelView.__init__(self, model, parent)
+    view.TimeDraggable.__init__(self)
   def boundingRect(self):
     r = self.mapRectFromScene(QRectF(0.0, 0.0, self.WIDTH, 0.0))
     return(QRectF(- r.width(), 0.0, r.width(), self.rect().height()))
@@ -208,11 +208,11 @@ class BlockEndView(core.TimeDraggable, core.ModelView):
       QPointF(- (2.0 * px), 2.0 * py), QPointF(x, 1.0 * py)
     ]))
 # represent the repeat length of a block
-class BlockRepeatView(core.TimeDraggable, core.ModelView):
+class BlockRepeatView(view.TimeDraggable, view.ModelView):
   WIDTH = 12.0
   def __init__(self, model, parent=None):
-    core.ModelView.__init__(self, model, parent)
-    core.TimeDraggable.__init__(self)
+    view.ModelView.__init__(self, model, parent)
+    view.TimeDraggable.__init__(self)
   def boundingRect(self):
     r = self.mapRectFromScene(QRectF(0.0, 0.0, 1.0, 0.0))
     px = r.width()
@@ -274,12 +274,12 @@ class BlockMenu(QMenu):
   def on_join(self, *args):
     blocks = self.get_selected_blocks()
     blocks.add(self.block)
-    core.ViewManager.begin_action((blocks, self.tracks))
+    view.ViewManager.begin_action((blocks, self.tracks))
     if (len(blocks) > 1):
       self.block.join(blocks, tracks=self.tracks)
     else:
       self.block.join_repeats()
-    core.ViewManager.end_action()
+    view.ViewManager.end_action()
   # split a block at selected note boundaries
   def on_split(self, *args):
     current_track = None
@@ -289,9 +289,9 @@ class BlockMenu(QMenu):
         break
     # if the block has multiple repeats, split the repeats
     if (self.block.events.duration < self.block.duration):
-      core.ViewManager.begin_action(track)
+      view.ViewManager.begin_action(track)
       self.block.split_repeats(track=current_track)
-      core.ViewManager.end_action()
+      view.ViewManager.end_action()
     else:
       times = [ ]
       # get selected events in the block
@@ -313,8 +313,8 @@ class BlockMenu(QMenu):
             was_selected = is_selected
       # if there are times to split on, we can split
       if (len(times) > 0):
-        core.ViewManager.begin_action((self.block, current_track))
+        view.ViewManager.begin_action((self.block, current_track))
         self.block.split(times, track=current_track)
-        core.ViewManager.end_action()
+        view.ViewManager.end_action()
 
 

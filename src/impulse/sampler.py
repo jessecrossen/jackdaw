@@ -10,10 +10,9 @@ import jackpatch
 
 from PySide.QtCore import *
 
-import core
-import outputs
-from ..common import observable, serializable
-from ..models import unit
+import observable
+import serializable
+import unit
 
 # provide extensions for sample instruments
 EXTENSIONS = ('gig', 'sfz', 'sf2')

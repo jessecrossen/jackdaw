@@ -5,15 +5,15 @@ import math
 from PySide.QtCore import *
 from PySide.QtGui import *
 
-from ..models import unit
+import unit
 
-import core
-import track
-import button
-import device
-import sampler
+import view
+from track_view import TrackListView
+from button_view import DeleteButton, AddButton, DragButton, ResizeButton
+from midi_view import DeviceListView
+from sampler_view import InstrumentListView
 
-class UnitView(core.ModelView):
+class UnitView(view.ModelView):
   # the margin to leave around the content
   MARGIN = 10.0
   # the height of the bar at the top, containing the title and buttons
@@ -21,7 +21,7 @@ class UnitView(core.ModelView):
   # the height of the bar at the bottom, containing the add and resize buttons
   BOTTOM_HEIGHT = 24.0
   def __init__(self, *args, **kwargs):
-    core.ModelView.__init__(self, *args, **kwargs)
+    view.ModelView.__init__(self, *args, **kwargs)
     self.title_proxy = None
     self._size = QSizeF(60.0, 40.0)
     self._content = None
@@ -49,7 +49,7 @@ class UnitView(core.ModelView):
     pass
   # manage the rect to keep it centered on the content size
   def rect(self):
-    r = core.ModelView.rect(self)
+    r = view.ModelView.rect(self)
     if (self._content):
       cr = self._content.boundingRect()
       m = self.MARGIN
@@ -67,7 +67,7 @@ class UnitView(core.ModelView):
     bottom_height = self.BOTTOM_HEIGHT
     # add a title label at the top
     if ((self.scene()) and (not self.title_proxy)):
-      title_view = core.NameLabel(self.unit)
+      title_view = view.NameLabel(self.unit)
       self.title_proxy = self.scene().addWidget(title_view)
       self.title_proxy.setParentItem(self)
     r = self.boundingRect()
@@ -81,7 +81,7 @@ class UnitView(core.ModelView):
     # make a button to delete the unit
     if (self.allow_delete):
       if ((self.scene()) and (not self._delete_button)):
-        self._delete_button = button.DeleteButton(self)
+        self._delete_button = DeleteButton(self)
         self._delete_button.clicked.connect(self.on_delete)
       if (self._delete_button):
         self._delete_button.setRect(
@@ -92,7 +92,7 @@ class UnitView(core.ModelView):
     # make a button to add to the unit
     if (self.allow_add):
       if ((self.scene()) and (not self._add_button)):
-        self._add_button = button.AddButton(self)
+        self._add_button = AddButton(self)
         self._add_button.clicked.connect(self.on_add)
       if (self._add_button):
         self._add_button.setRect(
@@ -103,14 +103,14 @@ class UnitView(core.ModelView):
       self._add_button = None
     # make a button to drag the unit
     if ((self.scene()) and (not self._drag_button)):
-      self._drag_button = button.DragButton(self, self.unit)
+      self._drag_button = DragButton(self, self.unit)
     if (self._drag_button):
       self._drag_button.setRect(
         QRectF(r.left(), r.top(), top_height, top_height))
     # make a button to resize the unit
     if ((self.allow_resize_width) or (self.allow_resize_height)):
       if ((self.scene()) and (not self._resize_button)):
-        self._resize_button = button.ResizeButton(self, 
+        self._resize_button = ResizeButton(self, 
           target=self.unit,
           horizontal=self.allow_resize_width, 
           vertical=self.allow_resize_height)
@@ -146,15 +146,15 @@ class UnitView(core.ModelView):
     qp.drawRoundedRect(r, 4.0, 4.0)
 
 # show a connection between two ports
-class ConnectionView(core.Selectable, core.ModelView):
+class ConnectionView(view.Selectable, view.ModelView):
   # the radius of the pluggable ends of the wire
   RADIUS = 3.5
   # the minimum distance to offset the control points so that the 
   #  wire makes smooth curves into its endpoints
   CURVE = 40.0
   def __init__(self, *args, **kwargs):
-    core.ModelView.__init__(self, *args, **kwargs)
-    core.Selectable.__init__(self)
+    view.ModelView.__init__(self, *args, **kwargs)
+    view.Selectable.__init__(self)
     self.allow_multiselect = False
     self._source_view = None
     self._sink_view = None
@@ -163,7 +163,7 @@ class ConnectionView(core.Selectable, core.ModelView):
   def destroy(self):
     self._source_view = None
     self._sink_view = None
-    core.ModelView.destroy(self)
+    view.ModelView.destroy(self)
   @property
   def connection(self):
     return(self._model)
@@ -360,7 +360,7 @@ class ConnectionView(core.Selectable, core.ModelView):
       self.destroy()
 
 # make a base class for input/output ports
-class UnitPortView(core.Interactive, core.ModelView):
+class UnitPortView(view.Interactive, view.ModelView):
   # a signal to be sent if the item changes its position
   moved = Signal()
   # the radius of the open ring at the end of the port
@@ -368,8 +368,8 @@ class UnitPortView(core.Interactive, core.ModelView):
   # the distance from the base of the port to the center of its ring
   OFFSET = RADIUS * 3.0
   def __init__(self, *args, **kwargs):
-    core.ModelView.__init__(self, *args, **kwargs)
-    core.Interactive.__init__(self)
+    view.ModelView.__init__(self, *args, **kwargs)
+    view.Interactive.__init__(self)
     self._dragging_connection_view = None
     self.setFlag(QGraphicsItem.ItemSendsScenePositionChanges, True)
   @property
@@ -383,7 +383,7 @@ class UnitPortView(core.Interactive, core.ModelView):
   def itemChange(self, change, value):
     if (change == QGraphicsItem.ItemScenePositionHasChanged):
       self.moved.emit()
-    return(core.ModelView.itemChange(self, change, value))
+    return(view.ModelView.itemChange(self, change, value))
   # do generalized painting for a port
   def drawPort(self, qp, base, end):
     qp.setBrush(Qt.NoBrush)
@@ -461,7 +461,7 @@ class UnitPortView(core.Interactive, core.ModelView):
   # when added to the scene, automatically add views for any 
   #  connections to or from the target if there are any
   def on_added_to_scene(self):
-    core.ModelView.on_added_to_scene(self)
+    view.ModelView.on_added_to_scene(self)
     workspace_view = self.parentItemWithClass(WorkspaceView)
     if (workspace_view):
       patch_bay = workspace_view.patch_bay
@@ -517,14 +517,14 @@ class UnitOutputView(UnitPortView):
       return(None)
 
 # lay out input/output ports for a unit
-class PortListLayout(core.ListLayout):
+class PortListLayout(view.ListLayout):
   def __init__(self, *args, **kwargs):
     def y_of_view(rect, view, i, view_count):
       y = rect.y()
       h = rect.height() / view_count
       return(y + ((float(i) + 0.5) * h))
     self.y_of_view = y_of_view
-    core.ListLayout.__init__(self, *args, **kwargs)
+    view.ListLayout.__init__(self, *args, **kwargs)
   def base_x(self):
     return(0.0)
   def layout(self):
@@ -546,9 +546,9 @@ class OutputListLayout(PortListLayout):
     return(self._rect.right() + UnitPortView.OFFSET)
 
 # show a workspace with a list of units
-class WorkspaceView(core.ModelView):
+class WorkspaceView(view.ModelView):
   def __init__(self, doc, parent=None):
-    core.ModelView.__init__(self, model=doc.units, parent=parent)
+    view.ModelView.__init__(self, model=doc.units, parent=parent)
     # add a sub-item for connections to keep them behind the units
     #  for visual and interaction purposes
     self.connection_layer = QGraphicsRectItem(self)
@@ -565,7 +565,7 @@ class WorkspaceView(core.ModelView):
         item.destroy()
       except AttributeError:
         item.setParentItem(None)
-    core.ModelView.destroy(self)
+    view.ModelView.destroy(self)
   @property
   def units(self):
     return(self._model)
@@ -636,7 +636,7 @@ class WorkspaceView(core.ModelView):
         self._index_port_views(child, input_map, output_map)
     
 # lay units out on the workspace
-class UnitListLayout(core.ListLayout):
+class UnitListLayout(view.ListLayout):
   def layout(self):
     y = self._rect.y()
     x = self._rect.x()
@@ -653,7 +653,7 @@ class UnitListLayout(core.ListLayout):
 class MultitrackUnitView(UnitView):
   def __init__(self, *args, **kwargs):
     UnitView.__init__(self, *args, **kwargs)
-    self._content = track.TrackListView(
+    self._content = TrackListView(
             tracks=self.unit.tracks,
             transport=self.unit.transport, 
             view_scale=self.unit.view_scale)
@@ -694,7 +694,7 @@ class MultitrackUnitView(UnitView):
 class DeviceListUnitView(UnitView):
   def __init__(self, *args, **kwargs):
     UnitView.__init__(self, *args, **kwargs)
-    self._content = device.DeviceListView(
+    self._content = DeviceListView(
       devices=self.unit.devices, 
       require_input=self.unit.require_input,
       require_output=self.unit.require_output)
@@ -709,7 +709,7 @@ class DeviceListUnitView(UnitView):
       if (self.unit.require_input):
         return(None)
       # if the unit has no input, return a placeholder
-      return(core.ModelView(device))
+      return(view.ModelView(device))
     if ((self.unit.require_output) and (not device.has_output)):
       return(None)
     return(UnitInputView(device))
@@ -718,7 +718,7 @@ class DeviceListUnitView(UnitView):
       if (self.unit.require_output):
         return(None)
       # if the unit has no output, return a placeholder
-      return(core.ModelView(device))
+      return(view.ModelView(device))
     if ((self.unit.require_input) and (not device.has_input)):
       return(None)
     return(UnitOutputView(device))
@@ -731,7 +731,7 @@ class DeviceListUnitView(UnitView):
 class InstrumentListUnitView(UnitView):
   def __init__(self, *args, **kwargs):
     UnitView.__init__(self, *args, **kwargs)
-    self._content = sampler.InstrumentListView(
+    self._content = InstrumentListView(
       instruments=self.unit.instruments)
     self._content.setParentItem(self)
     # add inputs and outputs for the instruments

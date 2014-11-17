@@ -1,4 +1,4 @@
-from ..common import observable
+import observable
 
 # make a singleton for managing the selection
 class SelectionSingleton(observable.Object):

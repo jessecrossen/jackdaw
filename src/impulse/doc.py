@@ -7,10 +7,11 @@ import jackpatch
 
 from PySide.QtCore import Signal, QTimer
 
-from ..common import observable, serializable
-from core import Model, ModelList
+import observable
+import serializable
+from model import Model, ModelList
 import unit
-from ..midi.core import DeviceAdapterList, InputHandler
+from midi import DeviceAdapterList, InputHandler
 
 # represents a single note event with time, pitch, velocity, and duration
 #  - time and duration are in seconds

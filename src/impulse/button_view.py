@@ -3,16 +3,16 @@ import math
 from PySide.QtCore import *
 from PySide.QtGui import *
 
-import core
+import view
 
 # implement a simple flat button with an icon
-class ButtonView(core.Interactive, core.View):
+class ButtonView(view.Interactive, view.View):
   # a signal that gets fired when the button is clicked
   clicked = Signal()
   # the amount to inset the icon from the edge of the button
   def __init__(self, *args, **kwargs):
-    core.View.__init__(self, *args, **kwargs)
-    core.Interactive.__init__(self)
+    view.View.__init__(self, *args, **kwargs)
+    view.Interactive.__init__(self)
     self.setAcceptHoverEvents(True)
     self._hovering = False
   # convert clicks to a signal
@@ -178,10 +178,10 @@ class DragButton(ButtonView):
   # change the cursor when the mouse is down
   def mousePressEvent(self, event):
     self.setCursor(Qt.ClosedHandCursor)
-    core.Interactive.mousePressEvent(self, event)
+    view.Interactive.mousePressEvent(self, event)
   def mouseReleaseEvent(self, event):
     self.setCursor(Qt.OpenHandCursor)
-    core.Interactive.mouseReleaseEvent(self, event)
+    view.Interactive.mouseReleaseEvent(self, event)
   # handle dragging
   def on_drag_start(self, event):
     self._start_pos = self._target.pos()

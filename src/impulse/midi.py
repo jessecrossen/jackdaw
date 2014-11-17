@@ -5,8 +5,9 @@ import yaml
 
 from PySide.QtCore import *
 
-from ..common import observable, serializable
-from ..models import unit
+import observable
+import serializable
+import unit
 
 # acts as a base class for MIDI device adapters
 class DeviceAdapter(unit.Source, unit.Sink, observable.Object):

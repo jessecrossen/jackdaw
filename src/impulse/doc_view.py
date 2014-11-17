@@ -1,11 +1,9 @@
 from PySide.QtCore import *
 from PySide.QtGui import *
 
-import core
-import track
-import workspace
-from ..models import unit
-from ..midi import sampler
+from workspace_view import WorkspaceView
+import unit
+import sampler
 
 class DocumentView(QGraphicsView):
   def __init__(self, document, parent=None):
@@ -17,7 +15,7 @@ class DocumentView(QGraphicsView):
     # draw the background like a plain window background
     self.setBackgroundBrush(QPalette().brush(QPalette.Normal, QPalette.Window))
     # add a view of the document workspace
-    self.workspace = workspace.WorkspaceView(document)
+    self.workspace = WorkspaceView(document)
     self.scene.addItem(self.workspace)
   def destroy(self):
     self.workspace.destroy()
