@@ -4,9 +4,11 @@ from PySide.QtCore import *
 from PySide.QtGui import *
 
 import view
+import doc
 from doc import ViewScale
 from model import Selection
 from block_view import BlockView
+import unit_view
 
 # make a view that displays a list of tracks
 class TrackListView(view.BoxSelectable, view.Interactive, view.ModelView):
@@ -397,3 +399,46 @@ class PitchKeyView(view.ModelView):
     while (node):
       node.layout()
       node = node.parentItem()
+      
+# make a unit view containing a list of tracks
+class MultitrackUnitView(unit_view.UnitView):
+  def __init__(self, *args, **kwargs):
+    unit_view.UnitView.__init__(self, *args, **kwargs)
+    self._content = TrackListView(
+            tracks=self.unit.tracks,
+            transport=self.unit.transport, 
+            view_scale=self.unit.view_scale)
+    self._content.setParentItem(self)
+    # add inputs and outputs to the track
+    self._input_layout = unit_view.InputListLayout(self, self.unit.tracks,
+      lambda t: unit_view.UnitInputView(t))
+    self._output_layout = unit_view.OutputListLayout(self, self.unit.tracks,
+      lambda t: unit_view.UnitOutputView(t))
+    self._input_layout.y_of_view = self.y_of_track
+    self._output_layout.y_of_view = self.y_of_track
+    # allow horizontal resizing
+    self.allow_resize_width = True
+    # allow tracks to be added
+    self.allow_add = True
+  def on_add(self):
+    self.unit.tracks.add_track()
+  def layout(self):
+    size = self._content.minimumSizeHint()
+    self.unit.width = max(size.width(), self.unit.width)
+    self._content.setRect(QRectF(0, 0, self.unit.width, size.height()))
+    unit_view.UnitView.layout(self)
+  def y_of_track(self, rect, view, index, view_count):
+    y = rect.y()
+    scale = self._content.view_scale
+    spacing = scale.track_spacing()
+    i = 0
+    for track in self.unit.tracks:
+      h = scale.height_of_track(track)
+      if (i >= index):
+        y += (h / 2.0)
+        return(y)
+      y += h + spacing
+      i += 1
+    return(y)
+# register the view for placement on the workspace
+unit_view.UnitView.register_unit_view(doc.MultitrackUnit, MultitrackUnitView)

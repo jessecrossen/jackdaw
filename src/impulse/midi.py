@@ -138,6 +138,23 @@ class DeviceAdapterList(observable.List):
     })
 serializable.add(DeviceAdapterList)
 
+# make a unit that represents a list of MIDI devices
+class DeviceListUnit(unit.Unit):
+  def __init__(self, devices, require_input=False, require_output=False, 
+               *args, **kwargs):
+    unit.Unit.__init__(self, *args, **kwargs)
+    self.devices = devices
+    self.require_input = require_input
+    self.require_output = require_output
+    self.devices.add_observer(self.on_change)
+  def serialize(self):
+    obj = unit.Unit.serialize(self)
+    obj['devices'] = self.devices
+    obj['require_input'] = self.require_input
+    obj['require_output'] = self.require_output
+    return(obj)
+serializable.add(DeviceListUnit)
+
 # handles input from MIDI devices
 class InputHandler(observable.Object):
   def __init__(self, port, target):

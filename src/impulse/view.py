@@ -53,6 +53,15 @@ class View(QGraphicsObject):
         break
       node = node.parentItem()
     return(None)
+  # get the nearest item in the parent chain that has the given attribute
+  def parentItemWithAttribute(self, attribute):
+    node = self.parentItem()
+    while (node):
+      if (hasattr(node, attribute)):
+        return(node)
+        break
+      node = node.parentItem()
+    return(None)
   # make a qt-style getter/setter for the area of the item
   def rect(self):
     pos = self.pos()

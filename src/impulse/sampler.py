@@ -167,6 +167,18 @@ class InstrumentList(observable.List):
     })
 serializable.add(InstrumentList)
 
+# make a unit that represents a list of sampler instruments
+class InstrumentListUnit(unit.Unit):
+  def __init__(self, instruments, *args, **kwargs):
+    unit.Unit.__init__(self, *args, **kwargs)
+    self.instruments = instruments
+    self.instruments.add_observer(self.on_change)
+  def serialize(self):
+    obj = unit.Unit.serialize(self)
+    obj['instruments'] = self.instruments
+    return(obj)
+serializable.add(InstrumentListUnit)
+
 # manage a MIDI input device in LinuxSampler
 class SamplerInput(observable.Object):
   def __init__(self, sampler=None, name=None):

@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+
 from PySide.QtCore import *
 from PySide.QtGui import *
 
@@ -67,7 +69,7 @@ class DocumentMenu(QMenu):
     self.document = document
     self.scene_pos = scene_pos
     add_menu = self.addMenu('Add')
-    add_sampler_action = QAction('Sampler', self)
+    add_sampler_action = QAction('Sampler Instrument…', self)
     add_sampler_action.setStatusTip('Add a sampler unit')
     add_sampler_action.triggered.connect(self.on_add_sampler)
     add_menu.addAction(add_sampler_action)
@@ -78,7 +80,7 @@ class DocumentMenu(QMenu):
     if (len(path) == 0): return
     instrument = sampler.Instrument(path=path)
     instruments = sampler.InstrumentList([ instrument ])
-    self.document.units.append(unit.InstrumentListUnit(
+    self.document.units.append(sampler.InstrumentListUnit(
         name='Sampler',
         instruments=instruments,
         x=self.scene_pos.x(),

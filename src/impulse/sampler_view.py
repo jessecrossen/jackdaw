@@ -3,7 +3,9 @@ import math
 from PySide.QtCore import *
 from PySide.QtGui import *
 
+import sampler
 import view
+import unit_view
 
 # make a view that displays a list of sampler instruments
 class InstrumentListView(view.ModelView):
@@ -35,3 +37,23 @@ class InstrumentView(view.NamedModelView):
   @property
   def instrument(self):
     return(self._model)
+
+# make a unit view containing a list of sampler instruments
+class InstrumentListUnitView(unit_view.UnitView):
+  def __init__(self, *args, **kwargs):
+    unit_view.UnitView.__init__(self, *args, **kwargs)
+    self._content = InstrumentListView(
+      instruments=self.unit.instruments)
+    self._content.setParentItem(self)
+    # add inputs and outputs for the instruments
+    self._input_layout = unit_view.InputListLayout(self, self.unit.instruments, 
+                                         lambda t: unit_view.UnitInputView(t))
+    self._output_layout = unit_view.OutputListLayout(self, self.unit.instruments, 
+                                           lambda t: unit_view.UnitOutputView(t))
+  def layout(self):
+    size = self._content.minimumSizeHint()
+    self._content.setRect(QRectF(0, 0, size.width(), size.height()))
+    unit_view.UnitView.layout(self)
+# register the view for placement on the workspace
+unit_view.UnitView.register_unit_view(
+  sampler.InstrumentListUnit, InstrumentListUnitView)

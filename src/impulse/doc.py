@@ -11,7 +11,7 @@ import observable
 import serializable
 from model import Model, ModelList
 import unit
-from midi import DeviceAdapterList, InputHandler
+import midi
 
 # represents a single note event with time, pitch, velocity, and duration
 #  - time and duration are in seconds
@@ -388,9 +388,9 @@ class Block(Model):
 serializable.add(Block)
 
 # interprets note and control channel messages and adds them to a track
-class TrackInputHandler(InputHandler):
+class TrackInputHandler(midi.InputHandler):
   def __init__(self, port, track, transport=None):
-    InputHandler.__init__(self, port=port, target=track)
+    midi.InputHandler.__init__(self, port=port, target=track)
     # listen to a transport so we know when we're recording
     self._transport = None
     self.transport = transport
@@ -728,6 +728,23 @@ class TrackList(ModelList):
     })
 serializable.add(TrackList)
 
+# make a unit that represents the track list of the document
+class MultitrackUnit(unit.Unit):
+  def __init__(self, tracks, view_scale, transport, *args, **kwargs):
+    unit.Unit.__init__(self, *args, **kwargs)
+    self.tracks = tracks
+    self.tracks.add_observer(self.on_change)
+    self.transport = transport
+    self.view_scale = view_scale
+    self.view_scale.add_observer(self.on_change)
+  def serialize(self):
+    obj = unit.Unit.serialize(self)
+    obj['tracks'] = self.tracks
+    obj['transport'] = self.transport
+    obj['view_scale'] = self.view_scale
+    return(obj)
+serializable.add(MultitrackUnit)
+
 # a transport to keep track of timepoints, playback, and recording
 class Transport(observable.Object):
   # regular init stuff
@@ -1019,18 +1036,18 @@ class Document(Model):
     self.view_scale = view_scale
     # devices
     if (devices is None):
-      devices = DeviceAdapterList()
+      devices = midi.DeviceAdapterList()
     self.devices = devices
     # a list of units on the workspace
     if (units is None):
       units = unit.UnitList()
-      units.append(unit.MultitrackUnit(
+      units.append(MultitrackUnit(
         name='Tracks',
         tracks=self.tracks, 
         width=400,
         view_scale=self.view_scale, 
         transport=self.transport))
-      units.append(unit.DeviceListUnit(
+      units.append(midi.DeviceListUnit(
         name='Inputs',
         devices=self.devices, 
         require_input=False,
