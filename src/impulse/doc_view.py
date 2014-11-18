@@ -69,7 +69,7 @@ class DocumentMenu(QMenu):
     self.document = document
     self.scene_pos = scene_pos
     add_menu = self.addMenu('Add')
-    add_sampler_action = QAction('Sampler Instrument…', self)
+    add_sampler_action = QAction('Sampler Instrument...', self)
     add_sampler_action.setStatusTip('Add a sampler unit')
     add_sampler_action.triggered.connect(self.on_add_sampler)
     add_menu.addAction(add_sampler_action)

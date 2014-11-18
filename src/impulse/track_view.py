@@ -3,8 +3,8 @@ import math
 from PySide.QtCore import *
 from PySide.QtGui import *
 
+import track
 import view
-import doc
 from doc import ViewScale
 from model import Selection
 from block_view import BlockView
@@ -441,4 +441,4 @@ class MultitrackUnitView(unit_view.UnitView):
       i += 1
     return(y)
 # register the view for placement on the workspace
-unit_view.UnitView.register_unit_view(doc.MultitrackUnit, MultitrackUnitView)
+unit_view.UnitView.register_unit_view(track.MultitrackUnit, MultitrackUnitView)
