@@ -534,6 +534,7 @@ class EditableLabel(QLineEdit):
     self.setAutoFillBackground(False)
     self.setStyleSheet("background-color:transparent")
     self.clickedToFocus = False
+    self.setContextMenuPolicy(Qt.NoContextMenu)
   # return a minimal size for the label
   def minimumSizeHint(self):
     s = QLineEdit.sizeHint(self)

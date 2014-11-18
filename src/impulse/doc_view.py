@@ -9,7 +9,7 @@ import sampler
 
 class DocumentView(QGraphicsView):
   def __init__(self, document, parent=None):
-    self.scene = QGraphicsScene()
+    self.scene = DocumentScene()
     QGraphicsView.__init__(self, self.scene, parent)
     self._document = document
     # enable antialiasing
@@ -19,6 +19,7 @@ class DocumentView(QGraphicsView):
     # add a view of the document workspace
     self.workspace = WorkspaceView(document)
     self.scene.addItem(self.workspace)
+    self.scene.workspace_view = self.workspace
   def destroy(self):
     self.workspace.destroy()
     self.workspace = None
@@ -56,32 +57,17 @@ class DocumentView(QGraphicsView):
   @property
   def can_zoom_out(self):
     return(self._document.view_scale.pixels_per_second > self.ZOOMS[0])
-  # show a context menu with document actions
-  def contextMenuEvent(self, e):
-    menu = DocumentMenu(parent=self, 
-                        document=self.document,
-                        scene_pos=self.mapToScene(e.pos()))
-    menu.exec_(e.globalPos())
 
-class DocumentMenu(QMenu):
-  def __init__(self, document, scene_pos, parent=None):
-    QMenu.__init__(self, parent)
-    self.document = document
-    self.scene_pos = scene_pos
-    add_menu = self.addMenu('Add')
-    add_sampler_action = QAction('Sampler Instrument...', self)
-    add_sampler_action.setStatusTip('Add a sampler unit')
-    add_sampler_action.triggered.connect(self.on_add_sampler)
-    add_menu.addAction(add_sampler_action)
-  # add a sampler
-  def on_add_sampler(self, *args):
-    (path, group) = QFileDialog.getOpenFileName(self,
-      "Open Project", "~", "Instrument Files (*.gig *.sfz *.sf2);;All Files (*.*)")
-    if (len(path) == 0): return
-    instrument = sampler.Instrument(path=path)
-    instruments = sampler.InstrumentList([ instrument ])
-    self.document.units.append(sampler.InstrumentListUnit(
-        name='Sampler',
-        instruments=instruments,
-        x=self.scene_pos.x(),
-        y=self.scene_pos.y()))
+class DocumentScene(QGraphicsScene):
+  def __init__(self, *args, **kwargs):
+    QGraphicsScene.__init__(self, *args, **kwargs)
+    self.workspace_view = None
+  def contextMenuEvent(self, e):
+    items = self.items(e.scenePos())
+    for item in items:
+      item.contextMenuEvent(e)
+      if (e.isAccepted()): return
+    # route clicks that land on nothing to the workspace itself
+    if (len(items) == 0):
+      if (self.workspace_view is not None):
+        self.workspace_view.contextMenuEvent(e)

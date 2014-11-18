@@ -9,13 +9,11 @@ import socket
 import jackpatch
 
 from PySide.QtCore import *
+from PySide.QtGui import QFileDialog
 
 import observable
 import serializable
 import unit
-
-# provide extensions for sample instruments
-EXTENSIONS = ('gig', 'sfz', 'sf2')
 
 # escape string literals for inclusion in LSCP commands
 def _escape(s):
@@ -33,6 +31,8 @@ def _escape(s):
 
 # manage a sampler-based instrument
 class Instrument(observable.Object, unit.Source, unit.Sink):
+  # the path to browse for instruments in
+  _instrument_dir = "~"
   def __init__(self, path=None, name='Instrument', sampler=None):
     observable.Object.__init__(self)
     unit.Source.__init__(self)
@@ -56,6 +56,26 @@ class Instrument(observable.Object, unit.Source, unit.Sink):
     if (self._channel is not None):
       self._sampler.release_channel(self._channel)
       self._channel = None
+  @classmethod
+  def path_from_browse(cls, dirpath=None):
+    if (dirpath is None):
+      dirpath = cls._instrument_dir
+    (path, group) = QFileDialog.getOpenFileName(None,
+      "Load Instrument", dirpath, 
+      "Instrument Files (*.gig *.sfz *.sf2);;All Files (*.*)")
+    # store the directory for the next browse
+    if (len(path) > 0):
+      cls._instrument_dir = os.path.dirname(path)
+    return(path)
+  @classmethod
+  def new_from_browse(cls):
+    path = cls.path_from_browse()
+    if (len(path) == 0): return(None)
+    return(cls(path=path))
+  def browse(self):
+    path = Instrument.path_from_browse(os.path.dirname(self.path))
+    if (len(path) == 0): return
+    self.path = path
   @property
   def name(self):
     return(self._name)
@@ -87,16 +107,17 @@ class Instrument(observable.Object, unit.Source, unit.Sink):
       self._path_loaded = False
       self._path = value
       self._name = 'Instrument'
-      self._attach()    
+      self._attach()   
+      self.on_change()
   # add a sampler channel for the instrument and load a sample file, if any
   def _attach(self):
     if (self._path is None): return
-    m = re.search('\.([^.]+)$', self._path)
+    m = re.search('(.*)\.([^.]+)$', os.path.basename(self._path))
     if (not m):
       self._sampler.warn(
         'Unable to find a sampler engine for "%s"' % self._path)
-    engine = m.group(1).upper()
-    self.name = os.path.basename(self._path)
+    engine = m.group(2).upper()
+    self.name = m.group(1)
     # make sure we have a channel with the right engine
     if ((self._channel is None) or (self._channel.engine != engine)):
       if (self._channel is not None):
@@ -482,17 +503,16 @@ class LinuxSamplerSingleton(observable.Object):
   def _check_status(self):
     # if the process dies, stop checking its status
     if (self.process.poll()):
+      self._log('sampler finished running')
       self.process = None
       self._status_timer = None
       return(False)
     try:
       self._stdout += self.process.stdout.read()
-    except IOError:
-      pass
+    except IOError: pass
     try:
       self._stderr += self.process.stderr.read()
-    except IOError:
-      pass
+    except IOError: pass
     errors = self._stderr.split('\n')
     if (len(errors) > 1):
       self._stderr = errors[-1]

@@ -10,6 +10,8 @@ from sampler_view import InstrumentListView
 
 from unit_view import UnitView, ConnectionView
 
+import sampler
+
 # show a workspace with a list of units
 class WorkspaceView(view.ModelView):
   def __init__(self, doc, parent=None):
@@ -90,7 +92,13 @@ class WorkspaceView(view.ModelView):
         output_map[child._model] = child
       else:
         self._index_port_views(child, input_map, output_map)
-    
+  # show a context menu with document actions
+  def contextMenuEvent(self, e):
+    menu = WorkspaceMenu(parent=e.widget(),
+                         units=self.units,
+                         scene_pos=e.scenePos())
+    menu.popup(e.screenPos())
+  
 # lay units out on the workspace
 class UnitListLayout(view.ListLayout):
   def layout(self):
@@ -104,3 +112,24 @@ class UnitListLayout(view.ListLayout):
         round(x + unit.x - (r.width() / 2.0)), 
         round(y + unit.y - (r.height() / 2.0)), 
         r.width(), r.height()))
+
+class WorkspaceMenu(QMenu):
+  def __init__(self, units, scene_pos, parent=None):
+    QMenu.__init__(self, parent)
+    self.units = units
+    self.scene_pos = scene_pos
+    add_menu = self.addMenu('Add')
+    add_sampler_action = QAction('Sampler Instrument...', self)
+    add_sampler_action.setStatusTip('Add a sampler unit')
+    add_sampler_action.triggered.connect(self.on_add_sampler)
+    add_menu.addAction(add_sampler_action)
+  # add a sampler
+  def on_add_sampler(self, *args):
+    instrument = sampler.Instrument.new_from_browse()
+    if (instrument is None): return
+    instruments = sampler.InstrumentList([ instrument ])
+    self.units.append(sampler.InstrumentListUnit(
+        name='Sampler',
+        instruments=instruments,
+        x=self.scene_pos.x(),
+        y=self.scene_pos.y()))
