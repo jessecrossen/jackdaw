@@ -4,13 +4,18 @@ from PySide.QtCore import *
 from PySide.QtGui import *
 
 import view
-from track_view import TrackListView
-from midi_view import DeviceListView
-from sampler_view import InstrumentListView
-
 from unit_view import UnitView, ConnectionView
 
+import track
+import track_view
+import midi
+import midi_view
 import sampler
+import sampler_view
+import audio
+import audio_view
+
+
 
 # show a workspace with a list of units
 class WorkspaceView(view.ModelView):
@@ -119,10 +124,14 @@ class WorkspaceMenu(QMenu):
     self.units = units
     self.scene_pos = scene_pos
     add_menu = self.addMenu('Add')
-    add_sampler_action = QAction('Sampler Instrument...', self)
-    add_sampler_action.setStatusTip('Add a sampler unit')
-    add_sampler_action.triggered.connect(self.on_add_sampler)
-    add_menu.addAction(add_sampler_action)
+    action = QAction('Sampler Instrument...', self)
+    action.setStatusTip('Add a sampler unit')
+    action.triggered.connect(self.on_add_sampler)
+    add_menu.addAction(action)
+    action = QAction('Audio Output', self)
+    action.setStatusTip('Add a system audio output unit')
+    action.triggered.connect(self.on_add_audio_output)
+    add_menu.addAction(action)
   # add a sampler
   def on_add_sampler(self, *args):
     instrument = sampler.Instrument.new_from_browse()
@@ -131,5 +140,11 @@ class WorkspaceMenu(QMenu):
     self.units.append(sampler.InstrumentListUnit(
         name='Sampler',
         instruments=instruments,
+        x=self.scene_pos.x(),
+        y=self.scene_pos.y()))
+  # add an audio output
+  def on_add_audio_output(self, *args):
+    self.units.append(audio.SystemPlaybackUnit(
+        name='Audio Out',
         x=self.scene_pos.x(),
         y=self.scene_pos.y()))

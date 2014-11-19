@@ -69,7 +69,20 @@ class UnitView(view.ModelView):
         h += self.BOTTOM_HEIGHT
       r.setWidth(w)
       r.setHeight(h)
+    # make sure there's enough space for the title
+    top_width = (2 * self.TOP_HEIGHT)
+    if (self.title_proxy):
+      title_view = self.title_proxy.widget()
+      tr = title_view.minimumSizeHint()
+      top_width += tr.width()
+    r.setWidth(max(r.width(), top_width))
     return(r)
+  def setRect(self, rect):
+    posChanged = ((rect.x() != self.pos().x()) or
+                  (rect.y() != self.pos().y()))
+    if (posChanged):
+      self.prepareGeometryChange()
+      self.setPos(rect.x(), rect.y())
   def layout(self):
     top_height = self.TOP_HEIGHT
     bottom_height = self.BOTTOM_HEIGHT
@@ -78,6 +91,8 @@ class UnitView(view.ModelView):
       title_view = view.NameLabel(self.unit)
       self.title_proxy = self.scene().addWidget(title_view)
       self.title_proxy.setParentItem(self)
+      # editing the title may change the width of the unit
+      title_view.textEdited.connect(self.prepareGeometryChange)
     r = self.boundingRect()
     r.adjust(1, 1, -1, -1)
     if (self.title_proxy):

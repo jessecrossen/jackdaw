@@ -198,18 +198,35 @@ class Connection(Model):
     sink_port = self._sink.sink_port if (self._sink is not None) else None
     if ((self._connected_source_port is not source_port) and 
         (self._connected_sink_port is not sink_port)):
-      client = self.get_jack_client()
       if ((self._connected_source_port is not None) and 
           (self._connected_sink_port is not None)):
-        client.disconnect(self._connected_source_port, 
-                          self._connected_sink_port)
+        self.route(self._connected_source_port, 
+                   self._connected_sink_port,
+                   connected=False)
       if ((source_port is not None) and 
           (sink_port is not None)):
-        client.connect(source_port, sink_port)
+        self.route(source_port, sink_port, connected=True)
       self._connected_source_port = source_port
       self._connected_sink_port = sink_port
     # do normal change actions
     Model.on_change(self)
+  # connect or disconnect a source and sink (either ports or port tuples)
+  def route(self, source, sink, connected=True):
+    client = self.get_jack_client()
+    # cast both ends to be tuples
+    if (isinstance(source, jackpatch.Port)):
+      source = (source,)
+    if (isinstance(sink, jackpatch.Port)):
+      sink = (sink,)
+    source_ports = len(source)
+    sink_ports = len(sink)
+    for i in range(0, max(source_ports, sink_ports)):
+      source_port = source[min(i, source_ports - 1)]
+      sink_port = sink[min(i, sink_ports - 1)]
+      if (connected):
+        client.connect(source_port, sink_port)
+      else:
+        client.disconnect(source_port, sink_port)
   # disconnect when deleted
   def __del__(self):
     if ((self._connected_source_port is not None) and 

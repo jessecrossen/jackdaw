@@ -8,6 +8,7 @@ from model import Model, ModelList
 from track import TrackList, MultitrackUnit
 from transport import Transport
 from midi import DeviceAdapterList, DeviceListUnit
+from audio import SystemPlaybackUnit
 from unit import UnitList, PatchBay
 
 # make a units-to-pixels mapping with observable changes
@@ -101,6 +102,9 @@ class Document(Model):
         require_input=False,
         require_output=True,
         x=-400))
+      units.append(SystemPlaybackUnit(
+        name='Audio Out',
+        x=400))
     self.units = units
     self.units.add_observer(self.on_change)
     # a list of connections between units

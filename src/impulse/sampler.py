@@ -15,20 +15,6 @@ import observable
 import serializable
 import unit
 
-# escape string literals for inclusion in LSCP commands
-def _escape(s):
-  m = { '\'': '\\\'', '"': '\\"', '\\': '\\\\',
-        '\n': '\\n', '\r': '\\r', '\f': '\\f', '\t': '\\t', '\v': '\\v' }
-  out = ''
-  for c in s:
-    if (c in m):
-      out += m[c]
-    elif (ord(c) > 127):
-      out += ('%2X' % ord(c))
-    else:
-      out += c
-  return(out)
-
 # manage a sampler-based instrument
 class Instrument(observable.Object, unit.Source, unit.Sink):
   # the path to browse for instruments in
@@ -645,6 +631,20 @@ class LinuxSamplerSingleton(observable.Object):
     if (channel.engine not in self._unused_channels_by_engine):
       self._unused_channels_by_engine[channel.engine] = list()
     self._unused_channels_by_engine[channel.engine].append(channel)
+
+# escape string literals for inclusion in LSCP commands
+def _escape(s):
+  m = { '\'': '\\\'', '"': '\\"', '\\': '\\\\',
+        '\n': '\\n', '\r': '\\r', '\f': '\\f', '\t': '\\t', '\v': '\\v' }
+  out = ''
+  for c in s:
+    if (c in m):
+      out += m[c]
+    elif (ord(c) > 127):
+      out += ('%2X' % ord(c))
+    else:
+      out += c
+  return(out)
 
 # make a singleton instance of the sampler backend
 LinuxSampler = LinuxSamplerSingleton(verbose=False)

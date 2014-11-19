@@ -3,13 +3,13 @@ import jackpatch
 import re
 import yaml
 
-from PySide.QtCore import *
+from PySide.QtCore import QTimer
 
 import observable
 import serializable
 import unit
 
-# acts as a base class for MIDI device adapters
+# handles a placeholder and adapter for a JACK midi device
 class DeviceAdapter(unit.Source, unit.Sink, observable.Object):
   def __init__(self, device_name):
     observable.Object.__init__(self)
