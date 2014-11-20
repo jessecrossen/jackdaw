@@ -10,12 +10,14 @@ class Transport(observable.Object):
   # regular init stuff
   def __init__(self, time=0.0, cycling=False, marks=None):
     observable.Object.__init__(self)
+    # set the interval to update at
+    self.update_interval = 0.5
     # get a bridge to the JACK transport
     self._client = jackpatch.Client('jackdaw-transport')
     self._transport = jackpatch.Transport(client=self._client)
     # make a timer to update the transport model when the time changes
     self._update_timer = QTimer(self)
-    self._update_timer.setInterval(500)
+    self._update_timer.setInterval(self.update_interval * 1000)
     self._update_timer.timeout.connect(self.update)
     # set up internal state
     self._recording = False

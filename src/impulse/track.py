@@ -1,5 +1,7 @@
 # coding=utf-8
 
+import math
+
 import jackpatch
 
 import observable
@@ -8,9 +10,6 @@ from model import Model, ModelList
 import block
 import midi
 import unit
-
-#!!!
-import traceback
 
 # interprets note and control channel messages and adds them to a track
 class TrackInputHandler(midi.InputHandler):
@@ -103,13 +102,135 @@ class TrackInputHandler(midi.InputHandler):
     else:
       print('Unhandled message type %02X' % status)
 
+class TrackOutputHandler(observable.Object):
+  def __init__(self, port, track, transport):
+    observable.Object.__init__(self)
+    self.port = port
+    self.track = track
+    self._transport = None
+    self.transport = transport
+    # keep local track of whether playback is engaged
+    self._playing = False
+    # the time events have been scheduled up to (non-inclusive)
+    self._scheduled_to = None
+    # the amount of time to schedule events into the future
+    self.min_schedule_ahead = 0.5
+    self.max_schedule_ahead = 1.0
+    # a dict mapping note values to the times at which 
+    #  each note should stop playing
+    self._open_notes = dict()
+  # listen for when the transport state changes
+  @property
+  def transport(self):
+    return(self._transport)
+  @transport.setter
+  def transport(self, value):
+    if (value is not self._transport):
+      if (self._transport):
+        self._transport.remove_observer(self.on_transport_change)
+      self._transport = value
+      if (self._transport):
+        self._transport.add_observer(self.on_transport_change)
+        self.min_schedule_ahead = self._transport.update_interval
+        self.max_schedule_ahead = 2.0 * self.min_schedule_ahead
+      self.on_transport_change()
+  def on_transport_change(self):
+    playing = (self.transport.playing or self.transport.recording)
+    if (playing != self._playing):
+      self._playing = playing
+      if (self._playing):
+        self.start()
+      else:
+        self.stop()
+    if (self._playing):
+    
+      # TODO: handle time jumps
+    
+      self.send()
+  # start playback
+  def start(self):
+    self._scheduled_to = self.transport.time
+  # schedule some events for playback
+  def send(self):
+    # if the track is muted, stop current notes and don't send any more
+    if (not self.track.enabled):
+      self.end_all_notes()
+      return
+    # if we're already scheduled ahead enough, we're done
+    now = self.transport.time
+    ahead = now - self._scheduled_to
+    if (ahead > self.min_schedule_ahead): return
+    # get the interval to schedule
+    begin = self._scheduled_to
+    end = now + self.max_schedule_ahead
+    # schedule events into the future
+    events = [ ]
+    for block in self.track:
+      bt = block.time
+      # skip blocks that don't overlap the current time
+      if ((bt > end) or (bt + block.duration <= begin)):
+        continue
+      # get the indices of the possible repeats of the block's events 
+      #  that notes in this time range might fall into
+      repeat = float(block.events.duration)
+      begin_repeat = int(math.floor((begin - bt) / repeat))
+      end_repeat = int(math.floor((end - bt) / repeat))
+      # limit played notes to ones that start before the end of the block
+      block_end = min(end, block.time + block.duration)
+      # find events in the block that should be scheduled for a start
+      for event in block.events:
+        et = bt + (begin_repeat * repeat) + event.time
+        if ((et >= begin) and (et < block_end)):
+          events.append((event, et))
+        # try the note in two places if the time range straddles 
+        #  a repeat boundary
+        if (end_repeat != begin_repeat):
+          et = bt + (end_repeat * repeat) + event.time
+          if ((et >= begin) and (et < block_end)):
+            events.append((event, et))
+    # schedule beginnings of events
+    for (event, t1) in events:
+      t2 = t1
+      try:
+        t2 += event.duration
+      except AttributeError: pass
+      velocity = 127
+      try:
+        velocity = int(math.floor(event.velocity * 127.0))
+      except AttributeError: pass
+      pitch = None
+      try:
+        pitch = event.pitch
+      except AttributeError: pass
+      # start notes
+      if (hasattr(event, 'pitch')):
+        self.port.send((0x90, pitch, velocity), t1 - now)
+        self._open_notes[pitch] = t2
+    # schedule ending events if they are in the current interval
+    open_notes = dict()
+    for (pitch, t) in self._open_notes.iteritems():
+      if ((t >= begin) and (t < end)):
+        self.port.send((0x80, pitch, 0), t - now)
+      else:
+        open_notes[pitch] = t
+    self._open_notes = open_notes
+    self._scheduled_to = end
+  # schedule endings for all currently playing notes
+  def end_all_notes(self):
+    for (pitch, t) in self._open_notes.iteritems():
+      self.port.send((0x80, pitch, 0), 0.0)
+    self._open_notes = dict()
+  # stop playback
+  def stop(self):
+    self.end_all_notes()
+
 # represent a track, which can contain multiple blocks
 class Track(unit.Source, unit.Sink, ModelList):
 
   # names of the cyclical pitch classes starting at MIDI note 0
   PITCH_CLASS_NAMES = ( 
-    u'C', u'D♭', u'D', u'E♭', u'E', u'F', 
-    u'F♯', u'G', u'A♭', u'A', u'B♭', u'B' )
+    u'C', u'D♭­', u'D', u'E♭­', u'E', u'F', 
+    u'F♯', u'G', u'A♭­', u'A', u'B♭­', u'B' )
 
   def __init__(self, blocks=(), duration=60, name='Track',
                      solo=False, mute=False, arm=False,
@@ -140,6 +261,9 @@ class Track(unit.Source, unit.Sink, ModelList):
     self._transport = transport
     self._input_handler = TrackInputHandler(
       port=self.sink_port, track=self, transport=self.transport)
+    # add a handler for playback
+    self._output_handler = TrackOutputHandler(
+      port=self.source_port, track=self, transport=self.transport)
     # keep track of ports connected for previewing track input
     self._connected_sources = dict()
     self._connected_sinks = dict()
@@ -216,6 +340,10 @@ class Track(unit.Source, unit.Sink, ModelList):
     if (self._arm != value):
       self._arm = value
       self.on_change()
+  # get whether the track's inputs are being previewed
+  @property
+  def previewing(self):
+    return(self.arm and self.enabled)
   # get and set the time transport the track is placed on
   @property
   def transport(self):
@@ -225,6 +353,7 @@ class Track(unit.Source, unit.Sink, ModelList):
     if (value != self._transport):
       self._transport = value
       self._input_handler.transport = self._transport
+      self._output_handler.transport = self._transport
       self.on_change()
   # get a list of unique times for all the notes in the track
   @property
@@ -259,14 +388,14 @@ class Track(unit.Source, unit.Sink, ModelList):
     old_sinks = self._connected_sinks
     # get connected ports
     new_sources = dict()
-    if ((self._sink_port is not None) and (self.arm)):
+    if ((self._sink_port is not None) and (self.previewing)):
       for port in self._sink_port.get_connections():
         if (port.name in old_sources):
           new_sources[port.name] = old_sources[port.name]
         else:
           new_sources[port.name] = port
     new_sinks = dict()
-    if ((self._source_port is not None) and (self.arm)):
+    if ((self._source_port is not None) and (self.previewing)):
       for port in self._source_port.get_connections():
         if (port.name in old_sinks):
           new_sinks[port.name] = old_sinks[port.name]
