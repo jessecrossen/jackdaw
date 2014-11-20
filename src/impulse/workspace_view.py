@@ -4,7 +4,7 @@ from PySide.QtCore import *
 from PySide.QtGui import *
 
 import view
-from unit_view import UnitView, ConnectionView
+from unit_view import UnitView, UnitInputView, UnitOutputView, ConnectionView
 
 import track
 import track_view
@@ -14,8 +14,6 @@ import sampler
 import sampler_view
 import audio
 import audio_view
-
-
 
 # show a workspace with a list of units
 class WorkspaceView(view.ModelView):

@@ -9,6 +9,9 @@ import block
 import midi
 import unit
 
+#!!!
+import traceback
+
 # interprets note and control channel messages and adds them to a track
 class TrackInputHandler(midi.InputHandler):
   def __init__(self, port, track, transport=None):
@@ -110,8 +113,7 @@ class Track(unit.Source, unit.Sink, ModelList):
 
   def __init__(self, blocks=(), duration=60, name='Track',
                      solo=False, mute=False, arm=False,
-                     level=1.0, pan=0.0, pitch_names=None,
-                     transport=None):
+                     pitch_names=None, transport=None):
     ModelList.__init__(self, blocks)
     unit.Source.__init__(self)
     unit.Sink.__init__(self)
@@ -122,8 +124,6 @@ class Track(unit.Source, unit.Sink, ModelList):
     self._solo = solo
     self._mute = mute
     self._arm = arm
-    self._level = level
-    self._pan = pan
     if (pitch_names is None): 
       pitch_names = dict()
     self._pitch_names = pitch_names
@@ -140,6 +140,10 @@ class Track(unit.Source, unit.Sink, ModelList):
     self._transport = transport
     self._input_handler = TrackInputHandler(
       port=self.sink_port, track=self, transport=self.transport)
+    # keep track of ports connected for previewing track input
+    self._connected_sources = dict()
+    self._connected_sinks = dict()
+    self.add_observer(self.update_passthru)
   # invalidate cached data
   def invalidate(self):
     self._pitches = None
@@ -212,27 +216,6 @@ class Track(unit.Source, unit.Sink, ModelList):
     if (self._arm != value):
       self._arm = value
       self.on_change()
-  # the mix level of the track from 0.0 (silent) to 1.0 (loudest)
-  @property
-  def level(self):
-    return(self._level)
-  @level.setter
-  def level(self, value):
-    value = min(max(0.0, value), 1.0)
-    if (self._level != value):
-      self._level = value
-      self.on_change()
-  # the stereo pan of the track from -1.0 (hard left) 
-  #  to 0.0 (center) to 1.0 (hard right)
-  @property
-  def pan(self):
-    return(self._pan)
-  @pan.setter
-  def pan(self, value):
-    value = min(max(-1.0, value), 1.0)
-    if (self._pan != value):
-      self._pan = value
-      self.on_change()
   # get and set the time transport the track is placed on
   @property
   def transport(self):
@@ -269,6 +252,53 @@ class Track(unit.Source, unit.Sink, ModelList):
       self._pitches = list(pitches)
       self._pitches.sort()
     return(self._pitches)
+  # make connections through the track
+  def update_passthru(self):
+    # get previously connected ports
+    old_sources = self._connected_sources
+    old_sinks = self._connected_sinks
+    # get connected ports
+    new_sources = dict()
+    if ((self._sink_port is not None) and (self.arm)):
+      for port in self._sink_port.get_connections():
+        if (port.name in old_sources):
+          new_sources[port.name] = old_sources[port.name]
+        else:
+          new_sources[port.name] = port
+    new_sinks = dict()
+    if ((self._source_port is not None) and (self.arm)):
+      for port in self._source_port.get_connections():
+        if (port.name in old_sinks):
+          new_sinks[port.name] = old_sinks[port.name]
+        else:
+          new_sinks[port.name] = port
+    # update the set of connected ports
+    self._connected_sources = new_sources
+    self._connected_sinks = new_sinks
+    # convert dicts to sets for easy differencing
+    old_sources = set(old_sources.values())
+    old_sinks = set(old_sinks.values())
+    new_sources = set(new_sources.values())
+    new_sinks = set(new_sinks.values())
+    # remove old connections
+    remove_sources = old_sources.difference(new_sources)
+    remove_sinks = old_sinks.difference(new_sinks)
+    for source in remove_sources:
+      for sink in old_sinks:
+        self._client.disconnect(source, sink)
+    for sink in remove_sinks:
+      for source in old_sources:
+        self._client.disconnect(source, sink)
+    # add new connections
+    add_sources = new_sources.difference(old_sources)
+    add_sinks = new_sinks.difference(old_sinks)
+    for source in add_sources:
+      for sink in new_sinks:
+        self._client.connect(source, sink)
+    for sink in add_sinks:
+      for source in new_sources:
+        self._client.connect(source, sink)
+  
   # track serialization
   def serialize(self):
     return({ 
@@ -278,8 +308,6 @@ class Track(unit.Source, unit.Sink, ModelList):
       'solo': self.solo,
       'mute': self.mute,
       'arm': self.arm,
-      'level': self.level,
-      'pan': self.pan,
       'pitch_names': self.pitch_names,
       'transport': self.transport
     })

@@ -160,8 +160,10 @@ class Connection(Model):
     return(self._source)
   @source.setter
   def source(self, value):
+    old_source = None
     if (value is not self._source):
       if (self._source is not None):
+        old_source = self._source
         try:
           self._source.remove_observer(self.on_change)
         except AttributeError: pass
@@ -171,13 +173,20 @@ class Connection(Model):
           self._source.add_observer(self.on_change)
         except AttributeError: pass
       self.on_change()
+      # update the old source after a delay, to allow 
+      #  disconnection requests to propagate through JACK
+      try:
+        QTimer.singleShot(10, old_source.on_change)
+      except AttributeError: pass
   @property
   def sink(self):
     return(self._sink)
   @sink.setter
   def sink(self, value):
+    old_sink = None
     if (value is not self._sink):
       if (self._sink is not None):
+        old_sink = self._sink
         try:
           self._sink.remove_observer(self.on_change)
         except AttributeError: pass
@@ -187,6 +196,12 @@ class Connection(Model):
           self._sink.add_observer(self.on_change)
         except AttributeError: pass
       self.on_change()
+      # update the old source after a delay, to allow 
+      #  disconnection requests to propagate through JACK
+      try:
+        QTimer.singleShot(10, old_sink.on_change)
+      except AttributeError: pass
+      
   # lazy-load a jack client to make patchbay connections
   def get_jack_client(self):
     if (Connection.jack_client is None):
@@ -196,6 +211,7 @@ class Connection(Model):
   def on_change(self):
     source_port = self._source.source_port if (self._source is not None) else None
     sink_port = self._sink.sink_port if (self._sink is not None) else None
+    routed = False
     if ((self._connected_source_port is not source_port) and 
         (self._connected_sink_port is not sink_port)):
       if ((self._connected_source_port is not None) and 
@@ -203,11 +219,16 @@ class Connection(Model):
         self.route(self._connected_source_port, 
                    self._connected_sink_port,
                    connected=False)
+        routed = True
       if ((source_port is not None) and 
           (sink_port is not None)):
         self.route(source_port, sink_port, connected=True)
+        routed = True
       self._connected_source_port = source_port
       self._connected_sink_port = sink_port
+    # notify the source and sink that they changed connections
+    if (routed):
+      self._on_route_changed()
     # do normal change actions
     Model.on_change(self)
   # connect or disconnect a source and sink (either ports or port tuples)
@@ -234,6 +255,20 @@ class Connection(Model):
       client = self.get_jack_client()
       client.disconnect(self._connected_source_port, 
                         self._connected_sink_port)
+      self._on_route_changed()
+  # notify the endpoints when something changes, after a delay to allow 
+  #  disconnection requests to propagate through JACK
+  def _on_source_changed(self):
+    try:
+      QTimer.singleShot(10, self._source.on_change)
+    except AttributeError: pass
+  def _on_sink_changed(self):
+    try:
+      QTimer.singleShot(10, self._sink.on_change)
+    except AttributeError: pass
+  def _on_route_changed(self):
+    self._on_source_changed()
+    self._on_sink_changed()
   # connection serialization
   def serialize(self):
     return({ 
