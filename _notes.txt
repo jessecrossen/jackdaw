@@ -1,16 +1,7 @@
-- playback
-- systematize time/pitch dragging
-- vertical scrolling
-- file save/load
 - make filters that can alter the characteristics of underlying notes at play-time (e.g. quantize, timewarp)
-- general curve editing for control channel events in a block (BlockView => NotesView)
+- general curve editing for control channel events in a block
 - notes embed pitch modulation and aftertouch, keyed by fraction of note duration
 - notes respond to pitch modulation and aftertouch by warping the rectangle
 - allow dragging/snapping of marks
 - block backgrounds can be colored, color follows eventlist linkages
 - routable control channels on each track
-- level/pan accept automation inputs
-- draw_path draws all nodes last
-- color tracks view white like a document
-- more spacing between tracks
-- context menu on sampler outputs allows deletion, quick selection of other files from same folder, and selection of different file/folder
