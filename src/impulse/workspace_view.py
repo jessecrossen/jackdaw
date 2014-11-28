@@ -14,19 +14,23 @@ import sampler
 import sampler_view
 import audio
 import audio_view
+import transport
+import transport_view
 
 # show a workspace with a list of units
 class WorkspaceView(view.ModelView):
-  def __init__(self, doc, parent=None):
-    view.ModelView.__init__(self, model=doc.units, parent=parent)
+  def __init__(self, document, parent=None):
+    view.ModelView.__init__(self, model=document.units, parent=parent)
+    # keep a reference to the document
+    self.document = document
     # add a sub-item for connections to keep them behind the units
     #  for visual and interaction purposes
     self.connection_layer = QGraphicsRectItem(self)
     # add a layout for the units
     self.units_layout = UnitListLayout(self, 
-      doc.units, UnitView.view_for_unit)
+      document.units, UnitView.view_for_unit)
     # connect to the patch bay
-    self.patch_bay = doc.patch_bay
+    self.patch_bay = document.patch_bay
     self.patch_bay.add_observer(self.autoconnect)
   def destroy(self):
     self.patch_bay.remove_observer(self.autoconnect)
@@ -98,7 +102,7 @@ class WorkspaceView(view.ModelView):
   # show a context menu with document actions
   def contextMenuEvent(self, e):
     menu = WorkspaceMenu(parent=e.widget(),
-                         units=self.units,
+                         document=self.document,
                          scene_pos=e.scenePos())
     menu.popup(e.screenPos())
   
@@ -117,19 +121,26 @@ class UnitListLayout(view.ListLayout):
         r.width(), r.height()))
 
 class WorkspaceMenu(QMenu):
-  def __init__(self, units, scene_pos, parent=None):
+  def __init__(self, document, scene_pos, parent=None):
     QMenu.__init__(self, parent)
-    self.units = units
+    self.document = document
+    self.units = self.document.units
     self.scene_pos = scene_pos
-    add_menu = self.addMenu('Add')
-    action = QAction('Sampler Instrument...', self)
-    action.setStatusTip('Add a sampler unit')
-    action.triggered.connect(self.on_add_sampler)
-    add_menu.addAction(action)
-    action = QAction('Audio Output', self)
-    action.setStatusTip('Add a system audio output unit')
-    action.triggered.connect(self.on_add_audio_output)
-    add_menu.addAction(action)
+    self.add_menu = self.addMenu('Add')
+    self.make_add('Sampler Instrument...', 
+                  'Add a sampler unit', self.on_add_sampler)
+    self.make_add('Audio Output', 
+                  'Add a system audio output unit', self.on_add_audio_output)
+    self.make_add('Multitrack', 
+                  'Add a unit for track recording and playback', self.on_add_multitrack)
+    self.make_add('Transport', 
+                  'Add a transport control unit', self.on_add_transport)
+  # make a menu item for adding some kind of unit to the workspace
+  def make_add(self, name, description, callback):
+    action = QAction(name, self)
+    action.setStatusTip(description)
+    action.triggered.connect(callback)
+    self.add_menu.addAction(action)
   # add a sampler
   def on_add_sampler(self, *args):
     instrument = sampler.Instrument.new_from_browse()
@@ -144,5 +155,21 @@ class WorkspaceMenu(QMenu):
   def on_add_audio_output(self, *args):
     self.units.append(audio.SystemPlaybackUnit(
         name='Audio Out',
+        x=self.scene_pos.x(),
+        y=self.scene_pos.y()))
+  # add a transport controller
+  def on_add_transport(self, *args):
+    self.units.append(transport.TransportUnit(
+        transport=self.document.transport,
+        name='Transport',
+        x=self.scene_pos.x(),
+        y=self.scene_pos.y()))
+  # add a multitrack unit
+  def on_add_multitrack(self, *args):
+    self.units.append(track.MultitrackUnit(
+        tracks=self.document.tracks,
+        view_scale=self.document.view_scale,
+        transport=self.document.transport,
+        name='Tracks',
         x=self.scene_pos.x(),
         y=self.scene_pos.y()))

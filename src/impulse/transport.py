@@ -4,17 +4,24 @@ from PySide.QtCore import Signal, QTimer
 
 import observable
 import serializable
+import unit
 
 # a transport to keep track of timepoints, playback, and recording
-class Transport(observable.Object):
+class Transport(observable.Object, unit.Sink):
   # regular init stuff
   def __init__(self, time=0.0, cycling=False, marks=None):
     observable.Object.__init__(self)
+    unit.Sink.__init__(self)
     # set the interval to update at
     self.update_interval = 0.5
     # get a bridge to the JACK transport
     self._client = jackpatch.Client('jackdaw-transport')
+    self._client.activate()
     self._transport = jackpatch.Transport(client=self._client)
+    # make a port and client for transport control
+    self._sink_type = 'midi'
+    self._sink_port = jackpatch.Port(name='midi.RX', client=self._client,
+                                     flags=jackpatch.JackPortIsInput)
     # make a timer to update the transport model when the time changes
     self._update_timer = QTimer(self)
     self._update_timer.setInterval(self.update_interval * 1000)
@@ -223,3 +230,15 @@ class Transport(observable.Object):
       'marks': self.marks
     })
 serializable.add(Transport)
+
+# make a unit that represents a transport
+class TransportUnit(unit.Unit):
+  def __init__(self, transport, *args, **kwargs):
+    unit.Unit.__init__(self, *args, **kwargs)
+    self.transport = transport
+    self.transport.add_observer(self.on_change)
+  def serialize(self):
+    obj = unit.Unit.serialize(self)
+    obj['transport'] = self.transport
+    return(obj)
+serializable.add(TransportUnit)

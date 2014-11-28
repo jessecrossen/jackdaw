@@ -420,6 +420,8 @@ class MultitrackUnitView(unit_view.UnitView):
     self.allow_resize_width = True
     # allow tracks to be added
     self.allow_add = True
+    # allow the set of tracks to be deleted
+    self.allow_delete = True
   def on_add(self):
     self.unit.tracks.add_track()
   def layout(self):
