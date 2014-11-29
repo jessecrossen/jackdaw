@@ -31,6 +31,10 @@ class UnitView(view.ModelView):
     self._resize_button = None
     self.allow_add = False
     self._add_button = None
+  def destroy(self):
+    # removing the content will change the unit view's geometry briefly
+    self.prepareGeometryChange()
+    view.ModelView.destroy(self)
   @property
   def unit(self):
     return(self._model)

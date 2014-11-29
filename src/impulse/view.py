@@ -16,24 +16,22 @@ class View(QGraphicsObject):
     self._size = QSizeF(0.0, 0.0)
   def destroy(self):
     # map attributes that refer to items
-    item_attrs = dict()
+    item_attrs = set()
     for p in dir(self):
       item = getattr(self, p)
       if (isinstance(item, QGraphicsItem)):
-        item_attrs[item] = p
+        item_attrs.add(p)
     # destroy and/or unparent all children
     for item in self.childItems():  
       try:
         item.destroy()
-      except AttributeError:
-        item.setParentItem(None)
+      except AttributeError: pass
       # if the item contains a widget, remove it from the scene
       if ((isinstance(item, QGraphicsProxyWidget)) and (self.scene())):
         self.scene().removeItem(item)
-      # remove all internal references to the item
-      if (item in item_attrs):
-        setattr(self, item_attrs[item], None)
-        del item_attrs[item]
+    # remove all internal references to graphics items
+    for p in item_attrs:
+      setattr(self, p, None)
     if (self.scene()):
       self.scene().removeItem(self)
     self.destroyed.emit()
@@ -562,6 +560,9 @@ class NameLabel(EditableLabel):
     self.setAlignment(Qt.AlignCenter | Qt.AlignVCenter)
     self.textEdited.connect(self.on_edited)
     self.editingFinished.connect(self._update_name)
+  def destroy(self):
+    self.textEdited.disconnect(self.on_edited)
+    self.editingFinished.disconnect(self._update_name)
   def _update_name(self):
     if (not self.hasFocus()):
       self.setText(self._model.name)
