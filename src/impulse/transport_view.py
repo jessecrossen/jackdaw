@@ -13,16 +13,21 @@ class TransportView(view.ModelView):
   def __init__(self, transport, parent=None):
     view.ModelView.__init__(self, model=transport, parent=parent)
     self.button_size = 30
+    self.begin_button = None
+    self.back_button = None
+    self.forward_button = None
+    self.end_button = None
     self.stop_button = None
     self.play_button = None
     self.record_button = None
+    self.cycle_button = None
     self.button_proxies = list()
   @property
   def transport(self):
     return(self._model)
   def minimumSizeHint(self):
     s = self.button_size
-    return(QSizeF(max(1, len(self.button_proxies)) * s, s))
+    return(QSizeF(4 * s, 2 * s))
   # add a proxied button widget and return it
   def add_button(self, icon):
     button = QPushButton()
@@ -35,6 +40,18 @@ class TransportView(view.ModelView):
   def layout(self):
     if (not self.scene()): return
     # make buttons
+    if (not self.begin_button):
+      self.begin_button = self.add_button('media-skip-backward')
+      self.begin_button.clicked.connect(self.on_begin)
+    if (not self.back_button):
+      self.back_button = self.add_button('media-seek-backward')
+      self.back_button.clicked.connect(self.transport.skip_back)
+    if (not self.forward_button):
+      self.forward_button = self.add_button('media-seek-forward')
+      self.forward_button.clicked.connect(self.transport.skip_forward)
+    if (not self.end_button):
+      self.end_button = self.add_button('media-skip-forward')
+      self.end_button.clicked.connect(self.on_end)
     if (not self.stop_button):
       self.stop_button = self.add_button('media-playback-stop')
       self.stop_button.clicked.connect(self.transport.stop)
@@ -44,19 +61,37 @@ class TransportView(view.ModelView):
     if (not self.record_button):
       self.record_button = self.add_button('media-record')
       self.record_button.clicked.connect(self.transport.record)
+    if (not self.cycle_button):
+      self.cycle_button = self.add_button('view-refresh')
+      self.cycle_button.setCheckable(True)
+      self.cycle_button.toggled.connect(self.on_cycle)
+    if (self.cycle_button):
+      self.cycle_button.setChecked(self.transport.cycling)
     # do layout of buttons
     r = self.rect()
     width = r.width()
     height = r.height()
+    size = self.button_size
     if (len(self.button_proxies) > 0):
-      width = width / len(self.button_proxies)
-      x = 0
+      x = 0.0
+      y = 0.0
       for proxy in self.button_proxies:
         button = proxy.widget()
-        button.setFixedWidth(width)
-        button.setFixedHeight(height)
-        proxy.setPos(QPointF(x, 0.0))
-        x += width
+        button.setFixedWidth(size)
+        button.setFixedHeight(size)
+        proxy.setPos(QPointF(x, y))
+        x += size
+        if (x >= r.width()):
+          x = 0
+          y += size
+  # handle button actions not implemented directly by the transport
+  def on_begin(self):
+    self.transport.time = 0.0
+  def on_end(self):
+    # TODO
+    self.transport.time = 0.0
+  def on_cycle(self, toggled):
+    self.transport.cycling = toggled
 
 # make a unit view that represents a transport on the workspace
 class TransportUnitView(unit_view.UnitView):

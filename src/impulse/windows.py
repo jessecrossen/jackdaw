@@ -281,14 +281,7 @@ class DocumentWindow(QMainWindow):
     self.forward_action.setEnabled(self.document is not None)
     self.stop_action.setEnabled(self.document is not None)
     self.play_action.setEnabled(self.document is not None)
-    # only allow recording if a track is armed
-    track_armed = False
-    if (self.document):
-      for track in self.document.tracks:
-        if (track.arm):
-          track_armed = True
-          break
-    self.record_action.setEnabled(track_armed)
+    self.record_action.setEnabled(self.document is not None)
     # disable zoom actions at the outer limits
     self.zoom_in_action.setEnabled(
       (self.document_view is not None) and (self.document_view.can_zoom_in))

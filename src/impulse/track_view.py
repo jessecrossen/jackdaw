@@ -228,6 +228,7 @@ class TrackToggleView(view.ModelView):
     # make a view for the track name
     if (not self.arm_button):
       self.arm_button = self.add_button('R')
+      self.arm_button.setChecked(self.track.arm)
       self.arm_button.toggled.connect(self.on_arm)
       self.arm_button.setStyleSheet('''
         * { font-size: 12px }
@@ -239,6 +240,7 @@ class TrackToggleView(view.ModelView):
       ''')
     if (not self.mute_button):
       self.mute_button = self.add_button('M')
+      self.mute_button.setChecked(self.track.mute)
       self.mute_button.toggled.connect(self.on_mute)
       self.mute_button.setStyleSheet('''
         * { font-size: 12px }
@@ -250,6 +252,7 @@ class TrackToggleView(view.ModelView):
       ''')
     if (not self.solo_button):
       self.solo_button = self.add_button('S')
+      self.solo_button.setChecked(self.track.solo)
       self.solo_button.toggled.connect(self.on_solo)
       self.solo_button.setStyleSheet('''
         * { font-size: 12px }
