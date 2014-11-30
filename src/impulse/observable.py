@@ -13,6 +13,16 @@ class Object(QObject):
     self.changed.disconnect(slot)
   def on_change(self):
     self.changed.emit()
+    
+# overlay the observable property onto an existing QObject
+class Mixin(QObject):
+  changed = Signal()
+  def add_observer(self, slot):
+    self.changed.connect(slot)
+  def remove_observer(self, slot):
+    self.changed.disconnect(slot)
+  def on_change(self):
+    self.changed.emit()
 
 # make a list which can report changes to itself or its members
 class List(Object):

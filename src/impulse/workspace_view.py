@@ -3,6 +3,8 @@ import math
 from PySide.QtCore import *
 from PySide.QtGui import *
 
+import observable
+
 import view
 from unit_view import UnitView, UnitInputView, UnitOutputView, ConnectionView
 
@@ -18,9 +20,11 @@ import transport
 import transport_view
 
 # show a workspace with a list of units
-class WorkspaceView(view.ModelView):
+class WorkspaceView(view.Interactive, view.ModelView):
   def __init__(self, document, parent=None):
+    self._bounding_rect = QRectF()
     view.ModelView.__init__(self, model=document.units, parent=parent)
+    view.Interactive.__init__(self)
     # keep a reference to the document
     self.document = document
     # add a sub-item for connections to keep them behind the units
@@ -29,10 +33,14 @@ class WorkspaceView(view.ModelView):
     # add a layout for the units
     self.units_layout = UnitListLayout(self, 
       document.units, UnitView.view_for_unit)
+    self.units_layout.extents_changed.connect(self.on_extents_changed)
     # connect to the patch bay
     self.patch_bay = document.patch_bay
     self.patch_bay.add_observer(self.autoconnect)
+    # show a cursor that indicates clicking will add a unit
+    self.setCursor(Qt.CrossCursor)
   def destroy(self):
+    self.units_layout.extents_changed.disconnect(self.on_extents_changed)
     self.patch_bay.remove_observer(self.autoconnect)
     for item in self.connection_layer.childItems():
       try:
@@ -43,6 +51,19 @@ class WorkspaceView(view.ModelView):
   @property
   def units(self):
     return(self._model)
+  # update the extents when the workspace extents change size
+  def on_extents_changed(self):
+    extents = self.units_layout.extents
+    if (self.scene()):
+      for view in self.scene().views():
+        view.setSceneRect(extents)
+    # make the workspace background much larger than the viewport to 
+    #   receive all background mouse events
+    self.prepareGeometryChange()
+    m = 2048
+    self._bounding_rect = extents.adjusted(- m, - m, m, m)
+  def boundingRect(self):
+    return(self._bounding_rect)
   # update the placement of the layout
   def layout(self):
     r = self.rect()
@@ -100,48 +121,79 @@ class WorkspaceView(view.ModelView):
       else:
         self._index_port_views(child, input_map, output_map)
   # show a context menu with document actions
+  def on_click(self, e):
+    item = self.scene().itemAt(e.scenePos())
+    if (item is not self): return
+    menu = AddUnitMenu(parent=e.widget(),
+                       document=self.document,
+                       scene_pos=e.scenePos())
+    menu.popup(e.screenPos())
   def contextMenuEvent(self, e):
-    menu = WorkspaceMenu(parent=e.widget(),
-                         document=self.document,
-                         scene_pos=e.scenePos())
+    menu = WorkspaceContextMenu(parent=e.widget(),
+                                document=self.document,
+                                scene_pos=e.scenePos())
     menu.popup(e.screenPos())
   
 # lay units out on the workspace
 class UnitListLayout(view.ListLayout):
+  extents_changed = Signal()
+  def __init__(self, *args, **kwargs):
+    self._extents = QRectF()
+    view.ListLayout.__init__(self, *args, **kwargs)
+  @property
+  def extents(self):
+    return(self._extents)
+  @extents.setter
+  def extents(self, value):
+    if (value != self._extents):
+      self._extents = value
+      self.extents_changed.emit()
   def layout(self):
     y = self._rect.y()
     x = self._rect.x()
+    extents = QRectF()
+    moving_unit = False
     for view in self._views:
       unit = view.unit
       r = view.rect()
-      view.setRect(QRectF(
+      view_rect = QRectF(
         # use integer coordinates for sharp antialiasing
         round(x + unit.x - (r.width() / 2.0)), 
         round(y + unit.y - (r.height() / 2.0)), 
-        r.width(), r.height()))
+        r.width(), r.height())
+      view.setRect(view_rect)
+      extents = extents.united(view_rect)
+      try:
+        moving_unit = moving_unit or view.moving
+      except AttributeError: pass
+    # size the workspace to the units in it plus a margin
+    m = 100.0
+    extents.adjust(- m, - m, m, m)
+    old_extents = self.extents
+    if (moving_unit):
+      extents = extents.united(old_extents)
+    self.extents = extents
 
-class WorkspaceMenu(QMenu):
+class AddUnitMenu(QMenu):
   def __init__(self, document, scene_pos, parent=None):
     QMenu.__init__(self, parent)
     self.document = document
-    self.units = self.document.units
+    self.units = document.units
     self.scene_pos = scene_pos
-    self.add_menu = self.addMenu('Add')
-    self.make_add('Transport', 
+    self.add_unit('Transport', 
                   'Add a transport control unit', self.on_add_transport)
-    self.make_add('Tracks', 
+    self.add_unit('Tracks', 
                   'Add a unit for track recording and playback', 
                   self.on_add_multitrack)
-    self.make_add('Sampler Instrument...', 
+    self.add_unit('Sampler Instrument...', 
                   'Add a sampler unit', self.on_add_sampler)
-    self.make_add('Audio Output', 
+    self.add_unit('Audio Output', 
                   'Add a system audio output unit', self.on_add_audio_output)
-  # make a menu item for adding some kind of unit to the workspace
-  def make_add(self, name, description, callback):
+  def add_unit(self, name, description, callback):
     action = QAction(name, self)
     action.setStatusTip(description)
     action.triggered.connect(callback)
-    self.add_menu.addAction(action)
+    self.addAction(action)
   # add a sampler
   def on_add_sampler(self, *args):
     instrument = sampler.Instrument.new_from_browse()
@@ -178,3 +230,14 @@ class WorkspaceMenu(QMenu):
         name='Tracks',
         x=self.scene_pos.x(),
         y=self.scene_pos.y()))
+
+class WorkspaceContextMenu(QMenu):
+  def __init__(self, document, scene_pos, parent=None):
+    QMenu.__init__(self, parent)
+    self.document = document
+    self.scene_pos = scene_pos
+    self.add_menu = AddUnitMenu(parent=self, 
+                                document=document, scene_pos=scene_pos)
+    self.add_menu.setTitle('Add')
+    self.addMenu(self.add_menu)
+  

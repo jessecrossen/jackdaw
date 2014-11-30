@@ -19,7 +19,7 @@ import unit
 class Instrument(observable.Object, unit.Source, unit.Sink):
   # the path to browse for instruments in
   _instrument_dir = "~"
-  def __init__(self, path=None, name='Instrument', sampler=None):
+  def __init__(self, path=None, name=None, sampler=None):
     observable.Object.__init__(self)
     unit.Source.__init__(self)
     unit.Sink.__init__(self)
@@ -64,6 +64,8 @@ class Instrument(observable.Object, unit.Source, unit.Sink):
     self.path = path
   @property
   def name(self):
+    if ((self._name is None) or (len(self._name) == 0)):
+      return('Instrument')
     return(self._name)
   @name.setter
   def name(self, value):
@@ -92,7 +94,6 @@ class Instrument(observable.Object, unit.Source, unit.Sink):
       self._path_loading = False
       self._path_loaded = False
       self._path = value
-      self._name = 'Instrument'
       self._attach()   
       self.on_change()
   # add a sampler channel for the instrument and load a sample file, if any
@@ -103,7 +104,8 @@ class Instrument(observable.Object, unit.Source, unit.Sink):
       self._sampler.warn(
         'Unable to find a sampler engine for "%s"' % self._path)
     engine = m.group(2).upper()
-    self.name = m.group(1)
+    if (self._name is None):
+      self.name = m.group(1)
     # make sure we have a channel with the right engine
     if ((self._channel is None) or (self._channel.engine != engine)):
       if (self._channel is not None):

@@ -142,6 +142,9 @@ class Interactive(object):
     self._dragging = False
     self._drag_start_pos = None
     self.setFlag(QGraphicsItem.ItemIsFocusable, True)
+  @property
+  def dragging(self):
+    return(self._dragging)
   # handle mouse events
   def mousePressEvent(self, event):
     if (event.button() != Qt.LeftButton): return
@@ -163,8 +166,8 @@ class Interactive(object):
       self.on_drag(event, delta.x(), delta.y())
   def mouseReleaseEvent(self, event):
     if (self._dragging):
-      self.on_drag_end(event)
       self._dragging = False
+      self.on_drag_end(event)
     elif (event.button() == Qt.LeftButton):
       self.on_click(event)
   # override these to handle mouse events in general
@@ -396,6 +399,7 @@ class PitchDraggable(Selectable):
 class ListLayout(QGraphicsObject):
   def __init__(self, parent, items, view_for_item):
     QGraphicsObject.__init__(self, parent)
+    self._in_layout = False
     self._updating_views = False
     self.view_for_item = view_for_item
     self._view_map = dict()
@@ -437,7 +441,7 @@ class ListLayout(QGraphicsObject):
     return(self._rect)
   def setRect(self, rect):
     self._rect = rect
-    self.layout()
+    self._do_layout()
   def boundingRect(self):
     return(self.mapRectFromParent(self._rect))
   def paint(self, qp, options, widget):
@@ -474,8 +478,13 @@ class ListLayout(QGraphicsObject):
         view.setParentItem(None)
     # do layout if the contained items have changed
     if ((len(old) > 0) or (len(new) > 0)):
-      self.layout()
+      self._do_layout()
     self._updating_views = False
+  def _do_layout(self):
+    if (self._in_layout): return
+    self._in_layout = True
+    self.layout()
+    self._in_layout = False
   def layout(self):
     pass
 

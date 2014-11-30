@@ -150,6 +150,9 @@ class ResizeButton(ButtonView):
   def on_drag_end(self, event):
     self._start_rect = None
     self._start_bounds = None
+    try:
+      self._target.on_change()
+    except AttributeError: pass
 
 # show a button for dragging things
 class DragButton(ButtonView):
@@ -180,10 +183,10 @@ class DragButton(ButtonView):
         qp.drawEllipse(QRectF(x + (i * (d + s)), y + (j * (d + s)), d, d))
   # change the cursor when the mouse is down
   def mousePressEvent(self, event):
-    self.setCursor(Qt.ClosedHandCursor)
+    QApplication.instance().setOverrideCursor(Qt.ClosedHandCursor)
     view.Interactive.mousePressEvent(self, event)
   def mouseReleaseEvent(self, event):
-    self.setCursor(Qt.OpenHandCursor)
+    QApplication.instance().restoreOverrideCursor()
     view.Interactive.mouseReleaseEvent(self, event)
   # handle dragging
   def on_drag_start(self, event):
@@ -193,3 +196,6 @@ class DragButton(ButtonView):
       self._target.setPos(self._start_pos + QPointF(delta_x, delta_y))
   def on_drag_end(self, event):
     self._start_pos = None
+    try:
+      self._target.on_change()
+    except AttributeError: pass

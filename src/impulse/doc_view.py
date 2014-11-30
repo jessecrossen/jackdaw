@@ -58,10 +58,13 @@ class DocumentView(QGraphicsView):
   def can_zoom_out(self):
     return(self._document.view_scale.pixels_per_second > self.ZOOMS[0])
 
+# override the scene to add some custom event handlers
 class DocumentScene(QGraphicsScene):
   def __init__(self, *args, **kwargs):
     QGraphicsScene.__init__(self, *args, **kwargs)
     self.workspace_view = None
+    self._show_add_cursor = False
+  # route context menu events in a more flexible way than the default
   def contextMenuEvent(self, e):
     items = self.items(e.scenePos())
     for item in items:

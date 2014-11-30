@@ -31,6 +31,8 @@ class UnitView(view.ModelView):
     self._resize_button = None
     self.allow_add = False
     self._add_button = None
+    # show a normal cursor to override the workspace cursor
+    self.setCursor(Qt.ArrowCursor)
   def destroy(self):
     # removing the content will change the unit view's geometry briefly
     self.prepareGeometryChange()
@@ -38,6 +40,11 @@ class UnitView(view.ModelView):
   @property
   def unit(self):
     return(self._model)
+  # return whether the unit view is being moved or resized
+  @property
+  def moving(self):
+    return(((self._drag_button) and (self._drag_button.dragging)) or
+           ((self._resize_button) and (self._resize_button.dragging)))
   # register a class for use as a unit view
   @classmethod
   def register_unit_view(cls, unit_class, view_class):
@@ -187,6 +194,8 @@ class ConnectionView(view.Selectable, view.ModelView):
     self._sink_view = None
     self._source_pos = QPointF(0, 0)
     self._sink_pos = QPointF(0, 0)
+    # show a hand cursor to indicate that connections are draggable
+    self.setCursor(Qt.OpenHandCursor)
   def destroy(self):
     self._source_view = None
     self._sink_view = None
@@ -341,6 +350,7 @@ class ConnectionView(view.Selectable, view.ModelView):
     source_dist = abs(pos.x() - source.x()) + abs(pos.y() - source.y())
     sink_dist = abs(pos.x() - sink.x()) + abs(pos.y() - sink.y())
     self._drag_sink = (sink_dist < source_dist)
+    QApplication.instance().setOverrideCursor(Qt.ClosedHandCursor)
   def on_drag(self, event, delta_x, delta_y):
     p = event.scenePos()
     item = self.scene().itemAt(p)
@@ -360,6 +370,7 @@ class ConnectionView(view.Selectable, view.ModelView):
         self.source_view = p
   def on_drag_end(self, event):
     self.finalize_connection()
+    QApplication.instance().restoreOverrideCursor()
   # remove the connection when it's selected and the user presses delete
   def keyPressEvent(self, event):
     if ((self.connection.selected) and 
@@ -399,6 +410,7 @@ class UnitPortView(view.Interactive, view.ModelView):
     view.Interactive.__init__(self)
     self._dragging_connection_view = None
     self.setFlag(QGraphicsItem.ItemSendsScenePositionChanges, True)
+    self.setCursor(Qt.OpenHandCursor)
   @property
   def target(self):
     return(self._model)
@@ -461,6 +473,7 @@ class UnitPortView(view.Interactive, view.ModelView):
     else:
       view.setParentItem(self)
     self._dragging_connection_view = view
+    QApplication.instance().setOverrideCursor(Qt.ClosedHandCursor)
   def on_drag(self, event, delta_x, delta_y):
     view = self._dragging_connection_view
     if (not view): return
@@ -485,6 +498,7 @@ class UnitPortView(view.Interactive, view.ModelView):
     self._dragging_connection_view = None
     # remove the view if it didn't form a connection
     view.finalize_connection()
+    QApplication.instance().restoreOverrideCursor()
   # when added to the scene, automatically add views for any 
   #  connections to or from the target if there are any
   def on_added_to_scene(self):
