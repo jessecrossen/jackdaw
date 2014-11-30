@@ -80,7 +80,7 @@ class TransportControlView(view.ModelView):
     # make buttons
     if (not self.begin_button):
       self.begin_button = self.add_button('media-skip-backward')
-      self.begin_button.clicked.connect(self.on_begin)
+      self.begin_button.clicked.connect(self.transport.go_to_beginning)
     if (not self.back_button):
       self.back_button = self.add_button('media-seek-backward')
       self.back_button.clicked.connect(self.transport.skip_back)
@@ -89,7 +89,7 @@ class TransportControlView(view.ModelView):
       self.forward_button.clicked.connect(self.transport.skip_forward)
     if (not self.end_button):
       self.end_button = self.add_button('media-skip-forward')
-      self.end_button.clicked.connect(self.on_end)
+      self.end_button.clicked.connect(self.transport.go_to_end)
     if (not self.stop_button):
       self.stop_button = self.add_button('media-playback-stop')
       self.stop_button.clicked.connect(self.transport.stop)
@@ -123,11 +123,6 @@ class TransportControlView(view.ModelView):
           x = 0
           y += size
   # handle button actions not implemented directly by the transport
-  def on_begin(self):
-    self.transport.time = 0.0
-  def on_end(self):
-    # TODO
-    self.transport.time = 0.0
   def on_cycle(self, toggled):
     self.transport.cycling = toggled
 

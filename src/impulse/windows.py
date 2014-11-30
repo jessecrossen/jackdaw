@@ -69,9 +69,8 @@ class DocumentWindow(QMainWindow):
       document=self.document)
     # add it to the document
     self.stack.addWidget(self.document_view)
-    # update actions when relevant object change
+    # update actions when relevant objects change
     self.document.view_scale.add_observer(self.update_actions)
-    self.document.tracks.add_observer(self.update_actions)
     self.update_actions()
   
   # build the application menu and toolbar
@@ -243,10 +242,10 @@ class DocumentWindow(QMainWindow):
   # transport actions
   def transport_beginning(self):
     if (self.document):
-      self.document.transport.time = 0.0
+      self.document.transport.go_to_beginning()
   def transport_end(self):
     if (self.document):
-      self.document.transport.time = self.document.tracks.duration
+      self.document.transport.go_to_end()
   def transport_back(self):
     if (self.document):
       self.document.transport.skip_back()

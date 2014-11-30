@@ -127,14 +127,15 @@ class WorkspaceMenu(QMenu):
     self.units = self.document.units
     self.scene_pos = scene_pos
     self.add_menu = self.addMenu('Add')
+    self.make_add('Transport', 
+                  'Add a transport control unit', self.on_add_transport)
+    self.make_add('Tracks', 
+                  'Add a unit for track recording and playback', 
+                  self.on_add_multitrack)
     self.make_add('Sampler Instrument...', 
                   'Add a sampler unit', self.on_add_sampler)
     self.make_add('Audio Output', 
                   'Add a system audio output unit', self.on_add_audio_output)
-    self.make_add('Tracks', 
-                  'Add a unit for track recording and playback', self.on_add_multitrack)
-    self.make_add('Transport', 
-                  'Add a transport control unit', self.on_add_transport)
   # make a menu item for adding some kind of unit to the workspace
   def make_add(self, name, description, callback):
     action = QAction(name, self)
@@ -166,8 +167,12 @@ class WorkspaceMenu(QMenu):
         y=self.scene_pos.y()))
   # add a multitrack unit
   def on_add_multitrack(self, *args):
+    empty_track = track.Track(transport=self.document.transport)
+    tracks = track.TrackList(
+      tracks=(empty_track,),
+      transport=self.document.transport)
     self.units.append(track.MultitrackUnit(
-        tracks=self.document.tracks,
+        tracks=tracks,
         view_scale=self.document.view_scale,
         transport=self.document.transport,
         name='Tracks',

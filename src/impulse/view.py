@@ -396,6 +396,7 @@ class PitchDraggable(Selectable):
 class ListLayout(QGraphicsObject):
   def __init__(self, parent, items, view_for_item):
     QGraphicsObject.__init__(self, parent)
+    self._updating_views = False
     self.view_for_item = view_for_item
     self._view_map = dict()
     self._views = list()
@@ -442,6 +443,8 @@ class ListLayout(QGraphicsObject):
   def paint(self, qp, options, widget):
     pass
   def update_views(self):
+    if (self._updating_views): return
+    self._updating_views = True
     old = set(self._view_map.keys())
     new = set()
     views = list()
@@ -472,6 +475,7 @@ class ListLayout(QGraphicsObject):
     # do layout if the contained items have changed
     if ((len(old) > 0) or (len(new) > 0)):
       self.layout()
+    self._updating_views = False
   def layout(self):
     pass
 

@@ -133,6 +133,9 @@ class ResizeButton(ButtonView):
           sy = 1.0
         y = ((y - br.top()) + (br.top() * sy))
         h *= sy
+      try:
+        self._target.prepareGeometryChange()
+      except AttributeError: pass
       set_rect = False
       if (hasattr(self._target, 'width')):
         self._target.width = w

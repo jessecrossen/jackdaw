@@ -14,16 +14,16 @@ import unit
 class TrackInputHandler(midi.InputHandler):
   def __init__(self, port, track, transport=None):
     midi.InputHandler.__init__(self, port=port, target=track)
+    # make a placeholder for a block to place recorded notes into
+    self._target_block = None
+    # hold a set of notes for all "voices" currently playing, keyed by pitch
+    self._playing_notes = dict()
     # listen to a transport so we know when we're recording
     self._transport = None
     self.transport = transport
     # listen to the target so we know when it's armed
     if (self.target):
       self.target.add_observer(self.on_state_change)
-    # hold a set of notes for all "voices" currently playing, keyed by pitch
-    self._playing_notes = dict()
-    # make a block to place recorded notes into
-    self._target_block = None
   # listen for when the transport state changes
   @property
   def transport(self):
@@ -104,10 +104,6 @@ class TrackInputHandler(midi.InputHandler):
 class TrackOutputHandler(observable.Object):
   def __init__(self, port, track, transport):
     observable.Object.__init__(self)
-    self.port = port
-    self.track = track
-    self._transport = None
-    self.transport = transport
     # keep local track of whether playback is engaged
     self._playing = False
     # the time events have been scheduled up to (non-inclusive)
@@ -118,6 +114,10 @@ class TrackOutputHandler(observable.Object):
     # a dict mapping note values to the times at which 
     #  each note should stop playing
     self._open_notes = dict()
+    self.port = port
+    self.track = track
+    self._transport = None
+    self.transport = transport
   # listen for when the transport state changes
   @property
   def transport(self):

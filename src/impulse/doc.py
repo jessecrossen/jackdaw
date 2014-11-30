@@ -63,7 +63,7 @@ class ViewScale(observable.Object):
     return(6.0)
 serializable.add(ViewScale)
 
-# represent a document, which can contain multiple tracks
+# represent a document, which collects the elements of a persistent workspace
 class Document(Model):
   def __init__(self, tracks=None, devices=None, transport=None,
                      view_scale=None, units=None, patch_bay=None):
@@ -74,11 +74,6 @@ class Document(Model):
     if (transport is None):
       transport = Transport()
     self.transport = transport
-    # tracks
-    if (tracks is None):
-      tracks = TrackList(transport=self.transport)
-    self.tracks = tracks
-    self.tracks.add_observer(self.on_change)
     # time scale
     if (view_scale is None):
       view_scale = ViewScale()
@@ -90,12 +85,6 @@ class Document(Model):
     # a list of units on the workspace
     if (units is None):
       units = UnitList()
-      units.append(MultitrackUnit(
-        name='Tracks',
-        tracks=self.tracks, 
-        width=400,
-        view_scale=self.view_scale, 
-        transport=self.transport))
       units.append(DeviceListUnit(
         name='Inputs',
         devices=self.devices, 
@@ -122,7 +111,6 @@ class Document(Model):
   def serialize(self):
     return({
       'devices': self.devices,
-      'tracks': self.tracks,
       'transport': self.transport,
       'view_scale': self.view_scale,
       'units': self.units,

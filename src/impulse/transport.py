@@ -382,6 +382,12 @@ class Transport(observable.Object, unit.Sink):
       self._cycle_end_time = self.cycle_end_time
     else:
       self._cycle_end_time = self.get_next_mark(current_time)
+  # jump to the beginning or end
+  def go_to_beginning(self):
+    self.time = 0.0
+  def go_to_end(self):
+    #TODO
+    self.time = 60.0
   # skip forward or back in time
   def skip_back(self, *args):
     self.time = self.time - self.skip_delta

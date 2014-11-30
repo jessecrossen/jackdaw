@@ -13,3 +13,4 @@ class SystemPlaybackUnit(unit.Sink, unit.Unit):
     ports = self._client.get_ports(name_pattern='system:.*', 
                                    flags=jackpatch.JackPortIsInput)
     self._sink_port = tuple(ports)
+serializable.add(SystemPlaybackUnit)
