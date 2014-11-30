@@ -221,7 +221,7 @@ class DocumentWindow(QMainWindow):
   def file_save(self):
     if (not self.document): return
     if (not self.document.path):
-      self.saveAs()
+      self.file_save_as()
     else:
       self.document.save()
   # save the document with a different file name
