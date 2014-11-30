@@ -11,13 +11,14 @@ import unit
 
 # handles a placeholder and adapter for a JACK midi device
 class DeviceAdapter(unit.Source, unit.Sink, observable.Object):
-  def __init__(self, device_name):
+  def __init__(self, device_name, device_flags=0):
     observable.Object.__init__(self)
     unit.Source.__init__(self)
     unit.Sink.__init__(self)
     self._source_type = 'midi'
     self._sink_type = 'midi'
     self._device_name = device_name
+    self._device_flags = device_flags
     self._device = None
     self._base_time = 0.0
     # default to a short version of the device name
@@ -41,6 +42,9 @@ class DeviceAdapter(unit.Source, unit.Sink, observable.Object):
   def device(self, device):
     if (device is not self._device):
       self._device = device
+      self._device_flags = 0
+      if (device is not None):
+        self._device_flags = self._device.flags
       self._source_port = self._device if self.has_output else None
       self._sink_port = self._device if self.has_input else None
       self.on_change()
@@ -48,15 +52,18 @@ class DeviceAdapter(unit.Source, unit.Sink, observable.Object):
   @property
   def is_plugged(self):
     return(self.device is not None)
+  # return all device flags
+  @property
+  def device_flags(self):
+    if (self.device is not None): return(self.device.flags)
+    return(self._device_flags)
   # return whether input/output ports are available for the device
   @property
   def has_input(self):
-    if (not self.device): return(False)
-    return((self.device.flags & jackpatch.JackPortIsInput) != 0)
+    return((self.device_flags & jackpatch.JackPortIsInput) != 0)
   @property
   def has_output(self):
-    if (not self.device): return(False)
-    return((self.device.flags & jackpatch.JackPortIsOutput) != 0)
+    return((self.device_flags & jackpatch.JackPortIsOutput) != 0)
   # return the complete device name
   @property
   def name(self):
@@ -84,7 +91,8 @@ class DeviceAdapter(unit.Source, unit.Sink, observable.Object):
   # adapter serialization
   def serialize(self):
     return({ 
-      'device_name': self._device_name
+      'device_name': self._device_name,
+      'device_flags': self._device_flags
     })
 serializable.add(DeviceAdapter)
 

@@ -51,6 +51,7 @@ class TransportInputHandler(midi.InputHandler):
   def connect_controller(self, name):
     # get an input port for the device
     input_ports = self.port.client.get_ports(name_pattern=name+':.*',
+                                             type_pattern='.*midi.*',
                                             flags=jackpatch.JackPortIsInput)
     if (len(input_ports) == 0): return
     input_port = input_ports[0]

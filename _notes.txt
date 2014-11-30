@@ -8,6 +8,8 @@
 - block backgrounds can be colored, color follows eventlist linkages
 - unit backgrounds can be colored
 - special grouping unit which moves all units inside it when moved
+- allow blocks to be moved between tracks
+- make logo and rename project
 
 - make filters that can alter the characteristics of underlying notes at play-time (e.g. quantize, timewarp)
 - notes embed pitch modulation and aftertouch, keyed by fraction of note duration

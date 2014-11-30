@@ -208,6 +208,9 @@ class DocumentWindow(QMainWindow):
   def file_open(self):
     (path, group) = QFileDialog.getOpenFileName(self,
       "Open Project", "~", "Project Files (*.yml);;All Files (*.*)")
+    self.file_load_path(path)
+  # open the existing document at the given path
+  def file_load_path(self, path):
     if (len(path) == 0): return
     input_stream = open(path, 'r')
     if (not input_stream): return

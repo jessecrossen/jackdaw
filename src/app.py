@@ -12,7 +12,7 @@ class App(QApplication):
     QApplication.__init__(self, sys.argv)
     self._window = windows.DocumentWindow(self)
     self._window.show()
-    self._window.document = doc.Document()
+    self._window.file_load_path('/home/jesse/Documents/impulse/test.yml')
     # start the sampler engine
     sampler.LinuxSampler.start()
 

@@ -151,10 +151,12 @@ class Connection(Model):
   jack_client = None
   def __init__(self, source=None, sink=None):
     Model.__init__(self)
-    self._source = source
-    self._sink = sink
+    self._source = None
+    self._sink = None
     self._connected_source_port = None
     self._connected_sink_port = None
+    self.source = source
+    self.sink = sink
   @property
   def source(self):
     return(self._source)
