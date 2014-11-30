@@ -31,12 +31,15 @@ class UnitView(view.ModelView):
     self._resize_button = None
     self.allow_add = False
     self._add_button = None
+    # editing the title may change the width of the unit
+    self.unit.name_changed.connect(self.on_name_changed)
     # show a normal cursor to override the workspace cursor
     self.setCursor(Qt.ArrowCursor)
   def destroy(self):
+    self.unit.name_changed.disconnect(self.on_name_changed)
     # removing the content will change the unit view's geometry briefly
     self.prepareGeometryChange()
-    view.ModelView.destroy(self)
+    view.ModelView.destroy(self)  
   @property
   def unit(self):
     return(self._model)
@@ -60,8 +63,20 @@ class UnitView(view.ModelView):
   # handle the user wanting to remove the unit
   def on_delete(self):
     workspace_view = self.parentItemWithAttribute('units')
+    document_view = self.parentItemWithAttribute('document')
+    patch_bay = None if document_view is None else document_view.document.patch_bay
     if (workspace_view):
+      view.ViewManager.begin_action((workspace_view, patch_bay))
+      if (patch_bay is not None):
+        patch_bay.remove_connections_for_unit(self.unit)
+        if (self._input_layout is not None):
+          for item in self._input_layout.items:
+            patch_bay.remove_connections_for_unit(item)
+        if (self._output_layout is not None):
+          for item in self._output_layout.items:
+            patch_bay.remove_connections_for_unit(item)
       workspace_view.units.remove(self.unit)
+      view.ViewManager.end_action()
   # handle the user wanting to add to the unit (this will have different 
   #  behaviors depending on the type of unit)
   def on_add(self):
@@ -94,6 +109,9 @@ class UnitView(view.ModelView):
     if (posChanged):
       self.prepareGeometryChange()
       self.setPos(rect.x(), rect.y())
+  def on_name_changed(self):
+    self.prepareGeometryChange()
+    self.layout()
   def layout(self):
     top_height = self.TOP_HEIGHT
     bottom_height = self.BOTTOM_HEIGHT
@@ -102,8 +120,6 @@ class UnitView(view.ModelView):
       title_view = view.NameLabel(self.unit)
       self.title_proxy = self.scene().addWidget(title_view)
       self.title_proxy.setParentItem(self)
-      # editing the title may change the width of the unit
-      title_view.textEdited.connect(self.prepareGeometryChange)
     r = self.boundingRect()
     r.adjust(1, 1, -1, -1)
     if (self.title_proxy):

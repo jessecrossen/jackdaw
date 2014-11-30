@@ -216,6 +216,7 @@ class Selectable(Interactive):
     Interactive.__init__(self)
     self.allow_multiselect = True
   def on_click(self, event):
+    ViewManager.begin_action(end_timeout=500)
     if ((self.allow_multiselect) and 
         (event.modifiers() == Qt.ShiftModifier)):
       self.model.selected = True
@@ -283,6 +284,7 @@ class BoxSelectable(Interactive, ModelView):
         return
     Interactive.mouseReleaseEvent(self, event)
   def select_box(self, event, r):
+    ViewManager.begin_action(end_timeout=500)
     modifiers = event.modifiers()
     if ((modifiers != Qt.ShiftModifier) and 
         (modifiers != Qt.ControlModifier)):
@@ -326,7 +328,8 @@ class TimeDraggable(Selectable):
           return(sign * (float(model.duration) / float(model.divisions)))
       node = node.parentItem()
     return(delta_time * 10.0)
-  def on_drag_start_x(self, event):  
+  def on_drag_start_x(self, event):
+    ViewManager.begin_action()
     # select the model if it isn't selected
     if (not self.model.selected):
       Selection.deselect_all()
@@ -344,8 +347,10 @@ class TimeDraggable(Selectable):
   # reset state after dragging to avoid memory leaks
   def on_drag_end_x(self, event):
     self._drag_start_times = dict()
+    ViewManager.end_action()
   # handle keypresses
   def on_key_x(self, event):
+    ViewManager.begin_action(end_timeout=500)
     # get the time difference equivalent to one pixel
     delta_time = self.mapFromScene(1, 0).x() - self.mapFromScene(0, 0).x()
     if (event.key() == Qt.Key_Left):
@@ -363,6 +368,7 @@ class PitchDraggable(Selectable):
     Selectable.__init__(self)
     self._drag_start_pitches = dict()
   def on_drag_start_y(self, event):
+    ViewManager.begin_action()
     # select the model if it isn't selected
     if (not self.model.selected):
       Selection.deselect_all()
@@ -382,8 +388,10 @@ class PitchDraggable(Selectable):
   # reset state after dragging to avoid memory leaks
   def on_drag_end_y(self, event):
     self._drag_start_pitches = dict()
+    ViewManager.end_action()
   # handle keypresses
   def on_key_y(self, event):
+    ViewManager.begin_action(end_timeout=500)
     # get the time difference equivalent to one pixel
     delta_pitch = 1
     if (event.key() == Qt.Key_Down):
@@ -581,6 +589,12 @@ class NameLabel(EditableLabel):
       self.setText(self._model.name)
   def on_edited(self, text):
     self._model.name = text
+  def focusInEvent(self, e):
+    ViewManager.begin_action(self._model)
+    EditableLabel.focusInEvent(self, e)
+  def focusOutEvent(self, e):
+    EditableLabel.focusOutEvent(self, e)
+    ViewManager.end_action()
 
 # make a singleton for handling things like selection state
 class ViewManagerSingleton(observable.Object):
@@ -637,14 +651,14 @@ class ViewManagerSingleton(observable.Object):
       self._end_action_timer.stop()
       self.end_action()
     if (first_one):
-      self._action_things = (things, Selection)
+      self._action_things = (things, Selection, Selection.models)
       self._undo_stack.begin_action(self._action_things)
       self.on_change()
   def end_action(self):
     self._undo_stack.end_action(self._action_things)
     self._action_things = None
     self.on_change()
-    self._end_action_timer.stop()
+    self._end_action_timer.stop() 
     return(False)
 # make a singleton instance
 ViewManager = ViewManagerSingleton()

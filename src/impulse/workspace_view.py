@@ -180,39 +180,44 @@ class AddUnitMenu(QMenu):
     self.document = document
     self.units = document.units
     self.scene_pos = scene_pos
-    self.add_unit('Transport', 
-                  'Add a transport control unit', self.on_add_transport)
-    self.add_unit('Tracks', 
-                  'Add a unit for track recording and playback', 
-                  self.on_add_multitrack)
-    self.add_unit('Sampler Instrument...', 
-                  'Add a sampler unit', self.on_add_sampler)
-    self.add_unit('Audio Output', 
-                  'Add a system audio output unit', self.on_add_audio_output)
-  def add_unit(self, name, description, callback):
+    self.add_action('Transport', 
+                    'Add a transport control unit', self.on_add_transport)
+    self.add_action('Tracks', 
+                    'Add a unit for track recording and playback', 
+                    self.on_add_multitrack)
+    self.add_action('Sampler Instrument...', 
+                    'Add a sampler unit', self.on_add_sampler)
+    self.add_action('Audio Output', 
+                    'Add a system audio output unit', self.on_add_audio_output)
+  def add_action(self, name, description, callback):
     action = QAction(name, self)
     action.setStatusTip(description)
     action.triggered.connect(callback)
     self.addAction(action)
+  # add a generic unit
+  def add_unit(self, unit):
+    view.ViewManager.begin_action(self.units)
+    self.units.append(unit)
+    view.ViewManager.end_action()
   # add a sampler
   def on_add_sampler(self, *args):
     instrument = sampler.Instrument.new_from_browse()
     if (instrument is None): return
     instruments = sampler.InstrumentList([ instrument ])
-    self.units.append(sampler.InstrumentListUnit(
+    self.add_unit(sampler.InstrumentListUnit(
         name='Sampler',
         instruments=instruments,
         x=self.scene_pos.x(),
         y=self.scene_pos.y()))
   # add an audio output
   def on_add_audio_output(self, *args):
-    self.units.append(audio.SystemPlaybackUnit(
+    self.add_unit(audio.SystemPlaybackUnit(
         name='Audio Out',
         x=self.scene_pos.x(),
         y=self.scene_pos.y()))
   # add a transport controller
   def on_add_transport(self, *args):
-    self.units.append(transport.TransportUnit(
+    self.add_unit(transport.TransportUnit(
         transport=self.document.transport,
         name='Transport',
         x=self.scene_pos.x(),
@@ -223,7 +228,7 @@ class AddUnitMenu(QMenu):
     tracks = track.TrackList(
       tracks=(empty_track,),
       transport=self.document.transport)
-    self.units.append(track.MultitrackUnit(
+    self.add_unit(track.MultitrackUnit(
         tracks=tracks,
         view_scale=self.document.view_scale,
         transport=self.document.transport,

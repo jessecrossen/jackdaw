@@ -1,5 +1,4 @@
 - restore time snapping
-- restore undo/redo
 - allow dragging/snapping of marks
 - add transport mark buttons to gui
 - general curve editing for control channel events in a block

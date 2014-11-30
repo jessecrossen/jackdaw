@@ -112,13 +112,14 @@ class NoteLayout(view.ListLayout):
     for pitch in reversed(self._track.pitches):
       pitch_map[pitch] = i
       i += 1.0
-    for view in self._views:
-      note = view.note
-      try:
-        y = pitch_map[note.pitch]
-      except KeyError:
-        y = -1.0
-      view.setRect(QRectF(note.time, y, note.duration, 1.0))
+    if (self._views is not None):
+      for view in self._views:
+        note = view.note
+        try:
+          y = pitch_map[note.pitch]
+        except KeyError:
+          y = -1.0
+        view.setRect(QRectF(note.time, y, note.duration, 1.0))
 
 # represent a note event in a block
 class NoteView(view.TimeDraggable, view.PitchDraggable, view.ModelView):

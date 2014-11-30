@@ -8,6 +8,22 @@ class SelectionSingleton(observable.Object):
   @property
   def models(self):
     return(self._models)
+  @models.setter
+  def models(self, models):
+    models = set(models)
+    old_models = self._models.difference(models)
+    new_models = models.difference(self._models)
+    self._models = models
+    for model in old_models:
+      if (model._selected):
+        model._selected = False
+        model.on_change()
+    for model in new_models:
+      if (not model._selected):
+        model._selected = True
+        model.on_change()
+    if ((len(old_models) > 0) or (len(new_models) > 0)):
+      self.on_change()
   # add a model to the selection
   def select(self, model):
     # don't allow an item containing this one to remain selected
@@ -24,6 +40,7 @@ class SelectionSingleton(observable.Object):
     if (not model._selected):
       model._selected = True
       model.on_change()
+      self.on_change()
   # remove a model from the selection
   def deselect(self, model):
     try:
@@ -32,11 +49,17 @@ class SelectionSingleton(observable.Object):
     if (model._selected):
       model._selected = False
       model.on_change()
+      self.on_change()
   # deselect all selected models
   def deselect_all(self):
     models = set(self._models)
     for model in models:
-      self.deselect(model)
+      if (model._selected):
+        model._selected = False
+        model.on_change()
+    self._models = set()
+    if (len(models) > 0):
+      self.on_change()
   # remove all children of a model from the selection
   def deselect_children(self, model):
     if (isinstance(model, ModelList)):
@@ -53,7 +76,6 @@ class SelectionSingleton(observable.Object):
         except AttributeError: continue
         if (isinstance(value, ModelList)):
           self.deselect_children(value)
-    
 # make a global instance
 Selection = SelectionSingleton()
 

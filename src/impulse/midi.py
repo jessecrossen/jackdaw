@@ -75,19 +75,6 @@ class DeviceAdapter(unit.Source, unit.Sink, observable.Object):
     if (name != self._name):
       self._name = name
       self.on_change()
-  # get the amount of time elapsed since the time origin
-  @property
-  def time(self):
-    if (not self.device): return(0.0)
-    return(self.device.get_time() - self._base_time)
-  # reset the time origin to the given value, such that subsequent
-  #  messages have a time relative to it
-  @time.setter
-  def time(self, value):
-    if (self.device):
-      self._base_time = self.device.get_time() - value
-    else:
-      self._base_time = - value
   # adapter serialization
   def serialize(self):
     return({ 

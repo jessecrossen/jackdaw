@@ -7,6 +7,7 @@ from PySide.QtCore import *
 
 # represent a unit, which can be connected to other units
 class Unit(Model):
+  name_changed = Signal()
   def __init__(self, name='Unit', x=0, y=0, width=0, height=0):
     Model.__init__(self)
     self._name = name
@@ -23,6 +24,7 @@ class Unit(Model):
     if (value != self._name):
       self._name = value
       self.on_change()
+      self.name_changed.emit()
   # get and set the position of the unit on the workspace
   @property
   def x(self):
@@ -254,9 +256,9 @@ class Connection(Model):
   def __del__(self):
     if ((self._connected_source_port is not None) and 
           (self._connected_sink_port is not None)):
-      client = self.get_jack_client()
-      client.disconnect(self._connected_source_port, 
-                        self._connected_sink_port)
+      self.route(self._connected_source_port, 
+                 self._connected_sink_port,
+                 connected=False)
       self._on_route_changed()
   # notify the endpoints when something changes, after a delay to allow 
   #  disconnection requests to propagate through JACK
@@ -316,9 +318,16 @@ class PatchBay(ModelList):
     if (source in m):
       return(m[source])
     return(())
-    
-  # TODO: prune connections with no source and/or sink
-  
+  # remove connections for the given source/sink
+  def remove_connections_for_unit(self, unit):
+    remove_connections = set()
+    for c in self:
+      if ((c.source is unit) or (c.sink is unit)):
+        remove_connections.add(c)
+    for c in remove_connections:
+      c.source = None
+      c.sink = None
+      self.remove(c)
   def serialize(self):
     return({
       'connections': list(self)

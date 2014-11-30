@@ -9,7 +9,7 @@ import sampler
 
 class DocumentView(QGraphicsView):
   def __init__(self, document, parent=None):
-    self.scene = DocumentScene()
+    self.scene = QGraphicsScene()
     QGraphicsView.__init__(self, self.scene, parent)
     self._document = document
     # enable antialiasing
@@ -19,7 +19,6 @@ class DocumentView(QGraphicsView):
     # add a view of the document workspace
     self.workspace = WorkspaceView(document)
     self.scene.addItem(self.workspace)
-    self.scene.workspace_view = self.workspace
   def destroy(self):
     self.workspace.destroy()
     self.workspace = None
@@ -57,20 +56,3 @@ class DocumentView(QGraphicsView):
   @property
   def can_zoom_out(self):
     return(self._document.view_scale.pixels_per_second > self.ZOOMS[0])
-
-# override the scene to add some custom event handlers
-class DocumentScene(QGraphicsScene):
-  def __init__(self, *args, **kwargs):
-    QGraphicsScene.__init__(self, *args, **kwargs)
-    self.workspace_view = None
-    self._show_add_cursor = False
-  # route context menu events in a more flexible way than the default
-  def contextMenuEvent(self, e):
-    items = self.items(e.scenePos())
-    for item in items:
-      item.contextMenuEvent(e)
-      if (e.isAccepted()): return
-    # route clicks that land on nothing to the workspace itself
-    if (len(items) == 0):
-      if (self.workspace_view is not None):
-        self.workspace_view.contextMenuEvent(e)
