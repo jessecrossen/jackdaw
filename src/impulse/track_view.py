@@ -9,6 +9,7 @@ from doc import ViewScale
 from model import Selection
 from block_view import BlockView
 import unit_view
+import transport_view
 
 # make a view that displays a list of tracks
 class TrackListView(view.BoxSelectable, view.Interactive, view.ModelView):
@@ -34,7 +35,7 @@ class TrackListView(view.BoxSelectable, view.Interactive, view.ModelView):
     # clip so tracks can be scrolled and zoomed without going outside the box
     self.track_layout.setFlag(QGraphicsItem.ItemClipsChildrenToShape, True)
     # add a view for the transport
-    self.overlay = TransportView(
+    self.overlay = transport_view.TransportView(
       transport=self.transport,
       view_scale=self.view_scale,
       parent=self)
@@ -110,31 +111,6 @@ class TrackListView(view.BoxSelectable, view.Interactive, view.ModelView):
   @property
   def track(self):
     return(self._model)
-
-# an overlay for a track list that shows the state of the transport
-class TransportView(view.ModelView):
-  def __init__(self, transport, view_scale=None, parent=None):
-    view.ModelView.__init__(self, model=transport, parent=parent)
-    self.view_scale = view_scale
-    self.view_scale.add_observer(self.update)
-  @property
-  def transport(self):
-    return(self._model)
-  def paint(self, qp, options, widget):
-    r = self.rect()
-    width = r.width()
-    height = r.height()
-    pps = self.view_scale.pixels_per_second
-    x = round((self.transport.time - self.view_scale.time_offset) * pps)
-    if (x >= 0):
-      qp.setBrush(self.brush(0.10))
-      qp.setPen(Qt.NoPen)
-      qp.drawRect(0, 0, x, height)
-      pen = QPen(QColor(255, 0, 0, 128))
-      pen.setCapStyle(Qt.FlatCap)
-      pen.setWidth(2)
-      qp.setPen(pen)
-      qp.drawLine(QPointF(x, 0.0), QPointF(x, height))
 
 # do layout of blocks in a track
 class TrackLayout(view.ListLayout):

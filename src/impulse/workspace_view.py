@@ -131,7 +131,7 @@ class WorkspaceMenu(QMenu):
                   'Add a sampler unit', self.on_add_sampler)
     self.make_add('Audio Output', 
                   'Add a system audio output unit', self.on_add_audio_output)
-    self.make_add('Multitrack', 
+    self.make_add('Tracks', 
                   'Add a unit for track recording and playback', self.on_add_multitrack)
     self.make_add('Transport', 
                   'Add a transport control unit', self.on_add_transport)

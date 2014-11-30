@@ -8,8 +8,46 @@ import transport
 import view
 import unit_view
 
-# make a view that displays transport controls
+# an overlay for a track list that shows the state of the transport
 class TransportView(view.ModelView):
+  def __init__(self, transport, view_scale=None, parent=None):
+    view.ModelView.__init__(self, model=transport, parent=parent)
+    self.view_scale = view_scale
+    self.view_scale.add_observer(self.update)
+  @property
+  def transport(self):
+    return(self._model)
+  def paint(self, qp, options, widget):
+    r = self.rect()
+    width = r.width()
+    height = r.height()
+    pps = self.view_scale.pixels_per_second
+    # draw marked times on the transport
+    color = self.palette.color(QPalette.Normal, QPalette.WindowText)
+    color.setAlphaF(0.5)
+    pen = QPen(color)
+    pen.setCapStyle(Qt.FlatCap)
+    pen.setWidth(2)
+    pen.setDashPattern((2, 3))
+    qp.setPen(pen)
+    for mark in self.transport.marks:
+      x = round((mark - self.view_scale.time_offset) * pps)
+      qp.drawLine(QPointF(x, 0.0), QPointF(x, height))
+    # draw the current timepoint in red
+    x = round((self.transport.time - self.view_scale.time_offset) * pps)
+    if (x >= 0):
+      qp.setBrush(self.brush(0.10))
+      qp.setPen(Qt.NoPen)
+      qp.drawRect(0, 0, x, height)
+      pen = QPen(QColor(255, 0, 0, 128))
+      pen.setCapStyle(Qt.FlatCap)
+      pen.setWidth(2)
+      qp.setPen(pen)
+      qp.drawLine(QPointF(x, 0.0), QPointF(x, height))
+      
+
+# make a view that displays transport controls
+class TransportControlView(view.ModelView):
   def __init__(self, transport, parent=None):
     view.ModelView.__init__(self, model=transport, parent=parent)
     self.button_size = 30
@@ -97,7 +135,7 @@ class TransportView(view.ModelView):
 class TransportUnitView(unit_view.UnitView):
   def __init__(self, *args, **kwargs):
     unit_view.UnitView.__init__(self, *args, **kwargs)
-    self._content = TransportView(transport=self.unit.transport)
+    self._content = TransportControlView(transport=self.unit.transport)
     self._content.setParentItem(self)
     # add an input so the transport can be controlled via midi
     self._input_layout = unit_view.InputListLayout(self, list((self.unit.transport,)), 
