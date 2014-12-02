@@ -13,6 +13,8 @@ class UndoStack(object):
     self._begin_state = self.save_state(things)
   # store the state of the given objects after changes are made
   def end_action(self, things):
+    # if no action was in the works, we can skip this
+    if (self._begin_state is None): return
     # see what changed in the course of the action
     begin_state = self._begin_state
     end_state = self.save_state(things)

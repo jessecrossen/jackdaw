@@ -1,6 +1,8 @@
-- restore time snapping
+- handle transport length, and conditions when transport goes past the end
+- scroll tracks based on transport position
 - allow dragging/snapping of marks
 - add transport mark buttons to gui
+- make a control surface for mix/pan visualization/control
 - general curve editing for control channel events in a block
 - routable control channels on each track
 - block backgrounds can be colored, color follows eventlist linkages
@@ -10,6 +12,7 @@
 - make logo and rename project
 - write or adapt a standalone JACK LV2 and/or DSSI effects host
 - add a unit for effects processing
+- key modifier for proportional stretch of a block's events
 
 - make filters that can alter the characteristics of underlying notes at play-time (e.g. quantize, timewarp)
 - notes embed pitch modulation and aftertouch, keyed by fraction of note duration

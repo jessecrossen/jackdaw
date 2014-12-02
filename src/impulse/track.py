@@ -271,6 +271,7 @@ class Track(unit.Source, unit.Sink, ModelList):
   def invalidate(self):
     self._pitches = None
     self._times = None
+    self._snap_times = None
     # whether the track is enabled for playback 
     # (this will be controlled by the track list)
     self.enabled = True
@@ -369,6 +370,18 @@ class Track(unit.Source, unit.Sink, ModelList):
       self._times = list(times)
       self._times.sort()
     return(self._times)
+  # get a list of snappable times (i.e. times of non-selected events)
+  @property
+  def snap_times(self):
+    if (self._snap_times == None):
+      times = set()
+      for block in self:
+        # add the snap times of all events in the block
+        for time in block.snap_times:
+          times.add(block.time + time)
+      self._snap_times = list(times)
+      self._snap_times.sort()
+    return(self._snap_times)
   # get a list of unique pitches for all the notes in the track
   @property
   def pitches(self):
@@ -470,6 +483,7 @@ class TrackList(ModelList):
   def invalidate(self):
     self._max_duration = None
     self._times = None
+    self._snap_times = None
   # return the duration of the longest track in the list
   @property
   def duration(self):
@@ -489,6 +503,17 @@ class TrackList(ModelList):
       self._times = list(times)
       self._times.sort()
     return(self._times)
+  # get a list of unique times for all non-selected events in these tracks
+  @property
+  def snap_times(self):
+    if (self._snap_times == None):
+      times = set()
+      for track in self:
+        for time in track.snap_times:
+          times.add(time)
+      self._snap_times = list(times)
+      self._snap_times.sort()
+    return(self._snap_times)
   # get and set the transport
   @property
   def transport(self):

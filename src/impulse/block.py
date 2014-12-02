@@ -100,6 +100,7 @@ class EventList(ModelList):
   def invalidate(self):
     self._pitches = None
     self._times = None
+    self._snap_times = None
   # lazily get a list of unique pitches for all notes in the list
   @property
   def pitches(self):
@@ -119,9 +120,25 @@ class EventList(ModelList):
       for event in self:
         if (hasattr(event, 'time')):
           times.add(event.time)
+          if (hasattr(event, 'duration')):
+            times.add(event.time + event.duration)
       self._times = list(times)
       self._times.sort()
     return(self._times)
+  # lazily get a list of unique times for all non-selected notes in the list
+  @property
+  def snap_times(self):
+    if (self._snap_times == None):
+      times = set()
+      for event in self:
+        if ((hasattr(event, 'time')) and 
+            ((not hasattr(event, 'selected')) or (not event.selected))):
+          times.add(event.time)
+          if (hasattr(event, 'duration')):
+            times.add(event.time + event.duration)
+      self._snap_times = list(times)
+      self._snap_times.sort()
+    return(self._snap_times)
   # serialization
   def serialize(self):
     return({ 
@@ -244,6 +261,7 @@ class Block(Model):
   def invalidate(self):
     self._pitches = None
     self._times = None
+    self._snap_times = None
   # get all event times within the block
   @property
   def times(self):
@@ -264,6 +282,27 @@ class Block(Model):
       self._times = list(times)
       self._times.sort()
     return(self._times)
+  # get all times of non-selected events in the block
+  @property
+  def snap_times(self):
+    if (self._snap_times == None):
+      times = set()
+      repeat_time = self.events.duration
+      event_times = set(self.events.snap_times)
+      if (self.selected):
+        event_times.add(0.0)
+      for time in event_times:
+        times.add(time)
+        if (repeat_time > 0):
+          time += repeat_time
+          while (time < self.duration):
+            times.add(time)
+            time += repeat_time
+      if (self.selected):
+        times.add(self.duration)
+      self._snap_times = list(times)
+      self._snap_times.sort()
+    return(self._snap_times)
   # get all pitch classes within the block
   @property
   def pitches(self):

@@ -311,6 +311,18 @@ class TimeDraggable(Selectable):
   def __init__(self):
     Selectable.__init__(self)
     self._drag_start_times = dict()
+  # get a list of times to snap to
+  def get_snap_times(self):
+    times = set()
+    tracks_view = self.parentItemWithAttribute('tracks')
+    if (tracks_view is not None):
+      for time in tracks_view.tracks.snap_times:
+        times.add(time)
+    transport_view = self.parentItemWithAttribute('transport')
+    if (transport_view is not None):
+      for time in transport_view.transport.marks:
+        times.add(time)
+    return(times)
   # get the interval of time to jump when shift is pressed
   def _get_time_jump(self, delta_time):
     sign = 1.0 if delta_time >= 0 else -1.0
@@ -341,6 +353,35 @@ class TimeDraggable(Selectable):
         self._drag_start_times[model] = model.time
       except AttributeError: continue
   def on_drag_x(self, event, delta_time):
+    # convert the current model's time into absolute transport time
+    current_time = self._drag_start_times[self.model] + delta_time
+    block_view = self.parentItemWithAttribute('block')
+    if (block_view is not None):
+      current_time += block_view.block.time
+    # snap the end of the dragged model too, if it has duration
+    current_end_time = current_time
+    if (hasattr(self.model, 'duration')):
+      current_end_time += self.model.duration
+    # get a snap threshold based on the view scale
+    snap_threshold = 0.050
+    scale_view = self.parentItemWithAttribute('view_scale')
+    if (scale_view is not None):
+      snap_threshold = 4.0 / scale_view.view_scale.pixels_per_second
+    # apply snapping
+    closest_time = None
+    closest_delta = None
+    for snap_time in self.get_snap_times():
+      delta = snap_time - current_time
+      if ((closest_time is None) or (abs(delta) < abs(closest_delta))):
+        closest_time = snap_time
+        closest_delta = delta
+      delta = snap_time - current_end_time
+      if (abs(delta) < abs(closest_delta)):
+        closest_time = snap_time
+        closest_delta = delta
+    if (abs(closest_delta) < snap_threshold):
+      delta_time += closest_delta
+    # move all the models to the new position
     for model in Selection.models:
       if (model in self._drag_start_times):
         model.time = self._drag_start_times[model] + delta_time
