@@ -1,5 +1,3 @@
-- handle transport length, and conditions when transport goes past the end
-- scroll tracks based on transport position
 - allow dragging/snapping of marks
 - add transport mark buttons to gui
 - make a control surface for mix/pan visualization/control

@@ -14,9 +14,34 @@ class TransportView(view.ModelView):
     view.ModelView.__init__(self, model=transport, parent=parent)
     self.view_scale = view_scale
     self.view_scale.add_observer(self.update)
+    self.transport.add_observer(self.check_bounds)
+  def destroy(self):
+    self.view_scale.remove_observer(self.update)
+    self.transport.remove_observer(self.check_bounds)
+    view.ModelView.destroy(self)
   @property
   def transport(self):
     return(self._model)
+  # make sure the transport stays visible
+  def check_bounds(self):
+    pps = self.view_scale.pixels_per_second
+    r = self.rect()
+    current_time = self.transport.time
+    # get the range of time shown by this view
+    time_shown = r.width() / pps
+    start_time = self.view_scale.time_offset
+    end_time = start_time + time_shown
+    # if the transport goes off the edge, scroll to show it
+    margin_time = 20.0 / pps
+    if (end_time - start_time < (margin_time * 2.0)):
+      self.view_scale.time_offset = (start_time + end_time) / 2.0
+    elif (current_time < start_time + margin_time):
+      self.view_scale.time_offset = max(0.0, 
+        current_time - margin_time)
+    elif (current_time > end_time - margin_time):
+      self.view_scale.time_offset = max(0.0, 
+        current_time + margin_time - time_shown)
+  # repaint the transport
   def paint(self, qp, options, widget):
     r = self.rect()
     width = r.width()

@@ -231,7 +231,7 @@ class Track(unit.Source, unit.Sink, ModelList):
     u'C', u'D♭­', u'D', u'E♭­', u'E', u'F', 
     u'F♯', u'G', u'A♭­', u'A', u'B♭­', u'B' )
 
-  def __init__(self, blocks=(), duration=60, name='Track',
+  def __init__(self, blocks=(), name='Track',
                      solo=False, mute=False, arm=False,
                      pitch_names=None, transport=None):
     ModelList.__init__(self, blocks)
@@ -240,7 +240,6 @@ class Track(unit.Source, unit.Sink, ModelList):
     self._sink_type = 'midi'
     self._source_type = 'midi'
     self._name = name
-    self._duration = duration
     self._solo = solo
     self._mute = mute
     self._arm = arm
@@ -269,6 +268,7 @@ class Track(unit.Source, unit.Sink, ModelList):
     self.add_observer(self.update_passthru)
   # invalidate cached data
   def invalidate(self):
+    self._max_time = None
     self._pitches = None
     self._times = None
     self._snap_times = None
@@ -304,12 +304,11 @@ class Track(unit.Source, unit.Sink, ModelList):
   # the total length of time of the track content (in seconds)
   @property
   def duration(self):
-    return(self._duration)
-  @duration.setter
-  def duration(self, value):
-    if (self._duration != value):
-      self._duration = value
-      self.on_change()
+    if (self._max_time is None):
+      self._max_time = 0.0
+      for block in self:
+        self._max_time = max(self._max_time, block.time + block.duration)
+    return(self._max_time)
   # whether the track should play by itself or as part of a solo group
   @property
   def solo(self):
@@ -445,7 +444,6 @@ class Track(unit.Source, unit.Sink, ModelList):
     return({ 
       'name': self.name,
       'blocks': list(self),
-      'duration': self.duration,
       'solo': self.solo,
       'mute': self.mute,
       'arm': self.arm,

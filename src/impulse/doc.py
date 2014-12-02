@@ -96,12 +96,21 @@ class Document(Model):
         x=400))
     self.units = units
     self.units.add_observer(self.on_change)
+    self.units.add_observer(self.update_transport_duration)
+    self.update_transport_duration()
     # a list of connections between units
     if (patch_bay is None):
       patch_bay = PatchBay()
     self.patch_bay = patch_bay
     self.patch_bay.add_observer(self.on_change)
-    
+  # update the duration of the transport based on the length of the tracks
+  def update_transport_duration(self):
+    duration = 0.0
+    for unit in self.units:
+      if (hasattr(unit, 'tracks')):
+        for track in unit.tracks:
+          duration = max(duration, track.duration)
+    self.transport.duration = duration
   # save the document to a file
   def save(self):
     output_stream = open(self.path, 'w')
