@@ -12,9 +12,11 @@ import unit_view
 class TransportView(view.ModelView):
   def __init__(self, transport, view_scale=None, parent=None):
     view.ModelView.__init__(self, model=transport, parent=parent)
-    self.view_scale = view_scale
-    self.view_scale.add_observer(self.update)
     self.transport.add_observer(self.check_bounds)
+    self.time_layout = TransportLayout(transport=self.transport, parent=self)
+    self.view_scale = view_scale
+    self.view_scale.add_observer(self.on_scale)
+    self.on_scale()
   def destroy(self):
     self.view_scale.remove_observer(self.update)
     self.transport.remove_observer(self.check_bounds)
@@ -22,6 +24,12 @@ class TransportView(view.ModelView):
   @property
   def transport(self):
     return(self._model)
+  # respond to scaling
+  def on_scale(self):
+    t = QTransform()
+    t.scale(self.view_scale.pixels_per_second, 1.0)
+    t.translate(- self.view_scale.time_offset, 0)
+    self.time_layout.setTransform(t)
   # make sure the transport stays visible
   def check_bounds(self):
     pps = self.view_scale.pixels_per_second
@@ -41,35 +49,77 @@ class TransportView(view.ModelView):
     elif (current_time > end_time - margin_time):
       self.view_scale.time_offset = max(0.0, 
         current_time + margin_time - time_shown)
-  # repaint the transport
-  def paint(self, qp, options, widget):
+  # do layout
+  def layout(self):
     r = self.rect()
-    width = r.width()
-    height = r.height()
-    pps = self.view_scale.pixels_per_second
-    # draw marked times on the transport
+    self.time_layout.setRect(QRectF(0.0, 0.0, r.width(), r.height()))
+
+class TransportLayout(view.ModelView):
+  def __init__(self, transport, parent=None):
+    view.ModelView.__init__(self, model=transport, parent=parent)
+    # darken slightly before the current time so it's easier to find 
+    #  the timepoint
+    self.passed_time_view = PassedTimeView(
+        transport=self.transport, parent=self)
+    # draw the current time
+    time_brush = QBrush(QColor(255, 0, 0, 128))
+    self.current_time_view = TimepointView(
+      model=self.transport, brush=time_brush, parent=self)
+    # draw marks
     color = self.palette.color(QPalette.Normal, QPalette.WindowText)
-    color.setAlphaF(0.5)
-    pen = QPen(color)
-    pen.setCapStyle(Qt.FlatCap)
-    pen.setWidth(2)
-    pen.setDashPattern((2, 3))
-    qp.setPen(pen)
-    for mark in self.transport.marks:
-      x = round((mark - self.view_scale.time_offset) * pps)
-      qp.drawLine(QPointF(x, 0.0), QPointF(x, height))
-    # draw the current timepoint in red
-    x = round((self.transport.time - self.view_scale.time_offset) * pps)
-    if (x >= 0):
-      qp.setBrush(self.brush(0.10))
-      qp.setPen(Qt.NoPen)
-      qp.drawRect(0, 0, x, height)
-      pen = QPen(QColor(255, 0, 0, 128))
-      pen.setCapStyle(Qt.FlatCap)
-      pen.setWidth(2)
-      qp.setPen(pen)
-      qp.drawLine(QPointF(x, 0.0), QPointF(x, height))
-      
+    color.setAlphaF(0.85)
+    mark_brush = QBrush(color, Qt.Dense4Pattern)
+    self.marks_layout = MarksLayout(self, self.transport.marks, 
+      lambda m: TimepointView(model=m, brush=mark_brush))
+  @property
+  def transport(self):
+    return(self._model)
+  def layout(self):
+    r = self.rect()
+    height = r.height()
+    self.passed_time_view.setRect(QRectF(
+      0.0, 0.0, self.transport.time, height))
+    self.current_time_view.setRect(QRectF(
+      self.transport.time, 0.0, 0.0, height))
+    self.marks_layout.setRect(QRectF(0.0, 0.0, 0.0, height))
+
+# represent the time which has passed so far in the transport
+class PassedTimeView(view.ModelView):
+  def __init__(self, transport, parent=None):
+    view.ModelView.__init__(self, model=transport, parent=parent)
+  def paint(self, qp, options, width):
+    r = self.rect()
+    qp.setBrush(self.brush(0.05))
+    qp.setPen(Qt.NoPen)
+    qp.drawRect(QRectF(0.0, 0.0, r.width(), r.height()))
+
+# represent a timepoint on a transit
+class TimepointView(view.TimeDraggable, view.ModelView):
+  def __init__(self, model, brush=Qt.NoBrush, parent=None):
+    self._brush = brush
+    view.ModelView.__init__(self, model=model, parent=parent)
+    view.TimeDraggable.__init__(self)
+    self.setCursor(Qt.SizeHorCursor)
+  def boundingRect(self):
+    r = self.mapRectFromScene(QRectF(0.0, 0.0, 1.0, 0.0))
+    px = r.width()
+    return(QRectF(- 2.0 * px, 0.0, 4.0 * px, self.rect().height()))
+  def paint(self, qp, options, width):
+    t = qp.deviceTransform()
+    px = 1.0 / t.m11()
+    qp.setBrush(self._brush)
+    qp.setPen(Qt.NoPen)
+    qp.drawRect(QRectF(- px, 0.0, 2.0 * px, self.rect().height()))
+
+# do layout of marks on a transport
+class MarksLayout(view.ListLayout):
+  def __init__(self, *args, **kwargs):
+    view.ListLayout.__init__(self, *args, **kwargs)
+  def layout(self):
+    y = self._rect.y()
+    h = self._rect.height()
+    for view in self._views:
+      view.setRect(QRectF(view.model.time, y, 0.0, h))
 
 # make a view that displays transport controls
 class TransportControlView(view.ModelView):

@@ -224,9 +224,11 @@ class Selectable(Interactive):
           (event.modifiers() == Qt.ControlModifier)):
       self.model.selected = not self.model.selected
     else:
-      if (self.model.selected):
-        event.ignore()
-        return
+      try:
+        if (self.model.selected):
+          event.ignore()
+          return
+      except AttributeError: pass
       Selection.deselect_all()
       self.model.selected = True
 
@@ -320,8 +322,8 @@ class TimeDraggable(Selectable):
         times.add(time)
     transport_view = self.parentItemWithAttribute('transport')
     if (transport_view is not None):
-      for time in transport_view.transport.marks:
-        times.add(time)
+      for mark in transport_view.transport.marks:
+        times.add(mark.time)
     return(times)
   # get the interval of time to jump when shift is pressed
   def _get_time_jump(self, delta_time):
@@ -343,12 +345,16 @@ class TimeDraggable(Selectable):
   def on_drag_start_x(self, event):
     ViewManager.begin_action()
     # select the model if it isn't selected
-    if (not self.model.selected):
+    can_select = hasattr(self.model, 'selected')
+    if ((not can_select) or (not self.model.selected)):
       Selection.deselect_all()
-      self.model.selected = True
+      if (can_select):
+        self.model.selected = True
     # record the original times of all selected models
     self._drag_start_times = dict()
-    for model in Selection.models:
+    models = set(Selection.models)
+    models.add(self.model)
+    for model in models:
       try:
         self._drag_start_times[model] = model.time
       except AttributeError: continue
@@ -382,9 +388,8 @@ class TimeDraggable(Selectable):
     if (abs(closest_delta) < snap_threshold):
       delta_time += closest_delta
     # move all the models to the new position
-    for model in Selection.models:
-      if (model in self._drag_start_times):
-        model.time = self._drag_start_times[model] + delta_time
+    for (model, start_time) in self._drag_start_times.iteritems():
+      model.time = start_time + delta_time
   # reset state after dragging to avoid memory leaks
   def on_drag_end_x(self, event):
     self._drag_start_times = dict()

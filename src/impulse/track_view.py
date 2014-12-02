@@ -40,7 +40,7 @@ class TrackListView(view.BoxSelectable, view.Interactive, view.ModelView):
       view_scale=self.view_scale,
       parent=self)
     # clip so the transport elements don't get drawn out of bounds
-    self.overlay.setFlag(QGraphicsItem.ItemClipsToShape, True)
+    self.overlay.setFlag(QGraphicsItem.ItemClipsChildrenToShape, True)
   @property
   def tracks(self):
     return(self._model)

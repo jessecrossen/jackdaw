@@ -1,5 +1,5 @@
-- allow dragging/snapping of marks
 - add transport mark buttons to gui
+
 - make a control surface for mix/pan visualization/control
 - general curve editing for control channel events in a block
 - routable control channels on each track

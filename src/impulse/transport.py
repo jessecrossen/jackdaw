@@ -10,7 +10,7 @@ import midi
 # a transport to keep track of timepoints, playback, and recording
 class Transport(observable.Object, unit.Sink):
   # regular init stuff
-  def __init__(self, time=0.0, duration=0.0, cycling=False, marks=None):
+  def __init__(self, time=0.0, duration=0.0, cycling=False, marks=()):
     observable.Object.__init__(self)
     unit.Sink.__init__(self)
     # set the interval to update at
@@ -27,9 +27,9 @@ class Transport(observable.Object, unit.Sink):
     self._recording = False
     self._cycling = cycling
     # store all time marks
-    if (marks is None):
-      marks = [ ]
-    self.marks = marks
+    self.marks = observable.List(marks)
+    self._sorting_marks = False
+    self.marks.add_observer(self.on_marks_change)
     # the start and end times of the cycle region, which will default
     #  to the next and previous marks if not set externally
     self._cycle_start_time = None
@@ -201,11 +201,13 @@ class Transport(observable.Object, unit.Sink):
     if (self.cycle_start_time is not None):
       self._cycle_start_time = self.cycle_start_time
     else:
-      self._cycle_start_time = self.get_previous_mark(current_time + 0.001)
+      mark = self.get_previous_mark(current_time + 0.001)
+      self._cycle_start_time = mark.time if mark is not None else None
     if (self.cycle_end_time is not None):
       self._cycle_end_time = self.cycle_end_time
     else:
-      self._cycle_end_time = self.get_next_mark(current_time)
+      mark = self.get_next_mark(current_time)
+      self._cycle_end_time = mark.time if mark is not None else None
   # jump to the beginning or end
   def go_to_beginning(self):
     self.time = 0.0
@@ -219,43 +221,72 @@ class Transport(observable.Object, unit.Sink):
   # toggle a mark at the current time
   def toggle_mark(self, *args):
     t = self.time
-    if (t in self.marks):
-      self.marks.remove(t)
-    else:
-      self.marks.append(t)
-      self.marks.sort()
+    found = False
+    for mark in set(self.marks):
+      if (mark.time == t):
+        self.marks.remove(mark)
+        found = True
+    if (not found):
+      self.marks.append(Mark(time=t))
+  def on_marks_change(self):
+    if (self._sorting_marks): return
+    self._sorting_marks = True
+    self.marks.sort()
     self.on_change()
+    self._sorting_marks = False
   # return the time of the next or previous mark relative to a given time
   def get_previous_mark(self, from_time):
-    for t in reversed(self.marks):
-      if (t < from_time):
-        return(t)
+    for mark in reversed(self.marks):
+      if (mark.time < from_time):
+        return(mark)
     # if we're back past the first mark, treat the beginning 
     #  like a virtual mark
-    return(0)
+    return(Mark(time=0.0))
   def get_next_mark(self, from_time):
-    for t in self.marks:
-      if (t > from_time):
-        return(t)
+    for mark in self.marks:
+      if (mark.time > from_time):
+        return(mark)
     return(None)
   # move to the next or previous mark
   def previous_mark(self, *args):
-    t = self.get_previous_mark(self.time)
-    if (t is not None):
-      self.time = t
+    mark = self.get_previous_mark(self.time)
+    if (mark is not None):
+      self.time = mark.time
   def next_mark(self, *args):
-    t = self.get_next_mark(self.time)
-    if (t is not None):
-      self.time = t
+    mark = self.get_next_mark(self.time)
+    if (mark is not None):
+      self.time = mark.time
   # transport serialization
   def serialize(self):
     return({
       'time': self.time,
       'duration': self.duration,
       'cycling': self.cycling,
-      'marks': self.marks
+      'marks': list(self.marks)
     })
 serializable.add(Transport)
+
+# a model to store a marked timepoint on a transport
+class Mark(observable.Object):
+  def __init__(self, time=0.0):
+    observable.Object.__init__(self)
+    self._time = time
+  @property
+  def time(self):
+    return(self._time)
+  @time.setter
+  def time(self, value):
+    if (value != self._time):
+      self._time = value
+      self.on_change()
+  # overload the less-than operator for sorting by time
+  def __lt__(self, other):
+    return(self.time < other.time)
+  def serialize(self):
+    return({
+      'time': self.time
+    })
+serializable.add(Mark)
 
 # a handler for MIDI commands that control the transport
 class TransportInputHandler(midi.InputHandler):
