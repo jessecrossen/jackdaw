@@ -2,6 +2,7 @@ import os
 import sys
 import re
 import yaml
+import icon
 
 from PySide.QtCore import *
 from PySide.QtGui import *
@@ -129,43 +130,63 @@ class DocumentWindow(QMainWindow):
     # transport menu
     transport_menu = menubar.addMenu('&Transport')
     # go to start
-    self.beginning_action = QAction(QIcon.fromTheme('media-skip-backward'), 'Jump to &Beginning', self)
+    self.beginning_action = QAction(icon.beginning, 'Jump to &Beginning', self)
     self.beginning_action.setShortcut('Home')
     self.beginning_action.setStatusTip('Jump back to the beginning of the project')
     self.beginning_action.triggered.connect(self.transport_beginning)
     transport_menu.addAction(self.beginning_action)
     # go to end
-    self.end_action = QAction(QIcon.fromTheme('media-skip-forward'), 'Jump to &End', self)
+    self.end_action = QAction(icon.ending, 'Jump to &End', self)
     self.end_action.setShortcut('End')
     self.end_action.setStatusTip('Jump forward to the end of the project')
     self.end_action.triggered.connect(self.transport_end)
     transport_menu.addAction(self.end_action)
     # back
-    self.back_action = QAction(QIcon.fromTheme('media-seek-backward'), 'Bac&k', self)
+    self.back_action = QAction(icon.backward, 'Bac&k', self)
     self.back_action.setShortcut('PgUp')
     self.back_action.setStatusTip('Skip backward in time')
     self.back_action.triggered.connect(self.transport_back)
     transport_menu.addAction(self.back_action)
     # forward
-    self.forward_action = QAction(QIcon.fromTheme('media-seek-forward'), '&Forward', self)
+    self.forward_action = QAction(icon.forward, '&Forward', self)
     self.forward_action.setShortcut('PgDown')
     self.forward_action.setStatusTip('Skip forward in time')
     self.forward_action.triggered.connect(self.transport_forward)
     transport_menu.addAction(self.forward_action)
     # ---
     transport_menu.addSeparator()
+    # previous mark
+    self.previous_mark_action = QAction(icon.mark_previous, 'Previous Mark', self)
+    self.previous_mark_action.setShortcut('Ctrl+PgUp')
+    self.previous_mark_action.setStatusTip('Skip to the previous marked time')
+    self.previous_mark_action.triggered.connect(self.transport_previous_mark)
+    transport_menu.addAction(self.previous_mark_action)
+    # toggle mark
+    self.toggle_mark_action = QAction(icon.mark_toggle, 'Toggle Mark', self)
+    self.toggle_mark_action.setShortcut('Ctrl+M')
+    self.toggle_mark_action.setStatusTip('Toggle a mark at the current time')
+    self.toggle_mark_action.triggered.connect(self.transport_toggle_mark)
+    transport_menu.addAction(self.toggle_mark_action)
+    # next mark
+    self.next_mark_action = QAction(icon.mark_next, 'Next Mark', self)
+    self.next_mark_action.setShortcut('Ctrl+PgDown')
+    self.next_mark_action.setStatusTip('Skip to the next marked time')
+    self.next_mark_action.triggered.connect(self.transport_next_mark)
+    transport_menu.addAction(self.next_mark_action)
+    # ---
+    transport_menu.addSeparator()
     # stop
-    self.stop_action = QAction(QIcon.fromTheme('media-playback-stop'), '&Stop', self)
+    self.stop_action = QAction(icon.stop, '&Stop', self)
     self.stop_action.setStatusTip('Stop playback or recording')
     self.stop_action.triggered.connect(self.transport_stop)
     transport_menu.addAction(self.stop_action)
     # play
-    self.play_action = QAction(QIcon.fromTheme('media-playback-start'), '&Play', self)
+    self.play_action = QAction(icon.play, '&Play', self)
     self.play_action.setStatusTip('Start playback')
     self.play_action.triggered.connect(self.transport_play)
     transport_menu.addAction(self.play_action)
     # record
-    self.record_action = QAction(QIcon.fromTheme('media-record'), '&Record', self)
+    self.record_action = QAction(icon.record, '&Record', self)
     self.record_action.setStatusTip('Start recording')
     self.record_action.triggered.connect(self.transport_record)
     transport_menu.addAction(self.record_action)
@@ -255,6 +276,15 @@ class DocumentWindow(QMainWindow):
   def transport_forward(self):
     if (self.document):
       self.document.transport.skip_forward()
+  def transport_previous_mark(self):
+    if (self.document):
+      self.document.transport.previous_mark()
+  def transport_next_mark(self):
+    if (self.document):
+      self.document.transport.next_mark()
+  def transport_toggle_mark(self):
+    if (self.document):
+      self.document.transport.toggle_mark()
   def transport_play(self):
     if (self.document):
       self.document.transport.play()

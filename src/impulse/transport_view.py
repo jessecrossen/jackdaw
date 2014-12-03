@@ -7,6 +7,7 @@ from PySide.QtGui import *
 import transport
 import view
 import unit_view
+import icon
 
 # an overlay for a track list that shows the state of the transport
 class TransportView(view.ModelView):
@@ -144,7 +145,7 @@ class TransportControlView(view.ModelView):
   # add a proxied button widget and return it
   def add_button(self, icon):
     button = QPushButton()
-    button.setIcon(QIcon.fromTheme(icon))
+    button.setIcon(icon)
     button.setFocusPolicy(Qt.NoFocus)
     proxy = self.scene().addWidget(button)
     proxy.setParentItem(self)
@@ -154,28 +155,28 @@ class TransportControlView(view.ModelView):
     if (not self.scene()): return
     # make buttons
     if (not self.begin_button):
-      self.begin_button = self.add_button('media-skip-backward')
+      self.begin_button = self.add_button(icon.beginning)
       self.begin_button.clicked.connect(self.transport.go_to_beginning)
     if (not self.back_button):
-      self.back_button = self.add_button('media-seek-backward')
+      self.back_button = self.add_button(icon.backward)
       self.back_button.clicked.connect(self.transport.skip_back)
     if (not self.forward_button):
-      self.forward_button = self.add_button('media-seek-forward')
+      self.forward_button = self.add_button(icon.forward)
       self.forward_button.clicked.connect(self.transport.skip_forward)
     if (not self.end_button):
-      self.end_button = self.add_button('media-skip-forward')
+      self.end_button = self.add_button(icon.ending)
       self.end_button.clicked.connect(self.transport.go_to_end)
     if (not self.stop_button):
-      self.stop_button = self.add_button('media-playback-stop')
+      self.stop_button = self.add_button(icon.stop)
       self.stop_button.clicked.connect(self.transport.stop)
     if (not self.play_button):
-      self.play_button = self.add_button('media-playback-start')
+      self.play_button = self.add_button(icon.play)
       self.play_button.clicked.connect(self.transport.play)
     if (not self.record_button):
-      self.record_button = self.add_button('media-record')
+      self.record_button = self.add_button(icon.record)
       self.record_button.clicked.connect(self.transport.record)
     if (not self.cycle_button):
-      self.cycle_button = self.add_button('view-refresh')
+      self.cycle_button = self.add_button(icon.cycle)
       self.cycle_button.setCheckable(True)
       self.cycle_button.toggled.connect(self.on_cycle)
     if (self.cycle_button):

@@ -1,4 +1,5 @@
-- add transport mark buttons to gui
+- add transport mark buttons to transport unit
+- add cycle toggle to transport menu
 
 - make a control surface for mix/pan visualization/control
 - general curve editing for control channel events in a block
