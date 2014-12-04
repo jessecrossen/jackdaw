@@ -33,7 +33,6 @@ class DocumentWindow(QMainWindow):
     # set up stylesheets for look and feel
     self._init_style()
     
-    
   @property
   def document(self):
     return(self._document)
@@ -130,25 +129,25 @@ class DocumentWindow(QMainWindow):
     # transport menu
     transport_menu = menubar.addMenu('&Transport')
     # go to start
-    self.beginning_action = QAction(icon.beginning, 'Jump to &Beginning', self)
+    self.beginning_action = QAction(icon.get('beginning'), 'Jump to &Beginning', self)
     self.beginning_action.setShortcut('Home')
     self.beginning_action.setStatusTip('Jump back to the beginning of the project')
     self.beginning_action.triggered.connect(self.transport_beginning)
     transport_menu.addAction(self.beginning_action)
     # go to end
-    self.end_action = QAction(icon.ending, 'Jump to &End', self)
+    self.end_action = QAction(icon.get('ending'), 'Jump to &End', self)
     self.end_action.setShortcut('End')
     self.end_action.setStatusTip('Jump forward to the end of the project')
     self.end_action.triggered.connect(self.transport_end)
     transport_menu.addAction(self.end_action)
     # back
-    self.back_action = QAction(icon.backward, 'Bac&k', self)
+    self.back_action = QAction(icon.get('backward'), 'Bac&k', self)
     self.back_action.setShortcut('PgUp')
     self.back_action.setStatusTip('Skip backward in time')
     self.back_action.triggered.connect(self.transport_back)
     transport_menu.addAction(self.back_action)
     # forward
-    self.forward_action = QAction(icon.forward, '&Forward', self)
+    self.forward_action = QAction(icon.get('forward'), '&Forward', self)
     self.forward_action.setShortcut('PgDown')
     self.forward_action.setStatusTip('Skip forward in time')
     self.forward_action.triggered.connect(self.transport_forward)
@@ -156,19 +155,19 @@ class DocumentWindow(QMainWindow):
     # ---
     transport_menu.addSeparator()
     # previous mark
-    self.previous_mark_action = QAction(icon.mark_previous, 'Previous Mark', self)
+    self.previous_mark_action = QAction(icon.get('mark_previous'), 'Previous Mark', self)
     self.previous_mark_action.setShortcut('Ctrl+PgUp')
     self.previous_mark_action.setStatusTip('Skip to the previous marked time')
     self.previous_mark_action.triggered.connect(self.transport_previous_mark)
     transport_menu.addAction(self.previous_mark_action)
     # toggle mark
-    self.toggle_mark_action = QAction(icon.mark_toggle, 'Toggle Mark', self)
+    self.toggle_mark_action = QAction(icon.get('mark_toggle'), 'Toggle Mark', self)
     self.toggle_mark_action.setShortcut('Ctrl+M')
     self.toggle_mark_action.setStatusTip('Toggle a mark at the current time')
     self.toggle_mark_action.triggered.connect(self.transport_toggle_mark)
     transport_menu.addAction(self.toggle_mark_action)
     # next mark
-    self.next_mark_action = QAction(icon.mark_next, 'Next Mark', self)
+    self.next_mark_action = QAction(icon.get('mark_next'), 'Next Mark', self)
     self.next_mark_action.setShortcut('Ctrl+PgDown')
     self.next_mark_action.setStatusTip('Skip to the next marked time')
     self.next_mark_action.triggered.connect(self.transport_next_mark)
@@ -176,17 +175,17 @@ class DocumentWindow(QMainWindow):
     # ---
     transport_menu.addSeparator()
     # stop
-    self.stop_action = QAction(icon.stop, '&Stop', self)
+    self.stop_action = QAction(icon.get('stop'), '&Stop', self)
     self.stop_action.setStatusTip('Stop playback or recording')
     self.stop_action.triggered.connect(self.transport_stop)
     transport_menu.addAction(self.stop_action)
     # play
-    self.play_action = QAction(icon.play, '&Play', self)
+    self.play_action = QAction(icon.get('play'), '&Play', self)
     self.play_action.setStatusTip('Start playback')
     self.play_action.triggered.connect(self.transport_play)
     transport_menu.addAction(self.play_action)
     # record
-    self.record_action = QAction(icon.record, '&Record', self)
+    self.record_action = QAction(icon.get('record'), '&Record', self)
     self.record_action.setStatusTip('Start recording')
     self.record_action.triggered.connect(self.transport_record)
     transport_menu.addAction(self.record_action)

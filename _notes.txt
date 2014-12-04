@@ -1,5 +1,6 @@
 - add transport mark buttons to transport unit
 - add cycle toggle to transport menu
+- make custom icons for undo/redo and zoom in/out
 
 - make a control surface for mix/pan visualization/control
 - general curve editing for control channel events in a block
