@@ -17,11 +17,6 @@ class DocumentWindow(QMainWindow):
     self._app = app
     self.setMinimumSize(QSize(800, 600))
     self.setWindowTitle('New Document')
-    # initialize state
-    self.control_surface = None
-    self.mixer = None
-    self.recorder = None
-    self.player = None
     # start with no document
     self._document = None
     self.document_view = None
@@ -48,13 +43,8 @@ class DocumentWindow(QMainWindow):
       self.attach()
       
   def detach(self):
-    # detach from the old document
-    self.mixer = None
-    self.recorder = None
-    self.player = None
-    if (self.control_surface):
-      self.control_surface.disconnect()
-    self.control_surface = None
+    self.document.transport.remove_observer(self.update_actions)
+    self.document.view_scale.remove_observer(self.update_actions)
     # remove the document view
     if (self.document_view is not None):
       view = self.document_view
@@ -70,6 +60,7 @@ class DocumentWindow(QMainWindow):
     # add it to the document
     self.stack.addWidget(self.document_view)
     # update actions when relevant objects change
+    self.document.transport.add_observer(self.update_actions)
     self.document.view_scale.add_observer(self.update_actions)
     self.update_actions()
   
@@ -114,13 +105,13 @@ class DocumentWindow(QMainWindow):
     # edit menu
     edit_menu = menubar.addMenu('&Edit')
     # undo
-    self.undo_action = QAction(QIcon.fromTheme('edit-undo'), '&Undo', self)
+    self.undo_action = QAction(icon.get('undo'), '&Undo', self)
     self.undo_action.setShortcut('Ctrl+Z')
     self.undo_action.setStatusTip('Undo the last action')
     self.undo_action.triggered.connect(self.edit_undo)
     edit_menu.addAction(self.undo_action)
     # redo
-    self.redo_action = QAction(QIcon.fromTheme('edit-redo'), '&Redo', self)
+    self.redo_action = QAction(icon.get('redo'), '&Redo', self)
     self.redo_action.setShortcut('Ctrl+Shift+Z')
     self.redo_action.setStatusTip('Redo the last action that was undone')
     self.redo_action.triggered.connect(self.edit_redo)
@@ -162,7 +153,7 @@ class DocumentWindow(QMainWindow):
     transport_menu.addAction(self.previous_mark_action)
     # toggle mark
     self.toggle_mark_action = QAction(icon.get('mark_toggle'), 'Toggle Mark', self)
-    self.toggle_mark_action.setShortcut('Ctrl+M')
+    self.toggle_mark_action.setShortcut('Ctrl+\\')
     self.toggle_mark_action.setStatusTip('Toggle a mark at the current time')
     self.toggle_mark_action.triggered.connect(self.transport_toggle_mark)
     transport_menu.addAction(self.toggle_mark_action)
@@ -172,6 +163,13 @@ class DocumentWindow(QMainWindow):
     self.next_mark_action.setStatusTip('Skip to the next marked time')
     self.next_mark_action.triggered.connect(self.transport_next_mark)
     transport_menu.addAction(self.next_mark_action)
+    # cycle
+    self.toggle_cycle_action = QAction(icon.get('cycle'), 'Cycle', self)
+    self.toggle_cycle_action.setShortcut('Ctrl+L')
+    self.toggle_cycle_action.setStatusTip('Toggle cycling playback mode')
+    self.toggle_cycle_action.setCheckable(True)
+    self.toggle_cycle_action.toggled.connect(self.transport_toggle_cycle)
+    transport_menu.addAction(self.toggle_cycle_action)
     # ---
     transport_menu.addSeparator()
     # stop
@@ -192,13 +190,13 @@ class DocumentWindow(QMainWindow):
     # ---
     transport_menu.addSeparator()
     # zoom in
-    self.zoom_in_action = QAction(QIcon.fromTheme('zoom-in'), 'Zoom &In', self)
+    self.zoom_in_action = QAction(icon.get('zoom_in'), 'Zoom &In', self)
     self.zoom_in_action.setShortcut('Ctrl+Shift+Plus')
     self.zoom_in_action.setStatusTip('Zoom in')
     self.zoom_in_action.triggered.connect(self.transport_zoom_in)
     transport_menu.addAction(self.zoom_in_action)
     # zoom out
-    self.zoom_out_action = QAction(QIcon.fromTheme('zoom-out'), 'Zoom &Out', self)
+    self.zoom_out_action = QAction(icon.get('zoom_out'), 'Zoom &Out', self)
     self.zoom_out_action.setShortcut('Ctrl+Shift+Minus')
     self.zoom_out_action.setStatusTip('Zoom out')
     self.zoom_out_action.triggered.connect(self.transport_zoom_out)
@@ -278,12 +276,15 @@ class DocumentWindow(QMainWindow):
   def transport_previous_mark(self):
     if (self.document):
       self.document.transport.previous_mark()
-  def transport_next_mark(self):
-    if (self.document):
-      self.document.transport.next_mark()
   def transport_toggle_mark(self):
     if (self.document):
       self.document.transport.toggle_mark()
+  def transport_next_mark(self):
+    if (self.document):
+      self.document.transport.next_mark()
+  def transport_toggle_cycle(self, toggled):
+    if (self.document):
+      self.document.transport.cycling = toggled
   def transport_play(self):
     if (self.document):
       self.document.transport.play()
@@ -313,6 +314,9 @@ class DocumentWindow(QMainWindow):
     self.stop_action.setEnabled(self.document is not None)
     self.play_action.setEnabled(self.document is not None)
     self.record_action.setEnabled(self.document is not None)
+    # check and uncheck the cycling item when cycling changes
+    self.toggle_cycle_action.setChecked((self.document is not None) and 
+                                        (self.document.transport.cycling))
     # disable zoom actions at the outer limits
     self.zoom_in_action.setEnabled(
       (self.document_view is not None) and (self.document_view.can_zoom_in))

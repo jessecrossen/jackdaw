@@ -131,17 +131,20 @@ class TransportControlView(view.ModelView):
     self.back_button = None
     self.forward_button = None
     self.end_button = None
+    self.previous_mark_button = None
+    self.toggle_mark_button = None
+    self.next_mark_button = None
+    self.cycle_button = None
     self.stop_button = None
     self.play_button = None
     self.record_button = None
-    self.cycle_button = None
     self.button_proxies = list()
   @property
   def transport(self):
     return(self._model)
   def minimumSizeHint(self):
     s = self.button_size
-    return(QSizeF(4 * s, 2 * s))
+    return(QSizeF(4 * s, 3 * s))
   # add a proxied button widget and return it
   def add_button(self, icon):
     button = QPushButton()
@@ -166,6 +169,23 @@ class TransportControlView(view.ModelView):
     if (not self.end_button):
       self.end_button = self.add_button(icon.get('ending'))
       self.end_button.clicked.connect(self.transport.go_to_end)
+    
+    if (not self.previous_mark_button):
+      self.previous_mark_button = self.add_button(icon.get('mark_previous'))
+      self.previous_mark_button.clicked.connect(self.transport.previous_mark)
+    if (not self.toggle_mark_button):
+      self.toggle_mark_button = self.add_button(icon.get('mark_toggle'))
+      self.toggle_mark_button.clicked.connect(self.transport.toggle_mark)
+    if (not self.next_mark_button):
+      self.next_mark_button = self.add_button(icon.get('mark_next'))
+      self.next_mark_button.clicked.connect(self.transport.next_mark)
+    if (not self.cycle_button):
+      self.cycle_button = self.add_button(icon.get('cycle'))
+      self.cycle_button.setCheckable(True)
+      self.cycle_button.toggled.connect(self.on_cycle)
+    if (self.cycle_button):
+      self.cycle_button.setChecked(self.transport.cycling)
+      
     if (not self.stop_button):
       self.stop_button = self.add_button(icon.get('stop'))
       self.stop_button.clicked.connect(self.transport.stop)
@@ -175,12 +195,7 @@ class TransportControlView(view.ModelView):
     if (not self.record_button):
       self.record_button = self.add_button(icon.get('record'))
       self.record_button.clicked.connect(self.transport.record)
-    if (not self.cycle_button):
-      self.cycle_button = self.add_button(icon.get('cycle'))
-      self.cycle_button.setCheckable(True)
-      self.cycle_button.toggled.connect(self.on_cycle)
-    if (self.cycle_button):
-      self.cycle_button.setChecked(self.transport.cycling)
+    
     # do layout of buttons
     r = self.rect()
     width = r.width()
