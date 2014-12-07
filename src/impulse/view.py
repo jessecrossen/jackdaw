@@ -7,8 +7,29 @@ import observable
 from model import Selection
 import state
 
+# make a mixin that adds parent searching
+class ParentSeekable(object):
+  # get the nearest item in the parent chain that has the given class
+  def parentItemWithClass(self, cls):
+    node = self.parentItem()
+    while (node):
+      if (isinstance(node, cls)):
+        return(node)
+        break
+      node = node.parentItem()
+    return(None)
+  # get the nearest item in the parent chain that has the given attribute
+  def parentItemWithAttribute(self, attribute):
+    node = self.parentItem()
+    while (node):
+      if (hasattr(node, attribute)):
+        return(node)
+        break
+      node = node.parentItem()
+    return(None)
+
 # make a base class for views
-class View(QGraphicsObject):
+class View(ParentSeekable, QGraphicsObject):
   destroyed = Signal()
   def __init__(self, parent=None):
     QGraphicsObject.__init__(self, parent)
@@ -42,24 +63,6 @@ class View(QGraphicsObject):
   def palette(self, value):
     self._palette = value
     self.on_change()
-  # get the nearest item in the parent chain that has the given class
-  def parentItemWithClass(self, cls):
-    node = self.parentItem()
-    while (node):
-      if (isinstance(node, cls)):
-        return(node)
-        break
-      node = node.parentItem()
-    return(None)
-  # get the nearest item in the parent chain that has the given attribute
-  def parentItemWithAttribute(self, attribute):
-    node = self.parentItem()
-    while (node):
-      if (hasattr(node, attribute)):
-        return(node)
-        break
-      node = node.parentItem()
-    return(None)
   # make a qt-style getter/setter for the area of the item
   def rect(self):
     pos = self.pos()
@@ -198,16 +201,24 @@ class Interactive(object):
   # handle keyboard events
   def keyPressEvent(self, event):
     # route arrow keys
-    if ((event.key() == Qt.Key_Left) or (event.key() == Qt.Key_Right)):
+    if ((event.key() == Qt.Key_Left) or 
+        (event.key() == Qt.Key_Right)):
       self.on_key_x(event);
-    elif ((event.key() == Qt.Key_Up) or (event.key() == Qt.Key_Down)):
+    elif ((event.key() == Qt.Key_Up) or 
+          (event.key() == Qt.Key_Down)):
       self.on_key_y(event)
+    elif ((event.key() == Qt.Key_Delete) or 
+          (event.key() == Qt.Key_Backspace)):
+      self.on_key_delete(event)
     else:
       event.ignore()
   # override these to handle arrow key axes separately
   def on_key_x(self, event):
     pass
   def on_key_y(self, event):
+    pass
+  # override this to handle deletion
+  def on_key_delete(self, event):
     pass
 
 # a mixin to add selectability to an interactive view
@@ -231,6 +242,52 @@ class Selectable(Interactive):
       except AttributeError: pass
       Selection.deselect_all()
       self.model.selected = True
+      
+# a mixin to add deleteability to an interactive view
+class Deleteable(Interactive):
+  def on_key_delete(self, event):
+    root_item = self
+    while root_item.parentItem():
+      root_item = root_item.parentItem()
+    document_view = self.parentItemWithAttribute('document')
+    document = None
+    if (document_view is not None):
+      document = document_view.document
+    ViewManager.begin_action(document)
+    self._delete_selected_child_items(root_item)
+    ViewManager.end_action()
+  # delete selected children of the given item
+  def _delete_selected_child_items(self, item, parents=()):
+    children = set(item.childItems())
+    for child in children:
+      self._delete_selected_child_items(child, (item,)+parents)
+      if (not isinstance(child, Deleteable)): continue
+      try:
+        model = child.model
+        selected = model.selected
+      except AttributeError: continue
+      if (not selected): continue
+      for parent in parents:
+        container = None
+        if (hasattr(parent, 'model')):
+          container = parent.model
+        elif (hasattr(parent, 'items')):
+          container = parent.items
+        if (self._remove_item_from_list(model, container)):
+          break
+        elif (container is not None):
+          for p in dir(container):
+            if (self._remove_item_from_list(model, getattr(container, p))):
+              break
+  # remove the given item if it's contained in the given list
+  #  and return whether it was removed
+  def _remove_item_from_list(self, item, items):
+    try:
+      if (item in items):
+        items.remove(item)
+        return(True)
+    except TypeError: pass
+    return(False)
 
 # make a view allow box selection by dragging
 class BoxSelectable(Interactive, ModelView):
@@ -450,7 +507,7 @@ class PitchDraggable(Selectable):
       model.pitch += delta_pitch
 
 # make a class that manages graphics items representing a list
-class ListLayout(QGraphicsObject):
+class ListLayout(ParentSeekable, QGraphicsObject):
   def __init__(self, parent, items, view_for_item):
     QGraphicsObject.__init__(self, parent)
     self._in_layout = False
@@ -464,11 +521,12 @@ class ListLayout(QGraphicsObject):
   def destroy(self):
     self.items = None
     self._view_map = None
-    for view in self._views:
-      try:
-        view.destroy()
-      except AttributeError:
-        view.setParentItem(None)
+    if (self._views is not None):
+      for view in self._views:
+        try:
+          view.destroy()
+        except AttributeError:
+          view.setParentItem(None)
     self._views = None
   @property
   def items(self):
@@ -506,8 +564,8 @@ class ListLayout(QGraphicsObject):
     old = set(self._view_map.keys())
     new = set()
     views = list()
-    if (self._items is not None):
-      for item in self._items:
+    if (self.items is not None):
+      for item in self.items:
         if (item in self._view_map):
           old.remove(item)
           view = self._view_map[item]

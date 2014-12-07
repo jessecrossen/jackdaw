@@ -1,7 +1,12 @@
-- more undoable actions: moving unit, adding patch
+- add cc output routing
+- draw cc repeats
+- profile and further optimize cc drawing code
+- show cc previews when track is armed
+- add a method of deleting ccs
+- add a method of editing ccs
+
+- more undoable actions: moving unit, resizing unit, adding patch
 - make a control surface for mix/pan visualization/control
-- general curve editing for control channel events in a block
-- routable control channels on each track
 - block backgrounds can be colored, color follows eventlist linkages
 - unit backgrounds can be colored
 - special grouping unit which moves all units inside it when moved

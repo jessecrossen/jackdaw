@@ -10,9 +10,366 @@ import block
 import midi
 import unit
 
+# represent a track, which can contain multiple blocks
+class Track(unit.Source, unit.Sink, ModelList):
+
+  # names of the cyclical pitch classes starting at MIDI note 0
+  PITCH_CLASS_NAMES = ( 
+    u'C', u'D♭­', u'D', u'E♭­', u'E', u'F', 
+    u'F♯', u'G', u'A♭­', u'A', u'B♭­', u'B' )
+
+  def __init__(self, blocks=(), name='Track',
+                     solo=False, mute=False, arm=False,
+                     pitch_names=None, controller_names=None, 
+                     transport=None):
+    ModelList.__init__(self, blocks)
+    unit.Source.__init__(self)
+    unit.Sink.__init__(self)
+    self._sink_type = 'midi'
+    self._source_type = 'midi'
+    self._name = name
+    self._solo = solo
+    self._mute = mute
+    self._arm = arm
+    if (pitch_names is None): 
+      pitch_names = dict()
+    self._pitch_names = pitch_names
+    if (controller_names is None): 
+      controller_names = dict()
+    self._controller_names = controller_names
+    # make a client and ports to connect to JACK
+    self._client = jackpatch.Client('jackdaw-track')
+    self._client.activate()
+    self.source_port = jackpatch.Port(client=self._client, 
+      name='playback',
+      flags=jackpatch.JackPortIsOutput)
+    self.sink_port = jackpatch.Port(client=self._client, 
+      name='capture',
+      flags=jackpatch.JackPortIsInput)
+    # add a handler for incoming notes
+    self._transport = transport
+    self._input_handler = TrackInputHandler(
+      port=self.sink_port, track=self, transport=self.transport)
+    # add a handler for playback
+    self._output_handler = TrackOutputHandler(
+      port=self.source_port, track=self, transport=self.transport)
+    # keep track of ports connected for previewing track input
+    self._connected_sources = dict()
+    self._connected_sinks = dict()
+    self.add_observer(self.update_passthru)
+  # invalidate cached data
+  def invalidate(self):
+    self._max_time = None
+    self._pitches = None
+    self._controllers = None
+    self._times = None
+    self._snap_times = None
+    # whether the track is enabled for playback 
+    # (this will be controlled by the track list)
+    self.enabled = True
+  # get and set the name of the track
+  @property
+  def name(self):
+    return(self._name)
+  @name.setter
+  def name(self, value):
+    if (value != self._name):
+      self._name = value
+      self.on_change()
+  # get and set user-defined names for pitches
+  @property
+  def pitch_names(self):
+    return(self._pitch_names)
+  @pitch_names.setter
+  def pitch_names(self, value):
+    self._pitch_names = value
+    self.on_change()
+  # get a name for a MIDI note number
+  def name_of_pitch(self, pitch):
+    # snap to the closest whole number
+    pitch = int(round(pitch))
+    # see if there's a user-defined mapping for it
+    if (pitch in self._pitch_names):
+      return(self._pitch_names[pitch])
+    # otherwise look it up in the list of pitch classes
+    return(self.PITCH_CLASS_NAMES[pitch % 12])
+  # get and set user-defined names for control change numbers
+  @property
+  def controller_names(self):
+    return(self._controller_names)
+  @controller_names.setter
+  def controller_names(self, value):
+    self._controller_names = value
+    self.on_change()
+  # get a name for a control change number
+  def name_of_controller(self, number):
+    # see if there's a user-defined mapping for it
+    if (number in self._controller_names):
+      return(self._controller_names[number])
+    # otherwise look it up in the list of pitch classes
+    return('CC %d' % number)
+  # the total length of time of the track content (in seconds)
+  @property
+  def duration(self):
+    if (self._max_time is None):
+      self._max_time = 0.0
+      for block in self:
+        self._max_time = max(self._max_time, block.time + block.duration)
+    return(self._max_time)
+  # whether the track should play by itself or as part of a solo group
+  @property
+  def solo(self):
+    return(self._solo)
+  @solo.setter
+  def solo(self, value):
+    value = (value == True)
+    if (self._solo != value):
+      self._solo = value
+      self.on_change()
+  # whether the track should be excluded from playback
+  @property
+  def mute(self):
+    return(self._mute)
+  @mute.setter
+  def mute(self, value):
+    value = (value == True)
+    if (self._mute != value):
+      self._mute = value
+      self.on_change()
+  # whether the track is armed for recording
+  @property
+  def arm(self):
+    return(self._arm)
+  @arm.setter
+  def arm(self, value):
+    value = (value == True)
+    if (self._arm != value):
+      self._arm = value
+      self.on_change()
+  # get whether the track's inputs are being previewed
+  @property
+  def previewing(self):
+    return(self.arm and self.enabled)
+  # get and set the time transport the track is placed on
+  @property
+  def transport(self):
+    return(self._transport)
+  @transport.setter
+  def transport(self, value):
+    if (value != self._transport):
+      self._transport = value
+      self._input_handler.transport = self._transport
+      self._output_handler.transport = self._transport
+      self.on_change()
+  # get a list of unique times for all the notes in the track
+  @property
+  def times(self):
+    if (self._times == None):
+      times = set()
+      for block in self:
+        # add the block boundaries
+        times.add(block.time)
+        times.add(block.time + block.duration)
+        # add the times of all events in the block
+        for time in block.times:
+          times.add(block.time + time)
+      self._times = list(times)
+      self._times.sort()
+    return(self._times)
+  # get a list of snappable times (i.e. times of non-selected events)
+  @property
+  def snap_times(self):
+    if (self._snap_times == None):
+      times = set()
+      for block in self:
+        # add the snap times of all events in the block
+        for time in block.snap_times:
+          times.add(block.time + time)
+      self._snap_times = list(times)
+      self._snap_times.sort()
+    return(self._snap_times)
+  # get a list of unique pitches for all the notes in the track
+  @property
+  def pitches(self):
+    if (self._pitches is None):
+      pitches = set()
+      for block in self:
+        for pitch in block.pitches:
+          pitches.add(pitch)
+      self._pitches = list(pitches)
+      self._pitches.sort()
+    return(self._pitches)
+  # get a list of unique controller numbers for control change messages 
+  #  recorded on this track
+  @property
+  def controllers(self):
+    if (self._controllers is None):
+      controllers = set()
+      for block in self:
+        for controller in block.controllers:
+          controllers.add(controller)
+      self._controllers = list(controllers)
+      self._controllers.sort()
+    return(self._controllers)
+  # make connections through the track
+  def update_passthru(self):
+    # get previously connected ports
+    old_sources = self._connected_sources
+    old_sinks = self._connected_sinks
+    # get connected ports
+    new_sources = dict()
+    if ((self._sink_port is not None) and (self.previewing)):
+      for port in self._sink_port.get_connections():
+        if (port.name in old_sources):
+          new_sources[port.name] = old_sources[port.name]
+        else:
+          new_sources[port.name] = port
+    new_sinks = dict()
+    if ((self._source_port is not None) and (self.previewing)):
+      for port in self._source_port.get_connections():
+        if (port.name in old_sinks):
+          new_sinks[port.name] = old_sinks[port.name]
+        else:
+          new_sinks[port.name] = port
+    # update the set of connected ports
+    self._connected_sources = new_sources
+    self._connected_sinks = new_sinks
+    # convert dicts to sets for easy differencing
+    old_sources = set(old_sources.values())
+    old_sinks = set(old_sinks.values())
+    new_sources = set(new_sources.values())
+    new_sinks = set(new_sinks.values())
+    # remove old connections
+    remove_sources = old_sources.difference(new_sources)
+    remove_sinks = old_sinks.difference(new_sinks)
+    for source in remove_sources:
+      for sink in old_sinks:
+        self._client.disconnect(source, sink)
+    for sink in remove_sinks:
+      for source in old_sources:
+        self._client.disconnect(source, sink)
+    # add new connections
+    add_sources = new_sources.difference(old_sources)
+    add_sinks = new_sinks.difference(old_sinks)
+    for source in add_sources:
+      for sink in new_sinks:
+        self._client.connect(source, sink)
+    for sink in add_sinks:
+      for source in new_sources:
+        self._client.connect(source, sink)
+  
+  # track serialization
+  def serialize(self):
+    return({ 
+      'name': self.name,
+      'blocks': list(self),
+      'solo': self.solo,
+      'mute': self.mute,
+      'arm': self.arm,
+      'pitch_names': self.pitch_names,
+      'controller_names': self.controller_names,
+      'transport': self.transport
+    })
+serializable.add(Track)
+
+# represent a list of tracks
+class TrackList(ModelList):
+  def __init__(self, tracks=(), transport=None):
+    ModelList.__init__(self, tracks)
+    self._transport = transport
+    self.on_change()
+  # add a track to the list
+  def add_track(self):
+    self.append(Track())
+  # transfer global track state to the tracks
+  def on_change(self):
+    solos = set()
+    for track in self:
+      if (track.solo):
+        solos.add(track)
+    if (len(solos) > 0):
+      for track in self:
+        track.enabled = (track in solos)
+    else:
+      for track in self:
+        track.enabled = not track.mute
+    # bind all tracks to the transport
+    for track in self:
+      track.transport = self.transport
+    ModelList.on_change(self)
+  # invalidate cached data
+  def invalidate(self):
+    self._max_duration = None
+    self._times = None
+    self._snap_times = None
+  # return the duration of the longest track in the list
+  @property
+  def duration(self):
+    if (self._max_duration is None):
+      self._max_duration = 0
+      for track in self:
+        self._max_duration = max(self._max_duration, track.duration)
+    return(self._max_duration)
+  # get a list of unique times for all tracks in the list
+  @property
+  def times(self):
+    if (self._times == None):
+      times = set()
+      for track in self:
+        for time in track.times:
+          times.add(time)
+      self._times = list(times)
+      self._times.sort()
+    return(self._times)
+  # get a list of unique times for all non-selected events in these tracks
+  @property
+  def snap_times(self):
+    if (self._snap_times == None):
+      times = set()
+      for track in self:
+        for time in track.snap_times:
+          times.add(time)
+      self._snap_times = list(times)
+      self._snap_times.sort()
+    return(self._snap_times)
+  # get and set the transport
+  @property
+  def transport(self):
+    return(self._transport)
+  @transport.setter
+  def transport(self, value):
+    if (value is not self._transport):
+      self._transport = value
+      self.on_change()
+  # track serialization
+  def serialize(self):
+    return({ 
+      'tracks': list(self),
+      'transport': self.transport
+    })
+serializable.add(TrackList)
+
+# make a unit that represents the track list of the document
+class MultitrackUnit(unit.Unit):
+  def __init__(self, tracks, view_scale, transport, *args, **kwargs):
+    unit.Unit.__init__(self, *args, **kwargs)
+    self.tracks = tracks
+    self.tracks.add_observer(self.on_change)
+    self.transport = transport
+    self.view_scale = view_scale
+    self.view_scale.add_observer(self.on_change)
+  def serialize(self):
+    obj = unit.Unit.serialize(self)
+    obj['tracks'] = self.tracks
+    obj['transport'] = self.transport
+    obj['view_scale'] = self.view_scale
+    return(obj)
+serializable.add(MultitrackUnit)
+
 # interprets note and control channel messages and adds them to a track
 class TrackInputHandler(midi.InputHandler):
   def __init__(self, port, track, transport=None):
+    self._in_state_change = False
     midi.InputHandler.__init__(self, port=port, target=track)
     # make a placeholder for a block to place recorded notes into
     self._target_block = None
@@ -40,6 +397,9 @@ class TrackInputHandler(midi.InputHandler):
   # when the transport is recording and the track is armed, make a block to 
   #  record notes into and remove it otherwise
   def on_state_change(self):
+    # prevent infinite recursion
+    if (self._in_state_change): return
+    self._in_state_change = True
     # determine whether we should be recording notes
     record = ((self.transport is not None) and (self.transport.recording) and 
               (self.target is not None) and (self.target.arm))
@@ -63,6 +423,7 @@ class TrackInputHandler(midi.InputHandler):
     for note in self._playing_notes.itervalues():
       note.duration = max(note.duration, 
         current_time - (base_time + note.time))
+    self._in_state_change = False
   @property
   def playing_notes(self):
     return(self._playing_notes.values())
@@ -79,24 +440,30 @@ class TrackInputHandler(midi.InputHandler):
     if (self._target_block is not None):
       base_time = self._target_block.time
     # get note on/off messages
-    if ((kind == 0x08) or (kind == 0x09)):
+    if ((kind == 0x8) or (kind == 0x9)):
       pitch = data1
       velocity = data2 / 127.0
       # note on
-      if (kind == 0x09):
+      if (kind == 0x9):
         note = block.Note(time=(time - base_time), 
                     pitch=pitch, velocity=velocity, duration=0)
         self._playing_notes[pitch] = note
         if (self._target_block is not None):
           self._target_block.events.append(note)
       # note off
-      elif (kind == 0x08):
+      elif (kind == 0x8):
         try:
           note = self._playing_notes[pitch]
         # this indicates a note-off with no prior note-on, not a big deal
         except KeyError: return
         note.duration = max(0, time - (base_time + note.time))
         del self._playing_notes[pitch]
+    # get control channel messages
+    elif (kind == 0xB):
+      ccset = block.CCSet(time=(time - base_time), 
+                          number=data1, value=(data2 / 127.0))
+      if (self._target_block is not None):
+        self._target_block.events.append(ccset)
     # report unexpected messages
     else:
       print('Unhandled message type %02X' % status)
@@ -222,326 +589,3 @@ class TrackOutputHandler(observable.Object):
   # stop playback
   def stop(self):
     self.end_all_notes()
-
-# represent a track, which can contain multiple blocks
-class Track(unit.Source, unit.Sink, ModelList):
-
-  # names of the cyclical pitch classes starting at MIDI note 0
-  PITCH_CLASS_NAMES = ( 
-    u'C', u'D♭­', u'D', u'E♭­', u'E', u'F', 
-    u'F♯', u'G', u'A♭­', u'A', u'B♭­', u'B' )
-
-  def __init__(self, blocks=(), name='Track',
-                     solo=False, mute=False, arm=False,
-                     pitch_names=None, transport=None):
-    ModelList.__init__(self, blocks)
-    unit.Source.__init__(self)
-    unit.Sink.__init__(self)
-    self._sink_type = 'midi'
-    self._source_type = 'midi'
-    self._name = name
-    self._solo = solo
-    self._mute = mute
-    self._arm = arm
-    if (pitch_names is None): 
-      pitch_names = dict()
-    self._pitch_names = pitch_names
-    # make a client and ports to connect to JACK
-    self._client = jackpatch.Client('jackdaw-track')
-    self._client.activate()
-    self.source_port = jackpatch.Port(client=self._client, 
-      name='playback',
-      flags=jackpatch.JackPortIsOutput)
-    self.sink_port = jackpatch.Port(client=self._client, 
-      name='capture',
-      flags=jackpatch.JackPortIsInput)
-    # add a handler for incoming notes
-    self._transport = transport
-    self._input_handler = TrackInputHandler(
-      port=self.sink_port, track=self, transport=self.transport)
-    # add a handler for playback
-    self._output_handler = TrackOutputHandler(
-      port=self.source_port, track=self, transport=self.transport)
-    # keep track of ports connected for previewing track input
-    self._connected_sources = dict()
-    self._connected_sinks = dict()
-    self.add_observer(self.update_passthru)
-  # invalidate cached data
-  def invalidate(self):
-    self._max_time = None
-    self._pitches = None
-    self._times = None
-    self._snap_times = None
-    # whether the track is enabled for playback 
-    # (this will be controlled by the track list)
-    self.enabled = True
-  # get and set the name of the track
-  @property
-  def name(self):
-    return(self._name)
-  @name.setter
-  def name(self, value):
-    if (value != self._name):
-      self._name = value
-      self.on_change()
-  # get and set user-defined names for pitches
-  @property
-  def pitch_names(self):
-    return(self._pitch_names)
-  @pitch_names.setter
-  def pitch_names(self, value):
-    self._pitch_names = value
-    self.on_change()
-  # get a name for a MIDI note number
-  def name_of_pitch(self, pitch):
-    # snap to the closest whole number
-    pitch = int(round(pitch))
-    # see if there's a user-defined mapping for it
-    if (pitch in self._pitch_names):
-      return(self._pitch_names[pitch])
-    # otherwise look it up in the list of pitch classes
-    return(self.PITCH_CLASS_NAMES[pitch % 12])
-  # the total length of time of the track content (in seconds)
-  @property
-  def duration(self):
-    if (self._max_time is None):
-      self._max_time = 0.0
-      for block in self:
-        self._max_time = max(self._max_time, block.time + block.duration)
-    return(self._max_time)
-  # whether the track should play by itself or as part of a solo group
-  @property
-  def solo(self):
-    return(self._solo)
-  @solo.setter
-  def solo(self, value):
-    value = (value == True)
-    if (self._solo != value):
-      self._solo = value
-      self.on_change()
-  # whether the track should be excluded from playback
-  @property
-  def mute(self):
-    return(self._mute)
-  @mute.setter
-  def mute(self, value):
-    value = (value == True)
-    if (self._mute != value):
-      self._mute = value
-      self.on_change()
-  # whether the track is armed for recording
-  @property
-  def arm(self):
-    return(self._arm)
-  @arm.setter
-  def arm(self, value):
-    value = (value == True)
-    if (self._arm != value):
-      self._arm = value
-      self.on_change()
-  # get whether the track's inputs are being previewed
-  @property
-  def previewing(self):
-    return(self.arm and self.enabled)
-  # get and set the time transport the track is placed on
-  @property
-  def transport(self):
-    return(self._transport)
-  @transport.setter
-  def transport(self, value):
-    if (value != self._transport):
-      self._transport = value
-      self._input_handler.transport = self._transport
-      self._output_handler.transport = self._transport
-      self.on_change()
-  # get a list of unique times for all the notes in the track
-  @property
-  def times(self):
-    if (self._times == None):
-      times = set()
-      for block in self:
-        # add the block boundaries
-        times.add(block.time)
-        times.add(block.time + block.duration)
-        # add the times of all events in the block
-        for time in block.times:
-          times.add(block.time + time)
-      self._times = list(times)
-      self._times.sort()
-    return(self._times)
-  # get a list of snappable times (i.e. times of non-selected events)
-  @property
-  def snap_times(self):
-    if (self._snap_times == None):
-      times = set()
-      for block in self:
-        # add the snap times of all events in the block
-        for time in block.snap_times:
-          times.add(block.time + time)
-      self._snap_times = list(times)
-      self._snap_times.sort()
-    return(self._snap_times)
-  # get a list of unique pitches for all the notes in the track
-  @property
-  def pitches(self):
-    if (self._pitches is None):
-      pitches = set()
-      for block in self:
-        for pitch in block.pitches:
-          pitches.add(pitch)
-      self._pitches = list(pitches)
-      self._pitches.sort()
-    return(self._pitches)
-  # make connections through the track
-  def update_passthru(self):
-    # get previously connected ports
-    old_sources = self._connected_sources
-    old_sinks = self._connected_sinks
-    # get connected ports
-    new_sources = dict()
-    if ((self._sink_port is not None) and (self.previewing)):
-      for port in self._sink_port.get_connections():
-        if (port.name in old_sources):
-          new_sources[port.name] = old_sources[port.name]
-        else:
-          new_sources[port.name] = port
-    new_sinks = dict()
-    if ((self._source_port is not None) and (self.previewing)):
-      for port in self._source_port.get_connections():
-        if (port.name in old_sinks):
-          new_sinks[port.name] = old_sinks[port.name]
-        else:
-          new_sinks[port.name] = port
-    # update the set of connected ports
-    self._connected_sources = new_sources
-    self._connected_sinks = new_sinks
-    # convert dicts to sets for easy differencing
-    old_sources = set(old_sources.values())
-    old_sinks = set(old_sinks.values())
-    new_sources = set(new_sources.values())
-    new_sinks = set(new_sinks.values())
-    # remove old connections
-    remove_sources = old_sources.difference(new_sources)
-    remove_sinks = old_sinks.difference(new_sinks)
-    for source in remove_sources:
-      for sink in old_sinks:
-        self._client.disconnect(source, sink)
-    for sink in remove_sinks:
-      for source in old_sources:
-        self._client.disconnect(source, sink)
-    # add new connections
-    add_sources = new_sources.difference(old_sources)
-    add_sinks = new_sinks.difference(old_sinks)
-    for source in add_sources:
-      for sink in new_sinks:
-        self._client.connect(source, sink)
-    for sink in add_sinks:
-      for source in new_sources:
-        self._client.connect(source, sink)
-  
-  # track serialization
-  def serialize(self):
-    return({ 
-      'name': self.name,
-      'blocks': list(self),
-      'solo': self.solo,
-      'mute': self.mute,
-      'arm': self.arm,
-      'pitch_names': self.pitch_names,
-      'transport': self.transport
-    })
-serializable.add(Track)
-
-# represent a list of tracks
-class TrackList(ModelList):
-  def __init__(self, tracks=(), transport=None):
-    ModelList.__init__(self, tracks)
-    self._transport = transport
-    self.on_change()
-  # add a track to the list
-  def add_track(self):
-    self.append(Track(duration=self.duration))
-  # transfer global track state to the tracks
-  def on_change(self):
-    solos = set()
-    for track in self:
-      if (track.solo):
-        solos.add(track)
-    if (len(solos) > 0):
-      for track in self:
-        track.enabled = (track in solos)
-    else:
-      for track in self:
-        track.enabled = not track.mute
-    # bind all tracks to the transport
-    for track in self:
-      track.transport = self.transport
-    ModelList.on_change(self)
-  # invalidate cached data
-  def invalidate(self):
-    self._max_duration = None
-    self._times = None
-    self._snap_times = None
-  # return the duration of the longest track in the list
-  @property
-  def duration(self):
-    if (self._max_duration is None):
-      self._max_duration = 0
-      for track in self:
-        self._max_duration = max(self._max_duration, track.duration)
-    return(self._max_duration)
-  # get a list of unique times for all tracks in the list
-  @property
-  def times(self):
-    if (self._times == None):
-      times = set()
-      for track in self:
-        for time in track.times:
-          times.add(time)
-      self._times = list(times)
-      self._times.sort()
-    return(self._times)
-  # get a list of unique times for all non-selected events in these tracks
-  @property
-  def snap_times(self):
-    if (self._snap_times == None):
-      times = set()
-      for track in self:
-        for time in track.snap_times:
-          times.add(time)
-      self._snap_times = list(times)
-      self._snap_times.sort()
-    return(self._snap_times)
-  # get and set the transport
-  @property
-  def transport(self):
-    return(self._transport)
-  @transport.setter
-  def transport(self, value):
-    if (value is not self._transport):
-      self._transport = value
-      self.on_change()
-  # track serialization
-  def serialize(self):
-    return({ 
-      'tracks': list(self),
-      'transport': self.transport
-    })
-serializable.add(TrackList)
-
-# make a unit that represents the track list of the document
-class MultitrackUnit(unit.Unit):
-  def __init__(self, tracks, view_scale, transport, *args, **kwargs):
-    unit.Unit.__init__(self, *args, **kwargs)
-    self.tracks = tracks
-    self.tracks.add_observer(self.on_change)
-    self.transport = transport
-    self.view_scale = view_scale
-    self.view_scale.add_observer(self.on_change)
-  def serialize(self):
-    obj = unit.Unit.serialize(self)
-    obj['tracks'] = self.tracks
-    obj['transport'] = self.transport
-    obj['view_scale'] = self.view_scale
-    return(obj)
-serializable.add(MultitrackUnit)

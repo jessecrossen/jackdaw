@@ -310,6 +310,42 @@ class PitchNameView(view.EditableLabel):
     fm = QFontMetrics(self.font())
     s.setWidth(fm.width('  '+self.text()))
     return(s)
+  
+# show an editable label for a controller number on the track
+class ControllerNameView(view.EditableLabel):
+  def __init__(self, track, number, parent=None):
+    view.EditableLabel.__init__(self, parent)
+    # link to the track and index
+    self._track = track
+    self._number = None
+    self.number = number
+    self.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+    self.textEdited.connect(self.on_edited)
+  @property
+  def number(self):
+    return(self._number)
+  @number.setter
+  def number(self, value):
+    if (value != self._number):
+      self._number = value
+      self._update_name()
+  def _update_name(self):
+    self.setText(self._track.name_of_controller(self._number))
+  def on_edited(self, text):
+    if (len(text) > 0):
+      self._track.controller_names[self._number] = text
+    else:
+      try:
+        del self._track.controller_names[self._number]
+      except KeyError: pass
+    self._track.on_change()
+  def on_edit_finished(self):
+    self._update_name()
+  def minimumSizeHint(self):
+    s = QLineEdit.sizeHint(self)
+    fm = QFontMetrics(self.font())
+    s.setWidth(fm.width('  '+self.text()))
+    return(s)
 
 # show names for the pitches on a track
 class PitchKeyView(view.ModelView):
@@ -320,6 +356,7 @@ class PitchKeyView(view.ModelView):
       view_scale = ViewScale()
     self.view_scale = view_scale
     self.pitch_view_proxies = list()
+    self.controller_view_proxies = list()
     self.track_name_proxy = None
   @property
   def track(self):
@@ -345,8 +382,8 @@ class PitchKeyView(view.ModelView):
     # position the pitch names
     r = self.rect()
     x = h + self.SPACING
+    y = 0
     i = 0
-    last = None
     for pitch in reversed(self.track.pitches):
       if (i < len(self.pitch_view_proxies)):
         proxy = self.pitch_view_proxies[i]
@@ -357,19 +394,43 @@ class PitchKeyView(view.ModelView):
         proxy = self.scene().addWidget(name_view)
         proxy.setParentItem(self)
         self.pitch_view_proxies.append(proxy)
-      proxy.widget().setFixedHeight(self.view_scale.pitch_height)
-      proxy.widget().setGeometry(QRect(x, i * h, r.width() - x, h))
+      proxy.widget().setFixedHeight(h)
+      proxy.widget().setGeometry(QRect(x, y, r.width() - x, h))
+      y += h
       i += 1
     for i in range(len(self.track.pitches), len(self.pitch_view_proxies)):
       proxy = self.pitch_view_proxies.pop()
+      self.scene().removeItem(proxy)
+      proxy.setParentItem(None)
+    # position the controller names
+    h = self.view_scale.controller_height
+    i = 0
+    for number in reversed(self.track.controllers):
+      if (i < len(self.controller_view_proxies)):
+        proxy = self.controller_view_proxies[i]
+        proxy.widget().number = number
+      else:
+        name_view = ControllerNameView(track=self.track, number=number)
+        name_view.editingFinished.connect(self.request_resize)
+        proxy = self.scene().addWidget(name_view)
+        proxy.setParentItem(self)
+        self.controller_view_proxies.append(proxy)
+      proxy.widget().setFixedHeight(h)
+      proxy.widget().setGeometry(QRect(x, y, r.width() - x, h))
+      y += h
+      i += 1
+    for i in range(len(self.track.controllers), 
+                   len(self.controller_view_proxies)):
+      proxy = self.controller_view_proxies.pop()
       self.scene().removeItem(proxy)
       proxy.setParentItem(None)
   # suggest a minimum size that makes room for all the name views
   def minimumSizeHint(self):
     w = 0
     h = 0
-    for view in self.pitch_view_proxies:
-      s = view.widget().minimumSizeHint()
+    proxies = self.pitch_view_proxies + self.controller_view_proxies
+    for proxy in proxies:
+      s = proxy.widget().minimumSizeHint()
       w = max(w, s.width())
       h += s.height()
     return(QSize(w + self.SPACING + self.view_scale.pitch_height, h))

@@ -9,9 +9,10 @@ from model import Selection
 from doc import ViewScale
 
 # represent a block of events on a track
-class BlockView(view.BoxSelectable, view.TimeDraggable, view.ModelView):
+class BlockView(view.BoxSelectable, view.TimeDraggable, view.Deleteable, view.ModelView):
   def __init__(self, block, track=None, parent=None):
     view.ModelView.__init__(self, block, parent)
+    view.Deleteable.__init__(self)
     view.TimeDraggable.__init__(self)
     view.BoxSelectable.__init__(self)
     self._track = track
@@ -19,6 +20,7 @@ class BlockView(view.BoxSelectable, view.TimeDraggable, view.ModelView):
     self.repeat_view = BlockRepeatView(self.block.repeat, self)
     self.start_view = BlockStartView(self.block.start, self)
     self.end_view = BlockEndView(self.block.end, self)
+    self.controller_layout = ControllerLayout(self, self.block.events, self.track)
     # enable clipping to hide partial repeats
     self.setFlag(QGraphicsItem.ItemClipsChildrenToShape, True)
   @property
@@ -48,6 +50,10 @@ class BlockView(view.BoxSelectable, view.TimeDraggable, view.ModelView):
     for i in range(repeats, len(self.note_layouts)):
       layout = self.note_layouts.pop()
       layout.destroy()
+    # place controllers below pitches
+    pitch_height = float(len(self.track.pitches))
+    self.controller_layout.setRect(QRectF(0.0, pitch_height, 
+                                          width, height - pitch_height))
     # place the block's placeholders
     self.start_view.setRect(QRectF(0.0, 0.0, 0.0, height))
     self.repeat_view.setRect(QRectF(repeat_time, 0.0, 0.0, height))
@@ -94,6 +100,96 @@ class BlockView(view.BoxSelectable, view.TimeDraggable, view.ModelView):
                      tracks=tracks)
     menu.popup(e.screenPos())
 
+# do layout for control changes in a block
+class ControllerLayout(view.ListLayout):
+  def __init__(self, parent, events, track):
+    self._events = events
+    self._track = track
+    self._track.add_observer(self.layout)
+    view.ListLayout.__init__(self, parent, events.controllers, 
+                             lambda(n): ControllerView(self._events, n))
+    self._events.add_observer(self.on_events_change)
+  def on_events_change(self):
+    self.items = self._events.controllers
+  # get the list of items from the controller numbers in the event list
+  @property
+  def items(self):
+    return(self._items)
+  @items.setter
+  def items(self, value):
+    if (value != self._items):
+      self._items = value
+      self.update_views()
+  def layout(self):
+    r = self.rect()
+    width = r.width()
+    height = r.height()
+    controller_map = dict()
+    i = 0.0
+    for number in self._track.controllers:
+      controller_map[number] = i
+      i += 1.0
+    scale_view = self.parentItemWithAttribute('view_scale')
+    if (scale_view is not None):
+      scale = scale_view.view_scale
+      controller_height = scale.controller_height / scale.pitch_height
+    else:
+      try:
+        controller_height = height / float(len(self._track.controllers))
+      except ZeroDivisionError:
+        controller_height = 1.0
+    if (self._views is not None):
+      for view in self._views:
+        number = view.number
+        try:
+          y = r.y() + (controller_map[number] * controller_height)
+        except KeyError:
+          continue
+        view.setRect(QRectF(0.0, y, width, controller_height))
+
+# display control changes for a particular controller number
+class ControllerView(view.ModelView):
+  def __init__(self, events, number, parent=None):
+    self._number = number
+    view.ModelView.__init__(self, events, parent)
+  @property
+  def events(self):
+    return(self._model)
+  @property
+  def number(self):
+    return(self._number)
+  def paint(self, qp, options, widget):
+    r = self.rect()
+    width = r.width()
+    height = r.height()
+    t = qp.deviceTransform()
+    px = 1.0 / t.m11()
+    py = 1.0 / t.m22()
+    m = (2 * py)
+    ymin = height - m
+    yrange = - (height - (2 * m))
+    qp.setPen(Qt.NoPen)
+    qp.setBrush(self.brush())
+    last_time = None
+    last_y = None
+    for event in self.events:
+      try:
+        time = event.time
+        number = event.number
+        value = event.value
+      except AttributeError: continue
+      if (number != self._number): continue
+      y = ymin + (value * yrange)
+      if (last_time is None):
+        last_time = time
+        last_y = y
+      elif (time - last_time >= px):
+        qp.drawRect(QRectF(last_time, last_y - py, time - last_time, 2 * py))
+        last_time = time
+        last_y = y
+    if (last_time is not None):
+      qp.drawRect(QRectF(last_time, last_y - py, width - last_time, 2 * py))
+
 # do layout for notes in a block
 class NoteLayout(view.ListLayout):
   def __init__(self, parent, notes, track):
@@ -122,12 +218,13 @@ class NoteLayout(view.ListLayout):
         view.setRect(QRectF(note.time, y, note.duration, 1.0))
 
 # represent a note event in a block
-class NoteView(view.TimeDraggable, view.PitchDraggable, view.ModelView):
+class NoteView(view.TimeDraggable, view.PitchDraggable, view.Deleteable, view.ModelView):
   RADIUS = 2.0
   def __init__(self, note, parent=None):
     view.ModelView.__init__(self, note, parent)
     view.TimeDraggable.__init__(self)
     view.PitchDraggable.__init__(self)
+    view.Deleteable.__init__(self)
   @property
   def note(self):
     return(self._model)

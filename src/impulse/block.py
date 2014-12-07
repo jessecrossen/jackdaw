@@ -71,6 +71,60 @@ class Note(Model):
     })
 serializable.add(Note)
 
+# represents a single control-change message with time, controller number, 
+#  and controller value
+class CCSet(Model):
+  def __init__(self, time=None, number=None, value=None):
+    Model.__init__(self)
+    self._time = time
+    self._number = number
+    self._value = value
+  # the time relative to the beginning of its container when the 
+  #  controller setting takes effect (in seconds)
+  @property
+  def time(self):
+    return(self._time)
+  @time.setter
+  def time(self, value):
+    value = max(0.0, value)
+    if (self._time != value):
+      self._time = value
+      self.on_change()
+  # a controller number from 0-119 identifying what is being controlled
+  @property
+  def number(self):
+    return(self._number)
+  @number.setter
+  def number(self, value):
+    if (self._number != value):
+      self._number = value
+      self.on_change()
+  # a floating point number from 0-1 identifying the value 
+  #  the controller is being set to
+  @property
+  def value(self):
+    return(self._value)
+  @value.setter
+  def value(self, value):
+    if (self._value != value):
+      self._value = value
+      self.on_change()
+  # define a copy operation for control change messages
+  def __copy__(self):
+    return(CCSet(time=self.time, 
+                 number=self.number,
+                 value=self.value))
+  def __repr__(self):
+    return('CCSet(time=%0.9g, number=%d, value=%0.9g)' %
+            (self.time, self.number, self.value))
+  def serialize(self):
+    return({ 
+      'time': self.time,
+      'number': self.number,
+      'value': self.value
+    })
+serializable.add(CCSet)
+
 # represents a series of events grouped into a logical block with a duration
 class EventList(ModelList):
   def __init__(self, events=(), duration=60, divisions=1):
@@ -101,6 +155,7 @@ class EventList(ModelList):
     self._pitches = None
     self._times = None
     self._snap_times = None
+    self._controllers = None
   # lazily get a list of unique pitches for all notes in the list
   @property
   def pitches(self):
@@ -112,6 +167,18 @@ class EventList(ModelList):
       self._pitches = list(pitches)
       self._pitches.sort()
     return(self._pitches)
+  # lazily get a list of unique controller numbers for control change messages 
+  #  in the list
+  @property
+  def controllers(self):
+    if (self._controllers == None):
+      controllers = set()
+      for event in self:
+        if (hasattr(event, 'number')):
+          controllers.add(event.number)
+      self._controllers = list(controllers)
+      self._controllers.sort()
+    return(self._controllers)
   # lazily get a list of unique times for all notes in the list
   @property
   def times(self):
@@ -321,6 +388,11 @@ class Block(Model):
           new_events.append(new_event)
       time += repeat_time
     self.events = new_events
+  # get a list of unique controller numbers for control change messages 
+  #  recorded on this block
+  @property
+  def controllers(self):
+    return(self.events.controllers)
   # join multiple blocks into this block
   def join(self, blocks, tracks=None):
     # make sure the list of blocks includes this one

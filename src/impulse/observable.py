@@ -7,12 +7,22 @@ class Object(QObject):
   changed = Signal()
   def __init__(self):
     QObject.__init__(self)
+    self._change_block_level = 0
   def add_observer(self, slot):
     self.changed.connect(slot)
   def remove_observer(self, slot):
     self.changed.disconnect(slot)
   def on_change(self):
-    self.changed.emit()
+    if (self._change_block_level <= 0):
+      self.changed.emit()
+  # wrap a block of changes in the following calls to ensure that the changed 
+  #  signal only gets emitted once at the end instead of for each change
+  def begin_change_block(self):
+    self._change_block_level += 1
+  def end_change_block(self):
+    self._change_block_level = max(0, self._change_block_level - 1)
+    if (self._change_block_level == 0):
+      self.on_change()
     
 # overlay the observable property onto an existing QObject
 class Mixin(QObject):

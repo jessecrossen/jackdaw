@@ -13,11 +13,13 @@ from unit import UnitList, PatchBay
 
 # make a units-to-pixels mapping with observable changes
 class ViewScale(observable.Object):
-  def __init__(self, pixels_per_second=24, pitch_height=16, time_offset=0.0):
+  def __init__(self, pixels_per_second=24.0, pitch_height=16.0, 
+                     controller_height=24.0, time_offset=0.0):
     observable.Object.__init__(self)
     self._pixels_per_second = pixels_per_second
     self._time_offset = time_offset
     self._pitch_height = pitch_height
+    self._controller_height = controller_height
   @property
   def pixels_per_second(self):
     return(self._pixels_per_second)
@@ -33,6 +35,14 @@ class ViewScale(observable.Object):
   def pitch_height(self, value):
     if (value != self._pitch_height):
       self._pitch_height = float(value)
+      self.on_change()
+  @property
+  def controller_height(self):
+    return(self._controller_height)
+  @controller_height.setter
+  def controller_height(self, value):
+    if (value != self._controller_height):
+      self._controller_height = float(value)
       self.on_change()
   @property
   def time_offset(self):
@@ -58,7 +68,10 @@ class ViewScale(observable.Object):
       'pitch_height': self.pitch_height
     })
   def height_of_track(self, track):
-    return(max(4, len(track.pitches)) * self.pitch_height)
+    min_height = 4 * self.pitch_height
+    pitches_height = len(track.pitches) * self.pitch_height
+    controllers_height = len(track.controllers) * self.controller_height
+    return(max(min_height, pitches_height + controllers_height))
   def track_spacing(self):
     return(6.0)
 serializable.add(ViewScale)

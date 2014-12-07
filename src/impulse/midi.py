@@ -170,11 +170,19 @@ class InputHandler(observable.Object):
     return(self._target)
   # check for input
   def receive(self):
+    # wrap the target in a change block so each midi event doesn't waste a lot
+    #  of time causing cascading changes
+    try:
+      self._target.begin_change_block()
+    except AttributeError: pass
     while (True):
       result = self._port.receive()
       if (result is None): break
       (data, time) = result
       self.handle_message(data, time)
+    try:
+      self._target.end_change_block()
+    except AttributeError: pass
   # handle input, reimplement to pass data to the target
   def handle_message(data, time):
     pass
