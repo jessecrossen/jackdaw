@@ -310,7 +310,56 @@ class PitchNameView(view.EditableLabel):
     fm = QFontMetrics(self.font())
     s.setWidth(fm.width('  '+self.text()))
     return(s)
-  
+
+# show a controller's name and cached value
+class ControllerKeyView(view.ModelView):
+  VALUE_WIDTH = 3
+  def __init__(self, track, number, parent):
+    self._name_view = None
+    self._name_proxy = None
+    self._number = number
+    view.ModelView.__init__(self, track, parent)
+  @property
+  def track(self):
+    return(self._model)
+  @property
+  def number(self):
+    return(self._number)
+  @number.setter
+  def number(self, value):
+    if (value != self._number):
+      self._number = value
+      self.update()
+    if (self._name_view is not None):
+      self._name_view.number = value
+  def minimumSizeHint(self):
+    if (self._name_view):
+      size = self._name_view.minimumSizeHint()
+      return(QSize(size.width(), size.height() + self.VALUE_WIDTH))
+    return(QSize(0, 0))
+  def layout(self):
+    if (not self.scene()): return
+    if (not self._name_view):
+      self._name_view = ControllerNameView(track=self.track, number=self.number)
+      self._name_view.editingFinished.connect(self.parentItem().request_resize)
+      self._name_proxy = self.scene().addWidget(self._name_view)
+      self._name_proxy.setParentItem(self)
+    r = self.rect()
+    self._name_proxy.widget().setFixedHeight(r.height())
+    self._name_proxy.widget().setGeometry(
+      QRect(0, 0, r.width() - self.VALUE_WIDTH, r.height()))
+  def paint(self, qp, options, widget):
+    r = self.rect()
+    width = r.width()
+    height = r.height()
+    value = self.track.value_of_controller(self.number)
+    vw = self.VALUE_WIDTH
+    if (value is not None):
+      qp.setPen(Qt.NoPen)
+      qp.setBrush(self.brush())
+      y = 1 + ((height - vw - 2) * (1.0 - value))
+      qp.drawRect(QRectF(width - vw, y, vw, vw))
+
 # show an editable label for a controller number on the track
 class ControllerNameView(view.EditableLabel):
   def __init__(self, track, number, parent=None):
@@ -356,7 +405,7 @@ class PitchKeyView(view.ModelView):
       view_scale = ViewScale()
     self.view_scale = view_scale
     self.pitch_view_proxies = list()
-    self.controller_view_proxies = list()
+    self.controller_views = list()
     self.track_name_proxy = None
   @property
   def track(self):
@@ -405,32 +454,30 @@ class PitchKeyView(view.ModelView):
     # position the controller names
     h = self.view_scale.controller_height
     i = 0
-    for number in reversed(self.track.controllers):
-      if (i < len(self.controller_view_proxies)):
-        proxy = self.controller_view_proxies[i]
-        proxy.widget().number = number
+    for number in self.track.controllers:
+      if (i < len(self.controller_views)):
+        controller_view = self.controller_views[i]
+        controller_view.number = number
       else:
-        name_view = ControllerNameView(track=self.track, number=number)
-        name_view.editingFinished.connect(self.request_resize)
-        proxy = self.scene().addWidget(name_view)
-        proxy.setParentItem(self)
-        self.controller_view_proxies.append(proxy)
-      proxy.widget().setFixedHeight(h)
-      proxy.widget().setGeometry(QRect(x, y, r.width() - x, h))
+        controller_view = ControllerKeyView(track=self.track, number=number, parent=self)
+        self.controller_views.append(controller_view)
+      controller_view.setRect(QRect(x, y, r.width() - x, h))
       y += h
       i += 1
     for i in range(len(self.track.controllers), 
-                   len(self.controller_view_proxies)):
-      proxy = self.controller_view_proxies.pop()
-      self.scene().removeItem(proxy)
-      proxy.setParentItem(None)
+                   len(self.controller_views)):
+      controller_view = self.controller_views.pop()
+      controller_view.destroy()
   # suggest a minimum size that makes room for all the name views
   def minimumSizeHint(self):
     w = 0
     h = 0
-    proxies = self.pitch_view_proxies + self.controller_view_proxies
-    for proxy in proxies:
+    for proxy in self.pitch_view_proxies:
       s = proxy.widget().minimumSizeHint()
+      w = max(w, s.width())
+      h += s.height()
+    for controller_view in self.controller_views:
+      s = controller_view.minimumSizeHint()
       w = max(w, s.width())
       h += s.height()
     return(QSize(w + self.SPACING + self.view_scale.pitch_height, h))

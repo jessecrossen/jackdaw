@@ -187,6 +187,8 @@ class ControllerView(view.ModelView):
         last_value = value
     if ((last_time is not None) and (last_time < self.events.duration)):
       self.draw_segment(qp, r, last_time, self._model.duration, value, py)
+  # draw a section of constant controller value, 
+  #  repeating for the duration of the block
   def draw_segment(self, qp, r, start_time, end_time, value, py):
     y = (2 * py) + ((1.0 - value) * (r.height() - (4 * py)))
     x = start_time

@@ -37,6 +37,9 @@ class Track(unit.Source, unit.Sink, ModelList):
     if (controller_names is None): 
       controller_names = dict()
     self._controller_names = controller_names
+    # make a list of controller values that input has been received from,
+    #  keyed by controller number
+    self._controller_values = dict()
     # make a client and ports to connect to JACK
     self._client = jackpatch.Client('jackdaw-track')
     self._client.activate()
@@ -108,6 +111,11 @@ class Track(unit.Source, unit.Sink, ModelList):
       return(self._controller_names[number])
     # otherwise look it up in the list of pitch classes
     return('CC %d' % number)
+  # get the cached value of the given controller, or None if there isn't one
+  def value_of_controller(self, number):
+    try:
+      return(self._controller_values[number])
+    except KeyError: return(None)
   # the total length of time of the track content (in seconds)
   @property
   def duration(self):
@@ -145,6 +153,9 @@ class Track(unit.Source, unit.Sink, ModelList):
     value = (value == True)
     if (self._arm != value):
       self._arm = value
+      # clear stored controller values when the track is disarmed
+      if (not self._arm):
+        self._controller_values = dict()
       self.on_change()
   # get whether the track's inputs are being previewed
   @property
@@ -199,6 +210,10 @@ class Track(unit.Source, unit.Sink, ModelList):
       self._pitches = list(pitches)
       self._pitches.sort()
     return(self._pitches)
+  # update the cached value of a controller
+  def update_controller_value(self, number, value):
+    self._controller_values[number] = value
+    self.on_change()
   # get a list of unique controller numbers for control change messages 
   #  recorded on this track
   @property
@@ -208,6 +223,8 @@ class Track(unit.Source, unit.Sink, ModelList):
       for block in self:
         for controller in block.controllers:
           controllers.add(controller)
+      for controller in self._controller_values.keys():
+        controllers.add(controller)
       self._controllers = list(controllers)
       self._controllers.sort()
     return(self._controllers)
@@ -463,10 +480,14 @@ class TrackInputHandler(midi.InputHandler):
         del self._playing_notes[pitch]
     # get control channel messages
     elif (kind == 0xB):
+      number = data1
+      value = (data2 / 127.0)
       ccset = block.CCSet(time=(time - base_time), 
-                          number=data1, value=(data2 / 127.0))
+                          number=number, value=value)
       if (self._target_block is not None):
         self._target_block.events.append(ccset)
+      elif (self.target.arm):
+        self.target.update_controller_value(number, value)
     # report unexpected messages
     else:
       print('Unhandled message type %02X' % status)

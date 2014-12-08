@@ -1,6 +1,5 @@
 ON DECK:
 - add cc output routing
-- show cc previews when track is armed
 - add a method of deleting ccs
 - add a method of editing ccs
 - add a unit to show midi messages in realtime
