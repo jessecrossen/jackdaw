@@ -164,18 +164,13 @@ class ControllerView(view.ModelView):
     return(self._number)
   def paint(self, qp, options, widget):
     r = self.rect()
-    width = r.width()
-    height = r.height()
     t = qp.deviceTransform()
     px = 1.0 / t.m11()
     py = 1.0 / t.m22()
-    m = (2 * py)
-    ymin = height - m
-    yrange = - (height - (2 * m))
     qp.setPen(Qt.NoPen)
     qp.setBrush(self.brush())
     last_time = None
-    last_y = None
+    last_value = None
     for event in self.events:
       try:
         time = event.time
@@ -183,16 +178,24 @@ class ControllerView(view.ModelView):
         value = event.value
       except AttributeError: continue
       if (number != self._number): continue
-      y = ymin + (value * yrange)
       if (last_time is None):
         last_time = time
-        last_y = y
+        last_value = value
       elif (time - last_time >= px):
-        qp.drawRect(QRectF(last_time, last_y - py, time - last_time, 2 * py))
+        self.draw_segment(qp, r, last_time, time, last_value, py)
         last_time = time
-        last_y = y
-    if (last_time is not None):
-      qp.drawRect(QRectF(last_time, last_y - py, width - last_time, 2 * py))
+        last_value = value
+    if ((last_time is not None) and (last_time < self.events.duration)):
+      self.draw_segment(qp, r, last_time, self._model.duration, value, py)
+  def draw_segment(self, qp, r, start_time, end_time, value, py):
+    y = (2 * py) + ((1.0 - value) * (r.height() - (4 * py)))
+    x = start_time
+    w = end_time - start_time
+    repeat_time = self._model.duration
+    while (x < r.width()):
+      qp.drawRect(QRectF(x, y - py, w, 2 * py))
+      if (repeat_time <= 0): break
+      x += repeat_time
 
 # do layout for notes in a block
 class NoteLayout(view.ListLayout):

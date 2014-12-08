@@ -1,6 +1,4 @@
 - add cc output routing
-- draw cc repeats
-- profile and further optimize cc drawing code
 - show cc previews when track is armed
 - add a method of deleting ccs
 - add a method of editing ccs
