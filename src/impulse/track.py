@@ -486,7 +486,7 @@ class TrackInputHandler(midi.InputHandler):
                           number=number, value=value)
       if (self._target_block is not None):
         self._target_block.events.append(ccset)
-      elif (self.target.arm):
+      if (self.target.arm):
         self.target.update_controller_value(number, value)
     # report unexpected messages
     else:

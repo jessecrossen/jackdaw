@@ -180,11 +180,10 @@ class ControllerView(view.ModelView):
       if (number != self._number): continue
       if (last_time is None):
         last_time = time
-        last_value = value
       elif (time - last_time >= px):
         self.draw_segment(qp, r, last_time, time, last_value, py)
         last_time = time
-        last_value = value
+      last_value = value
     if ((last_time is not None) and (last_time < self.events.duration)):
       self.draw_segment(qp, r, last_time, self._model.duration, value, py)
   # draw a section of constant controller value, 

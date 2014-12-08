@@ -503,8 +503,8 @@ class MultitrackUnitView(unit_view.UnitView):
       lambda t: unit_view.UnitInputView(t))
     self._output_layout = unit_view.OutputListLayout(self, self.unit.tracks,
       lambda t: unit_view.UnitOutputView(t))
-    self._input_layout.y_of_view = self.y_of_track
-    self._output_layout.y_of_view = self.y_of_track
+    self._input_layout.y_of_view = self.y_of_track_input
+    self._output_layout.y_of_view = self.y_of_track_output
     # allow horizontal resizing
     self.allow_resize_width = True
     # allow tracks to be added
@@ -520,7 +520,7 @@ class MultitrackUnitView(unit_view.UnitView):
     self.unit.width = max(size.width(), self.unit.width)
     self._content.setRect(QRectF(0, 0, self.unit.width, size.height()))
     unit_view.UnitView.layout(self)
-  def y_of_track(self, rect, view, index, view_count):
+  def y_of_track_input(self, rect, view, index, view_count):
     y = rect.y()
     scale = self._content.view_scale
     spacing = scale.track_spacing()
@@ -529,6 +529,25 @@ class MultitrackUnitView(unit_view.UnitView):
       h = scale.height_of_track(track)
       if (i >= index):
         y += (h / 2.0)
+        return(y)
+      y += h + spacing
+      i += 1
+    return(y)
+  def y_of_track_output(self, rect, view, index, view_count):
+    y = rect.y()
+    scale = self._content.view_scale
+    spacing = scale.track_spacing()
+    i = 0
+    for track in self.unit.tracks:
+      h = scale.height_of_track(track)
+      if (i >= index):
+        # if there are no controllers, center the output vertically
+        if (len(track.controllers) == 0):
+          y += (h / 2.0)
+        # if there are controllers, we need to center the output over only
+        #  the pitches to leave room for controller outputs
+        else:
+          y += ((len(track.pitches) * scale.pitch_height) / 2.0)
         return(y)
       y += h + spacing
       i += 1
