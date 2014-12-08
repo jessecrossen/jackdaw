@@ -105,10 +105,14 @@ class ControllerLayout(view.ListLayout):
   def __init__(self, parent, events, track):
     self._events = events
     self._track = track
-    self._track.add_observer(self.layout)
     view.ListLayout.__init__(self, parent, events.controllers, 
                              lambda(n): ControllerView(self._events, n))
+    self._track.add_observer(self.layout)
     self._events.add_observer(self.on_events_change)
+  def destroy(self):
+    self._track.remove_observer(self.layout)
+    self._events.remove_observer(self.on_events_change)
+    view.ListLayout.destroy(self)
   def on_events_change(self):
     self.items = self._events.controllers
   # get the list of items from the controller numbers in the event list
@@ -194,8 +198,11 @@ class ControllerView(view.ModelView):
 class NoteLayout(view.ListLayout):
   def __init__(self, parent, notes, track):
     self._track = track
-    self._track.add_observer(self.layout)
     view.ListLayout.__init__(self, parent, notes, self.note_view_for_event)
+    self._track.add_observer(self.layout)
+  def destroy(self):
+    self._track.remove_observer(self.layout)
+    view.ListLayout.destroy(self)
   def note_view_for_event(self, event):
     try:
       p = event.pitch

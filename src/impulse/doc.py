@@ -116,6 +116,10 @@ class Document(Model):
       patch_bay = PatchBay()
     self.patch_bay = patch_bay
     self.patch_bay.add_observer(self.on_change)
+  @property
+  def model_refs(self):
+    return((self.transport, self.view_scale, self.devices, 
+            self.units, self.patch_bay))
   # update the duration of the transport based on the length of the tracks
   def update_transport_duration(self):
     duration = 0.0

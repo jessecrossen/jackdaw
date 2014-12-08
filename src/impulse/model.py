@@ -33,8 +33,9 @@ class SelectionSingleton(observable.Object):
         containers.append(item)
     for container in containers:
       container.selected = False
-    # deselect all descendents of the new item
-    self.deselect_children(model)
+    # deselect all descendents of the new item, if anything else is selected
+    if (len(self._models) > 0):
+      self.deselect_children(model)
     # select the model
     self._models.add(model)
     if (not model._selected):
@@ -62,20 +63,11 @@ class SelectionSingleton(observable.Object):
       self.on_change()
   # remove all children of a model from the selection
   def deselect_children(self, model):
-    if (isinstance(model, ModelList)):
-      for child in model:
-        child.selected = False
-        self.deselect_children(child)
-    elif (isinstance(model, Model)):
-      for key in dir(model):
-        # skip private stuff
-        if (key[0] == '_'): continue
-        value = getattr(model, key)
+    for item in set(self._models):
+      if (model.contains_model(item)):
         try:
-          value.selected = False
+          item.selected = False
         except AttributeError: continue
-        if (isinstance(value, ModelList)):
-          self.deselect_children(value)
 # make a global instance
 Selection = SelectionSingleton()
 
@@ -109,20 +101,22 @@ class Model(Selectable, observable.Object):
   # override to invalidate cached data
   def invalidate(self):
     pass
+  # override to return a list of attribute values that point to 
+  #  models or model lists, used to optimize walking the model tree
+  @property
+  def model_refs(self):
+    return()
   # return if the model contains the given model in one of its properties
   def contains_model(self, model, visited=None):
     if (visited is None):
       visited = set()
     if (self in visited): return
     visited.add(self)
-    for key in dir(self):
-      # skip private stuff
-      if (key[0] == '_'): continue
-      value = getattr(self, key)
-      if (value is model):
+    for ref in self.model_refs:
+      if (ref is model):
         return(True)
       try:
-        if (value.contains_model(model, visited)):
+        if (ref.contains_model(model, visited)):
           return(True)
       except AttributeError: continue
 
@@ -140,6 +134,11 @@ class ModelList(Selectable, observable.List):
   # override to invalidate cached data
   def invalidate(self):
     pass
+  # override to return a list of attribute values that point to 
+  #  models or model lists, used to optimize walking the model tree
+  @property
+  def model_refs(self):
+    return()
   # return whether the list or one of its items contains the given model
   def contains_model(self, model, visited=None):
     if (visited is None):

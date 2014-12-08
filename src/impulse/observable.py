@@ -14,7 +14,11 @@ class Object(QObject):
     self.changed.disconnect(slot)
   def on_change(self):
     if (self._change_block_level <= 0):
+      # block change events from firing while sending the signal to avoid 
+      #  unbounded recursion
+      self._change_block_level += 1
       self.changed.emit()
+      self._change_block_level = max(0, self._change_block_level - 1)
   # wrap a block of changes in the following calls to ensure that the changed 
   #  signal only gets emitted once at the end instead of for each change
   def begin_change_block(self):

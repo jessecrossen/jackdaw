@@ -160,6 +160,14 @@ class Connection(Model):
     self.source = source
     self.sink = sink
   @property
+  def model_refs(self):
+    refs = [ ]
+    if (isinstance(self.source, Model)):
+      refs.append(self.source)
+    if (isinstance(self.sink, Model)):
+      refs.append(self.sink)
+    return(refs)
+  @property
   def source(self):
     return(self._source)
   @source.setter

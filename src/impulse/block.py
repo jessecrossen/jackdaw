@@ -284,6 +284,9 @@ class Block(Model):
     self._start = BlockStart(self)
     self._end = BlockEnd(self)
     self._repeat = BlockRepeat(self)
+  @property
+  def model_refs(self):
+    return((self.events,))
   # the events in the block
   @property
   def events(self):

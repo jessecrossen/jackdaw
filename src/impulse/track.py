@@ -358,6 +358,9 @@ class MultitrackUnit(unit.Unit):
     self.transport = transport
     self.view_scale = view_scale
     self.view_scale.add_observer(self.on_change)
+  @property
+  def model_refs(self):
+    return((self.tracks, self.transport, self.view_scale))
   def serialize(self):
     obj = unit.Unit.serialize(self)
     obj['tracks'] = self.tracks
