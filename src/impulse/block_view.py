@@ -114,7 +114,7 @@ class ControllerLayout(view.ListLayout):
     self._events.remove_observer(self.on_events_change)
     view.ListLayout.destroy(self)
   def on_events_change(self):
-    self.items = self._events.controllers
+    self.items = tuple(self._events.controllers)
   # get the list of items from the controller numbers in the event list
   @property
   def items(self):

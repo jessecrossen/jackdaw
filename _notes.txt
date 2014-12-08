@@ -3,12 +3,14 @@ ON DECK:
 - show cc previews when track is armed
 - add a method of deleting ccs
 - add a method of editing ccs
+- add a unit to show midi messages in realtime
 
 DEFECTS:
 - scrollbar is no longer working correctly with transport tracking
-- more undoable actions: moving unit, resizing unit, adding patch
+- more undoable actions: moving unit, resizing unit, adding patch, recording
 
 FEATURES:
+- tracks can be deleted
 - make a control surface for mix/pan visualization/control
 - block backgrounds can be colored, color follows eventlist linkages
 - unit backgrounds can be colored
@@ -20,6 +22,7 @@ FEATURES:
 - key modifier for proportional stretch of a block's events
 - notes embed pitch modulation and aftertouch, keyed by fraction of note duration
 - notes respond to pitch modulation and aftertouch by warping the rectangle
+- resizing a unit pushes connected units along with the edges
 
 OPTIMIZATIONS:
 - consider an alternate file format that's faster than YAML

@@ -19,7 +19,7 @@ class TransportView(view.ModelView):
     self.view_scale.add_observer(self.on_scale)
     self.on_scale()
   def destroy(self):
-    self.view_scale.remove_observer(self.update)
+    self.view_scale.remove_observer(self.on_scale)
     self.transport.remove_observer(self.check_bounds)
     view.ModelView.destroy(self)
   @property
