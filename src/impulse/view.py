@@ -276,8 +276,11 @@ class Deleteable(Interactive):
         if (self._remove_item_from_list(model, container)):
           break
         elif (container is not None):
-          for p in dir(container):
-            if (self._remove_item_from_list(model, getattr(container, p))):
+          try:
+            refs = container.model_refs
+          except AttributeError: pass
+          for ref in refs:
+            if (self._remove_item_from_list(model, ref)):
               break
   # remove the given item if it's contained in the given list
   #  and return whether it was removed

@@ -1,14 +1,17 @@
 import copy
 
+from PySide.QtCore import Signal
+
 import observable
 import serializable
 from model import Model, ModelList
- 
+
 # represents a single note event with time, pitch, velocity, and duration
 #  - time and duration are in seconds
 #  - pitch is a MIDI note number, 
 #  - velocity is a fraction between 0 and 1
 class Note(Model):
+  pitch_changed = Signal(object, float, float)
   def __init__(self, time=None, pitch=None, velocity=1, duration=0):
     Model.__init__(self)
     self._time = time
@@ -42,7 +45,9 @@ class Note(Model):
   @pitch.setter
   def pitch(self, value):
     if (self._pitch != value):
+      old_pitch = self._pitch
       self._pitch = value
+      self.pitch_changed.emit(self, old_pitch, value)
       self.on_change()
   # a floating point number from 0-1 identifying how hard the note is played
   @property
@@ -94,11 +99,6 @@ class CCSet(Model):
   @property
   def number(self):
     return(self._number)
-  @number.setter
-  def number(self, value):
-    if (self._number != value):
-      self._number = value
-      self.on_change()
   # a floating point number from 0-1 identifying the value 
   #  the controller is being set to
   @property
@@ -128,9 +128,15 @@ serializable.add(CCSet)
 # represents a series of events grouped into a logical block with a duration
 class EventList(ModelList):
   def __init__(self, events=(), duration=60, divisions=1):
-    ModelList.__init__(self, events)
     self._duration = duration
     self._divisions = divisions
+    self._pitches = [ ]
+    self._note_counts = dict()
+    self._notes = observable.List()
+    self._controllers = [ ]
+    self._controller_counts = dict()
+    self._ccsets_by_number = dict()
+    ModelList.__init__(self, events)
   # the total length of time the events occur in (in seconds)
   @property
   def duration(self):
@@ -150,35 +156,83 @@ class EventList(ModelList):
     if (self._divisions != value):
       self._divisions = value
       self.on_change()
-  # invalidate cached data
-  def invalidate(self):
-    self._pitches = None
-    self._times = None
-    self._snap_times = None
-    self._controllers = None
-  # lazily get a list of unique pitches for all notes in the list
+  # maintain lists of pitches, controllers, notes, and control changes for 
+  #  optimized traversal of the event list
+  def _add_item(self, item):
+    # update the list of pitches
+    if (isinstance(item, Note)):
+      self._add_pitch(item.pitch)
+      self._notes.append(item)
+      item.pitch_changed.connect(self._on_pitch_changed)
+    # update the list of controller numbers
+    elif (isinstance(item, CCSet)):
+      number = item.number
+      self._add_controller_number(number)
+      if (number not in self._ccsets_by_number):
+        self._ccsets_by_number[number] = observable.List()
+      self._ccsets_by_number[number].append(item)
+    ModelList._add_item(self, item)
+  def _remove_item(self, item):
+    # update the list of pitches
+    if (isinstance(item, Note)):
+      self._remove_pitch(item.pitch)
+      self._notes.remove(item)
+      item.pitch_changed.disconnect(self._on_pitch_changed)
+    # update the list of controller numbers
+    elif (isinstance(item, CCSet)):
+      number = item.number
+      self._remove_controller_number(number)
+      self._ccsets_by_number[number].remove(item)
+    ModelList._remove_item(self, item)
+  def _on_pitch_changed(self, item, old_pitch, new_pitch):
+    self._remove_pitch(old_pitch)
+    self._add_pitch(new_pitch)
+  # respond to a pitch being added to or removed from the list
+  def _add_pitch(self, pitch):
+    if (pitch not in self._pitches):
+      self._pitches.append(pitch)
+      self._pitches.sort()
+      self._note_counts[pitch] = 1
+    else:
+      self._note_counts[pitch] += 1
+  def _remove_pitch(self, pitch):
+    self._note_counts[pitch] -= 1
+    if (self._note_counts[pitch] <= 0):
+      self._pitches.remove(pitch)
+  # respond to a control number being added to or removed from the list
+  def _add_controller_number(self, number):
+    if (number not in self._controllers):
+      self._controllers.append(number)
+      self._controllers.sort()
+      self._controller_counts[number] = 1
+    else:
+      self._controller_counts[number] += 1
+  def _remove_controller_number(self, number):
+    self._controller_counts[number] -= 1
+    if (self._controller_counts[number] <= 0):
+      self._controllers.remove(number)
+  # get a list of all notes in the list
+  @property
+  def notes(self):
+    return(self._notes)
+  # get a list of all control-change messages for the given controller number
+  def ccsets_for_controller(self, number):
+    if (number not in self._ccsets_by_number):
+      self._ccsets_by_number[number] = observable.List()
+    return(self._ccsets_by_number[number])
+  # get a list of unique pitches for all notes in the list
   @property
   def pitches(self):
-    if (self._pitches == None):
-      pitches = set()
-      for event in self:
-        if (hasattr(event, 'pitch')):
-          pitches.add(event.pitch)
-      self._pitches = list(pitches)
-      self._pitches.sort()
     return(self._pitches)
-  # lazily get a list of unique controller numbers for control change messages 
+  # get a list of unique controller numbers for control change messages 
   #  in the list
   @property
   def controllers(self):
-    if (self._controllers == None):
-      controllers = set()
-      for event in self:
-        if (hasattr(event, 'number')):
-          controllers.add(event.number)
-      self._controllers = list(controllers)
-      self._controllers.sort()
     return(self._controllers)
+  # invalidate cached data
+  def invalidate(self):
+    self._times = [ ]
+    self._snap_times = [ ]
   # lazily get a list of unique times for all notes in the list
   @property
   def times(self):

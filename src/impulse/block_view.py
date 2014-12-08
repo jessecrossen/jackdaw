@@ -41,9 +41,9 @@ class BlockView(view.BoxSelectable, view.TimeDraggable, view.Deleteable, view.Mo
     for i in range(0, repeats):
       if (i < len(self.note_layouts)):
         layout = self.note_layouts[i]
-        layout.items = self.block.events
+        layout.items = self.block.events.notes
       else:
-        layout = NoteLayout(self, self.block.events, self.track)
+        layout = NoteLayout(self, self.block.events.notes, self.track)
         self.note_layouts.append(layout)
       layout.setPos(QPointF(i * repeat_time, 0.0))
     # remove extraneous layouts
@@ -171,7 +171,7 @@ class ControllerView(view.ModelView):
     qp.setBrush(self.brush())
     last_time = None
     last_value = None
-    for event in self.events:
+    for event in self.events.ccsets_for_controller(self.number):
       try:
         time = event.time
         number = event.number
@@ -201,17 +201,11 @@ class ControllerView(view.ModelView):
 class NoteLayout(view.ListLayout):
   def __init__(self, parent, notes, track):
     self._track = track
-    view.ListLayout.__init__(self, parent, notes, self.note_view_for_event)
+    view.ListLayout.__init__(self, parent, notes, lambda n: NoteView(n))
     self._track.add_observer(self.layout)
   def destroy(self):
     self._track.remove_observer(self.layout)
     view.ListLayout.destroy(self)
-  def note_view_for_event(self, event):
-    try:
-      p = event.pitch
-    except AttributeError:
-      return(None)
-    return(NoteView(event))
   def layout(self):
     pitch_map = dict()
     i = 0.0
