@@ -1,5 +1,4 @@
 ON DECK:
-- add a method of deleting ccs
 - add a method of editing ccs
 - make an algorithm for merging cc data when joining blocks
 - add a unit to show midi messages in realtime
@@ -7,6 +6,7 @@ ON DECK:
 DEFECTS:
 - scrollbar is no longer working correctly with transport tracking
 - more undoable actions: moving unit, resizing unit, adding patch, recording
+- connections are sometimes respawned while being unplugged
 
 FEATURES:
 - tracks can be deleted

@@ -586,7 +586,9 @@ class ListLayout(ParentSeekable, QGraphicsObject):
     for item in old:
       view = self._view_map[item]
       del self._view_map[item]
-      item.remove_observer(self.layout)
+      try:
+        item.remove_observer(self.layout)
+      except AttributeError: pass
       try:
         view.destroy()
       except AttributeError:

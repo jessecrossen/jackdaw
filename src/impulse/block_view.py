@@ -197,6 +197,34 @@ class ControllerView(view.ModelView):
       qp.drawRect(QRectF(x, y - py, w, 2 * py))
       if (repeat_time <= 0): break
       x += repeat_time
+  # make a context menu for the controller number
+  def contextMenuEvent(self, e):
+    menu = ControllerMenu(parent=e.widget(),
+                          events=self.events,
+                          number=self.number)
+    menu.popup(e.screenPos())
+
+# make a context menu for a controller view
+class ControllerMenu(QMenu):
+  def __init__(self, events, number, parent=None):
+    QMenu.__init__(self, parent)
+    self.events = events
+    self.number = number
+    delete_action = QAction('Delete', self)
+    delete_action.setStatusTip(
+      'Delete all changes on controller %d' % self.number)
+    delete_action.triggered.connect(self.on_delete)
+    self.addAction(delete_action)
+  def on_delete(self):
+    self.events.begin_change_block()
+    for event in set(self.events):
+      try:
+        number = event.number
+        value = event.value
+      except AttributeError: continue
+      if (number == self.number):
+        self.events.remove(event)
+    self.events.end_change_block()
 
 # do layout for notes in a block
 class NoteLayout(view.ListLayout):
