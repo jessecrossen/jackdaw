@@ -30,8 +30,8 @@ class TrackListView(view.BoxSelectable, view.Interactive, view.ModelView):
       lambda t: PitchKeyView(t, view_scale=view_scale))
     self.track_layout = view.VBoxLayout(self, tracks,
       lambda t: TrackView(t, view_scale=view_scale))
-    self.pitch_key_layout.spacing = self.view_scale.track_spacing()
-    self.track_layout.spacing = self.view_scale.track_spacing()
+    self.pitch_key_layout.spacing = self.view_scale.track_spacing
+    self.track_layout.spacing = self.view_scale.track_spacing
     # clip so tracks can be scrolled and zoomed without going outside the box
     self.track_layout.setFlag(QGraphicsItem.ItemClipsChildrenToShape, True)
     # add a view for the transport
@@ -51,7 +51,7 @@ class TrackListView(view.BoxSelectable, view.Interactive, view.ModelView):
     w += self.toggle_width()
     for track in self.tracks:
       h += self.view_scale.height_of_track(track)
-      h += self.view_scale.track_spacing()
+      h += self.view_scale.track_spacing
     if (self.scrollbar):
       h += self.scrollbar.size().height()
     return(QSizeF(w * 2, h))
@@ -68,10 +68,10 @@ class TrackListView(view.BoxSelectable, view.Interactive, view.ModelView):
     x = 0
     w = self.toggle_width()
     self.toggle_layout.setRect(QRectF(x, 0, w, height))
-    x += w + (self.view_scale.track_spacing() / 2)
+    x += w + (self.view_scale.track_spacing / 2)
     w = self.pitch_key_width()
     self.pitch_key_layout.setRect(QRectF(x, 0, w, height))
-    x += w + (self.view_scale.track_spacing() / 2)
+    x += w + (self.view_scale.track_spacing / 2)
     # add a scrollbar to scroll through the timeline
     if ((not self.scrollbar) and (self.scene())):
       self.scrollbar = QScrollBar(Qt.Orientation.Horizontal)
@@ -488,7 +488,65 @@ class PitchKeyView(view.ModelView):
     while (node):
       node.layout()
       node = node.parentItem()
-      
+
+# lay out all the output ports for a list of tracks
+class TrackListOutputLayout(view.ListLayout):
+  def __init__(self, parent, tracks, view_scale):
+    self.view_scale = view_scale
+    self.view_scale.add_observer(self.layout)
+    view.ListLayout.__init__(self, parent, tracks, 
+                             lambda t: TrackOutputLayout(self, t, view_scale))
+  def destroy(self):
+    self.view_scale.remove_observer(self.layout)
+    view.ListLayout.destroy(self)
+  def layout(self):
+    r = self._rect
+    x = self._rect.right() + unit_view.UnitPortView.OFFSET
+    y = self._rect.y()
+    spacing = self.view_scale.track_spacing
+    for layout in self._views:
+      layout.setPos(QPointF(x, y))
+      y += self.view_scale.height_of_track(layout.track) + spacing
+# lay out the output ports for a single track
+class TrackOutputLayout(view.ListLayout):
+  def __init__(self, parent, track, view_scale):
+    self.track = track
+    self.track.add_observer(self.on_track_change)
+    self.view_scale = view_scale
+    self.view_scale.add_observer(self.layout)
+    self.note_output_view = unit_view.UnitOutputView(self.track)
+    view.ListLayout.__init__(self, parent, (), 
+                             lambda t: unit_view.UnitOutputView(t))
+    self.note_output_view.setParentItem(self)
+  def destroy(self):
+    self.track.remove_observer(self.on_track_change)
+    self.view_scale.remove_observer(self.layout)
+    view.ListLayout.destroy(self)
+  def on_track_change(self):
+    self.items = tuple(self.track.controller_outputs)
+  @property
+  def items(self):
+    return(self._items)
+  @items.setter
+  def items(self, value):
+    if (value != self._items):
+      self._items = value
+      self.update_views()
+  def layout(self):
+    r = self._rect
+    note_height = len(self.track.pitches) * self.view_scale.pitch_height
+    # if there are no controllers to make room for, we can place the note output 
+    #  in the middle of the track
+    if (len(self._views) == 0):
+      note_height = self.view_scale.height_of_track(self.track)
+    self.note_output_view.setPos(QPointF(0.0, note_height / 2.0))
+    y = note_height
+    h = self.view_scale.controller_height
+    y += (h / 2.0)
+    for output_view in self._views:
+      output_view.setPos(QPointF(0.0, y))
+      y += h
+
 # make a unit view containing a list of tracks
 class MultitrackUnitView(unit_view.UnitView):
   def __init__(self, *args, **kwargs):
@@ -501,10 +559,9 @@ class MultitrackUnitView(unit_view.UnitView):
     # add inputs and outputs to the track
     self._input_layout = unit_view.InputListLayout(self, self.unit.tracks,
       lambda t: unit_view.UnitInputView(t))
-    self._output_layout = unit_view.OutputListLayout(self, self.unit.tracks,
-      lambda t: unit_view.UnitOutputView(t))
+    self._output_layout = TrackListOutputLayout(
+      self, self.unit.tracks, self._content.view_scale)
     self._input_layout.y_of_view = self.y_of_track_input
-    self._output_layout.y_of_view = self.y_of_track_output
     # allow horizontal resizing
     self.allow_resize_width = True
     # allow tracks to be added
@@ -523,31 +580,12 @@ class MultitrackUnitView(unit_view.UnitView):
   def y_of_track_input(self, rect, view, index, view_count):
     y = rect.y()
     scale = self._content.view_scale
-    spacing = scale.track_spacing()
+    spacing = scale.track_spacing
     i = 0
     for track in self.unit.tracks:
       h = scale.height_of_track(track)
       if (i >= index):
         y += (h / 2.0)
-        return(y)
-      y += h + spacing
-      i += 1
-    return(y)
-  def y_of_track_output(self, rect, view, index, view_count):
-    y = rect.y()
-    scale = self._content.view_scale
-    spacing = scale.track_spacing()
-    i = 0
-    for track in self.unit.tracks:
-      h = scale.height_of_track(track)
-      if (i >= index):
-        # if there are no controllers, center the output vertically
-        if (len(track.controllers) == 0):
-          y += (h / 2.0)
-        # if there are controllers, we need to center the output over only
-        #  the pitches to leave room for controller outputs
-        else:
-          y += ((len(track.pitches) * scale.pitch_height) / 2.0)
         return(y)
       y += h + spacing
       i += 1

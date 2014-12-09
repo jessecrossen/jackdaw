@@ -162,16 +162,38 @@ class EventList(ModelList):
     # update the list of pitches
     if (isinstance(item, Note)):
       self._add_pitch(item.pitch)
+      last_time = 0.0
+      if (len(self._notes) > 0):
+        last_time = self._notes[-1].time
       self._notes.append(item)
+      # if the note is being inserted out of order, 
+      #  keep the list sorted by time
+      if (item.time < last_time):
+        self._notes.sort(key=lambda e: e.time)
       item.pitch_changed.connect(self._on_pitch_changed)
     # update the list of controller numbers
     elif (isinstance(item, CCSet)):
       number = item.number
       self._add_controller_number(number)
-      if (number not in self._ccsets_by_number):
-        self._ccsets_by_number[number] = observable.List()
-      self._ccsets_by_number[number].append(item)
+      if (number in self._ccsets_by_number):
+        ccsets = self._ccsets_by_number[number]
+      else:
+        ccsets = observable.List()
+        self._ccsets_by_number[number] = ccsets
+      last_time = 0.0
+      if (len(ccsets) > 0):
+        last_time = ccsets[-1].time
+      ccsets.append(item)
+      # if the ccset is being inserted out of order, 
+      #  keep the list sorted by time
+      if (item.time < last_time):
+        ccsets.sort(key=lambda e: e.time)
+    last_time = 0.0
+    if (len(self) > 0):
+      last_time = self[-1].time
     ModelList._add_item(self, item)
+    if (item.time < last_time):
+      self.sort(key=lambda e: e.time)
   def _remove_item(self, item):
     # update the list of pitches
     if (isinstance(item, Note)):

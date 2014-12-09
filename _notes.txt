@@ -1,7 +1,7 @@
 ON DECK:
-- add cc output routing
 - add a method of deleting ccs
 - add a method of editing ccs
+- make an algorithm for merging cc data when joining blocks
 - add a unit to show midi messages in realtime
 
 DEFECTS:

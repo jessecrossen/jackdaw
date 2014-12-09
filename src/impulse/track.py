@@ -21,6 +21,7 @@ class Track(unit.Source, unit.Sink, ModelList):
   def __init__(self, blocks=(), name='Track',
                      solo=False, mute=False, arm=False,
                      pitch_names=None, controller_names=None, 
+                     controller_outputs=None,
                      transport=None):
     ModelList.__init__(self, blocks)
     unit.Source.__init__(self)
@@ -60,6 +61,12 @@ class Track(unit.Source, unit.Sink, ModelList):
     self._connected_sources = dict()
     self._connected_sinks = dict()
     self.add_observer(self.update_passthru)
+    # make a list of controller output handlers, keyed by number
+    self._controller_outputs = dict()
+    if (controller_outputs is not None):
+      for output in controller_outputs:
+        output.client = self._client
+        self._controller_outputs[output.number] = output
   # invalidate cached data
   def invalidate(self):
     self._max_time = None
@@ -116,6 +123,20 @@ class Track(unit.Source, unit.Sink, ModelList):
     try:
       return(self._controller_values[number])
     except KeyError: return(None)
+  # get an output handler for a controller
+  def output_for_controller(self, number):
+    if (number not in self._controller_outputs):
+      self._controller_outputs[number] = ControllerTrackOutput(
+        client=self._client, number=number, 
+        value=self.value_of_controller(number))
+    return(self._controller_outputs[number])
+  # get a list of output handlers for the current set of controllers
+  @property
+  def controller_outputs(self):
+    outputs = list()
+    for number in self.controllers:
+      outputs.append(self.output_for_controller(number))
+    return(outputs)
   # the total length of time of the track content (in seconds)
   @property
   def duration(self):
@@ -213,6 +234,7 @@ class Track(unit.Source, unit.Sink, ModelList):
   # update the cached value of a controller
   def update_controller_value(self, number, value):
     self._controller_values[number] = value
+    self.output_for_controller(number).value = value
     self.on_change()
   # get a list of unique controller numbers for control change messages 
   #  recorded on this track
@@ -274,7 +296,6 @@ class Track(unit.Source, unit.Sink, ModelList):
     for sink in add_sinks:
       for source in new_sources:
         self._client.connect(source, sink)
-  
   # track serialization
   def serialize(self):
     return({ 
@@ -285,9 +306,55 @@ class Track(unit.Source, unit.Sink, ModelList):
       'arm': self.arm,
       'pitch_names': self.pitch_names,
       'controller_names': self.controller_names,
+      'controller_outputs': self.controller_outputs,
       'transport': self.transport
     })
 serializable.add(Track)
+
+# represent a controller's output on a track
+class ControllerTrackOutput(unit.Source, Model):
+  def __init__(self, number, value=0.0, client=None):
+    self._client = None
+    self._number = number
+    self._value = 0.0
+    Model.__init__(self)
+    unit.Source.__init__(self)
+    self._source_type = 'midi'
+    self.client = client
+    self.value = value
+  @property
+  def client(self):
+    return(self._client)
+  @client.setter
+  def client(self, client):
+    if ((client is not None) and (self.source_port is None)):
+      self._client = client
+      self.source_port = jackpatch.Port(client=self._client,
+        name=('CC %d' % self._number), flags=jackpatch.JackPortIsOutput)
+  @property
+  def number(self):
+    return(self._number)
+  @property
+  def value(self):
+    return(self._value)
+  @value.setter
+  def value(self, value):
+    if ((value is not None) and (value != self._value)):
+      self._value = value
+      self.on_change()
+      self.send_value(self._value)
+  # send a midi message to propagate the current value
+  def send_value(self, value, time=0.0):
+    self._value = value
+    if (self.source_port is not None):
+      self.source_port.send(
+        (0xB0, self._number, int(round(value * 127.0))), time)
+  def serialize(self):
+    return({
+      'number': self.number,
+      'value': self.value
+    })
+serializable.add(ControllerTrackOutput)
 
 # represent a list of tracks
 class TrackList(ModelList):
@@ -395,6 +462,8 @@ class TrackInputHandler(midi.InputHandler):
     self._target_block = None
     # hold a set of notes for all "voices" currently playing, keyed by pitch
     self._playing_notes = dict()
+    # hold a set of controller numbers we've received input for
+    self._active_controllers = set()
     # listen to a transport so we know when we're recording
     self._transport = None
     self.transport = transport
@@ -449,6 +518,7 @@ class TrackInputHandler(midi.InputHandler):
     return(self._playing_notes.values())
   def end_all_notes(self):
     self._playing_notes = dict()
+    self._active_controllers = set()
   # interpret messages
   def handle_message(self, data, time):
     if (len(data) != 3): return
@@ -482,10 +552,15 @@ class TrackInputHandler(midi.InputHandler):
     elif (kind == 0xB):
       number = data1
       value = (data2 / 127.0)
-      ccset = block.CCSet(time=(time - base_time), 
-                          number=number, value=value)
+      ccset = block.CCSet(time=(time - base_time), number=number, value=value)
       if (self._target_block is not None):
         self._target_block.events.append(ccset)
+        # add the initial value at the beginning of the block if this 
+        #  is the first value for this controller
+        if (number not in self._active_controllers):
+          self._active_controllers.add(number)
+          self._target_block.events.append(block.CCSet(
+            time=0.0, number=number, value=value))
       if (self.target.arm):
         self.target.update_controller_value(number, value)
     # report unexpected messages
@@ -539,7 +614,25 @@ class TrackOutputHandler(observable.Object):
       self.send()
   # start playback
   def start(self):
+    # send initial values for track control channels
+    self._send_initial_controller_values()
+    # initialize the scheduling time range
     self._scheduled_to = self.transport.time
+  def _send_initial_controller_values(self):
+    controller_values = dict()
+    now = self.transport.time
+    for block in self.track:
+      if (block.time > now): continue
+      for event in block.events:
+        try:
+          number = event.number
+          value = event.value
+          time = event.time
+        except AttributeError: continue
+        if (time > now): break
+        controller_values[number] = value
+    for (number, value) in controller_values.iteritems():
+      self.track.output_for_controller(number).send_value(value, 0.0)
   # schedule some events for playback
   def send(self):
     # if the track is muted, stop current notes and don't send any more
@@ -584,18 +677,28 @@ class TrackOutputHandler(observable.Object):
       try:
         t2 += event.duration
       except AttributeError: pass
-      velocity = 127
-      try:
-        velocity = int(math.floor(event.velocity * 127.0))
-      except AttributeError: pass
       pitch = None
       try:
         pitch = event.pitch
       except AttributeError: pass
       # start notes
-      if (hasattr(event, 'pitch')):
+      if (pitch is not None):
+        velocity = 127
+        try:
+          velocity = int(math.floor(event.velocity * 127.0))
+        except AttributeError: pass
         self.port.send((0x90, pitch, velocity), t1 - now)
         self._open_notes[pitch] = t2
+      # send control changes
+      else:
+        number = None
+        value = None
+        try:
+          number = event.number
+          value = event.value
+        except AttributeError: pass
+        else:
+          self.track.output_for_controller(number).send_value(value, t1 - now)
     # schedule ending events if they are in the current interval
     open_notes = dict()
     for (pitch, t) in self._open_notes.iteritems():

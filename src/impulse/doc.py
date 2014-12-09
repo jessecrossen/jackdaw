@@ -72,6 +72,7 @@ class ViewScale(observable.Object):
     pitches_height = len(track.pitches) * self.pitch_height
     controllers_height = len(track.controllers) * self.controller_height
     return(max(min_height, pitches_height + controllers_height))
+  @property
   def track_spacing(self):
     return(6.0)
 serializable.add(ViewScale)
