@@ -5,6 +5,7 @@ from PySide.QtGui import *
 
 import observable
 import view
+import icon
 from model import Selection
 from doc import ViewScale
 
@@ -210,7 +211,7 @@ class ControllerMenu(QMenu):
     QMenu.__init__(self, parent)
     self.events = events
     self.number = number
-    delete_action = QAction('Delete', self)
+    delete_action = QAction(icon.get('delete'), 'Delete', self)
     delete_action.setStatusTip(
       'Delete all changes on controller %d' % self.number)
     delete_action.triggered.connect(self.on_delete)
@@ -298,6 +299,7 @@ class BlockStartView(view.TimeDraggable, view.ModelView):
   def __init__(self, model, parent=None):
     view.ModelView.__init__(self, model, parent)
     view.TimeDraggable.__init__(self)
+    self.setCursor(Qt.SizeHorCursor)
   def boundingRect(self):
     r = self.mapRectFromScene(QRectF(0.0, 0.0, self.WIDTH, 0.0))
     return(QRectF(0.0, 0.0, r.width(), self.rect().height()))
@@ -321,6 +323,7 @@ class BlockEndView(view.TimeDraggable, view.ModelView):
   def __init__(self, model, parent=None):
     view.ModelView.__init__(self, model, parent)
     view.TimeDraggable.__init__(self)
+    self.setCursor(Qt.SizeHorCursor)
   def boundingRect(self):
     r = self.mapRectFromScene(QRectF(0.0, 0.0, self.WIDTH, 0.0))
     return(QRectF(- r.width(), 0.0, r.width(), self.rect().height()))
@@ -344,6 +347,7 @@ class BlockRepeatView(view.TimeDraggable, view.ModelView):
   def __init__(self, model, parent=None):
     view.ModelView.__init__(self, model, parent)
     view.TimeDraggable.__init__(self)
+    self.setCursor(Qt.SizeHorCursor)
   def boundingRect(self):
     r = self.mapRectFromScene(QRectF(0.0, 0.0, 1.0, 0.0))
     px = r.width()
@@ -369,14 +373,18 @@ class BlockMenu(QMenu):
     QMenu.__init__(self, parent)
     self.block = block
     self.tracks = tracks
-    split_action = QAction('Split', self)
+    split_action = QAction(icon.get('split'), 'Split', self)
     split_action.setStatusTip('Split the block into multiple blocks')
     split_action.triggered.connect(self.on_split)
-    join_action = QAction('Join', self)
+    self.addAction(split_action)
+    join_action = QAction(icon.get('join'), 'Join', self)
     join_action.setStatusTip('Join selected blocks into one')
     join_action.triggered.connect(self.on_join)
-    self.addAction(split_action)
     self.addAction(join_action)
+    delete_action = QAction(icon.get('delete'), 'Delete', self)
+    delete_action.setStatusTip('Delete this block')
+    delete_action.triggered.connect(self.on_delete)
+    self.addAction(delete_action)
     # disable actions that can't be performed
     # get all the selected blocks
     selected = self.get_selected_blocks()
@@ -447,5 +455,14 @@ class BlockMenu(QMenu):
         view.ViewManager.begin_action((self.block, current_track))
         self.block.split(times, track=current_track)
         view.ViewManager.end_action()
-
-
+  # delete the block
+  def on_delete(self, *args):
+    current_track = None
+    for track in self.tracks:
+      if (self.block in track):
+        current_track = track
+        break
+    if (current_track is None): return
+    view.ViewManager.begin_action(current_track)
+    current_track.remove(self.block)
+    view.ViewManager.end_action()

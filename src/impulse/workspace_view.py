@@ -6,6 +6,7 @@ from PySide.QtGui import *
 import observable
 
 import view
+import icon
 from unit_view import UnitView, UnitInputView, UnitOutputView, ConnectionView
 
 import track
@@ -180,17 +181,17 @@ class AddUnitMenu(QMenu):
     self.document = document
     self.units = document.units
     self.scene_pos = scene_pos
-    self.add_action('Transport', 
+    self.add_action('transport', 'Transport', 
                     'Add a transport control unit', self.on_add_transport)
-    self.add_action('Tracks', 
+    self.add_action('multitrack', 'Tracks', 
                     'Add a unit for track recording and playback', 
                     self.on_add_multitrack)
-    self.add_action('Sampler Instrument...', 
+    self.add_action('instrument', 'Sampler Instrument...', 
                     'Add a sampler unit', self.on_add_sampler)
-    self.add_action('Audio Output', 
+    self.add_action('speaker', 'Audio Output', 
                     'Add a system audio output unit', self.on_add_audio_output)
-  def add_action(self, name, description, callback):
-    action = QAction(name, self)
+  def add_action(self, icon_name, name, description, callback):
+    action = QAction(icon.get(icon_name), name, self)
     action.setStatusTip(description)
     action.triggered.connect(callback)
     self.addAction(action)
@@ -244,5 +245,6 @@ class WorkspaceContextMenu(QMenu):
     self.add_menu = AddUnitMenu(parent=self, 
                                 document=document, scene_pos=scene_pos)
     self.add_menu.setTitle('Add')
+    self.add_menu.setIcon(icon.get('add'))
     self.addMenu(self.add_menu)
   

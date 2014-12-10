@@ -8,6 +8,7 @@ from PySide.QtGui import *
 
 import sampler
 import view
+import icon
 import unit_view
 
 # make a view that displays a list of sampler instruments
@@ -74,11 +75,11 @@ class InstrumentMenu(QMenu):
         action.triggered.connect(functools.partial(self.on_change_path, path))
         self.addAction(action)
       self.addSeparator()
-    action = QAction('Browse...', self)
+    action = QAction(icon.get('instrument'), 'Browse...', self)
     action.triggered.connect(self.on_browse)
     self.addAction(action)
     if (self.instrument_list):
-      action = QAction('Remove', self)
+      action = QAction(icon.get('delete'), 'Remove', self)
       action.triggered.connect(self.on_remove)
       self.addAction(action)
   def on_change_path(self, path):

@@ -7,6 +7,7 @@ DEFECTS:
 - scrollbar is no longer working correctly with transport tracking
 - more undoable actions: moving unit, resizing unit, adding patch, recording
 - connections are sometimes respawned while being unplugged
+- dragging the start of a block with control changes is very slow (use a change block)
 
 FEATURES:
 - tracks can be deleted
