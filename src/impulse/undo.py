@@ -1,5 +1,9 @@
+from PySide.QtCore import *
+
 import types
 import collections
+import observable
+from model import Selection
 
 # manage a stack of states to implement undo/redo functionality
 #  on a collection of objects implementing the Observable mixin
@@ -7,7 +11,7 @@ class UndoStack(object):
   def __init__(self):
     self.actions = [ ]
     self.position = 0
-  
+    self._begin_state = None
   # store the state of the given objects before changes are made
   def begin_action(self, things):
     self._begin_state = self.save_state(things)
@@ -112,3 +116,53 @@ class UndoStack(object):
       else:
         setattr(thing, key, value)
 
+# make a singleton for handling an undo/redo stack
+class UndoManagerSingleton(observable.Object):
+  def __init__(self):
+    observable.Object.__init__(self)
+    self.reset()
+  # reset the state of the manager
+  def reset(self):
+    self._undo_stack = UndoStack()
+    self._action_things = None
+    self._end_action_timer = QTimer()
+    self._end_action_timer.setSingleShot(True)
+    self._end_action_timer.timeout.connect(self.end_action)
+  # expose properties of the undo stack, adding selection restoring
+  #  and event grouping
+  @property
+  def can_undo(self):
+    return(self._undo_stack.can_undo)
+  @property
+  def can_redo(self):
+    return(self._undo_stack.can_redo)
+  def undo(self, *args):
+    self._undo_stack.undo()
+    self.on_change()
+  def redo(self, *args):
+    self._undo_stack.redo()
+    self.on_change()
+  def begin_action(self, things=(), end_timeout=None):
+    first_one = True
+    if (end_timeout is not None):
+      first_one = False
+      if (self._end_action_timer.isActive()):
+        self._end_action_timer.stop()
+      else:
+        first_one = True
+      self._end_action_timer.start(end_timeout)
+    elif (self._end_action_timer.isActive()):
+      self._end_action_timer.stop()
+      self.end_action()
+    if (first_one):
+      self._action_things = (things, Selection, Selection.models)
+      self._undo_stack.begin_action(self._action_things)
+      self.on_change()
+  def end_action(self):
+    self._undo_stack.end_action(self._action_things)
+    self._action_things = None
+    self.on_change()
+    self._end_action_timer.stop() 
+    return(False)
+# make a singleton instance
+UndoManager = UndoManagerSingleton()

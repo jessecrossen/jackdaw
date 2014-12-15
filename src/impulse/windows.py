@@ -9,7 +9,7 @@ from PySide.QtGui import *
 
 import doc
 from doc_view import DocumentView
-from view import ViewManager
+from undo import UndoManager
 
 class DocumentWindow(QMainWindow):
   def __init__(self, app=None):
@@ -52,7 +52,7 @@ class DocumentWindow(QMainWindow):
       view.destroy()
       self.stack.removeWidget(view)
     # dump the undo stack and clear the selection
-    ViewManager.reset()
+    UndoManager.reset()
   def attach(self):
     # make a view for the document
     self.document_view = DocumentView(parent=self,
@@ -219,7 +219,7 @@ class DocumentWindow(QMainWindow):
     self.toolbar.addAction(self.zoom_out_action)
     self.toolbar.addAction(self.zoom_in_action)
     # give actions their initial states
-    ViewManager.add_observer(self.update_actions)
+    UndoManager.add_observer(self.update_actions)
     self.update_actions()
     
   # start a new document
@@ -258,10 +258,10 @@ class DocumentWindow(QMainWindow):
   
   # undo
   def edit_undo(self):
-    ViewManager.undo()
+    UndoManager.undo()
   # redo
   def edit_redo(self):
-    ViewManager.redo()
+    UndoManager.redo()
   
   # transport actions
   def transport_beginning(self):
@@ -307,8 +307,8 @@ class DocumentWindow(QMainWindow):
   # reflect changes to models in the action buttons
   def update_actions(self):
     # disable undo/redo at the ends of the stack
-    self.undo_action.setEnabled(ViewManager.can_undo)
-    self.redo_action.setEnabled(ViewManager.can_redo)
+    self.undo_action.setEnabled(UndoManager.can_undo)
+    self.redo_action.setEnabled(UndoManager.can_redo)
     # only allow transport actions if we have a document
     self.beginning_action.setEnabled(self.document is not None)
     self.end_action.setEnabled(self.document is not None)

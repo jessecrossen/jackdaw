@@ -5,8 +5,6 @@ from PySide.QtGui import *
 
 import observable
 import view
-import icon
-from model import Selection
 from doc import ViewScale
 
 # represent a block of events on a track
@@ -84,22 +82,6 @@ class BlockView(view.BoxSelectable, view.TimeDraggable, view.Deleteable, view.Mo
       while ((div_time > 0) and (t < self.block.duration)):
         qp.drawLine(QPointF(t, 0), QPointF(t, height))
         t += div_time
-  # show a context menu with block actions
-  def contextMenuEvent(self, e):
-    # walk up the chain to find the track list this block is being 
-    #  presented in, falling back to just the block's track
-    node = self
-    tracks = (self.track,)
-    while(node):
-      if (hasattr(node, 'tracks')):
-        tracks = node.tracks
-        break
-      node = node.parentItem()
-    # create and show the menu
-    menu = BlockMenu(parent=e.widget(),
-                     block=self.block, 
-                     tracks=tracks)
-    menu.popup(e.screenPos())
 
 # do layout for control changes in a block
 class ControllerLayout(view.ListLayout):
@@ -198,34 +180,6 @@ class ControllerView(view.ModelView):
       qp.drawRect(QRectF(x, y - py, w, 2 * py))
       if (repeat_time <= 0): break
       x += repeat_time
-  # make a context menu for the controller number
-  def contextMenuEvent(self, e):
-    menu = ControllerMenu(parent=e.widget(),
-                          events=self.events,
-                          number=self.number)
-    menu.popup(e.screenPos())
-
-# make a context menu for a controller view
-class ControllerMenu(QMenu):
-  def __init__(self, events, number, parent=None):
-    QMenu.__init__(self, parent)
-    self.events = events
-    self.number = number
-    delete_action = QAction(icon.get('delete'), 'Delete', self)
-    delete_action.setStatusTip(
-      'Delete all changes on controller %d' % self.number)
-    delete_action.triggered.connect(self.on_delete)
-    self.addAction(delete_action)
-  def on_delete(self):
-    self.events.begin_change_block()
-    for event in set(self.events):
-      try:
-        number = event.number
-        value = event.value
-      except AttributeError: continue
-      if (number == self.number):
-        self.events.remove(event)
-    self.events.end_change_block()
 
 # do layout for notes in a block
 class NoteLayout(view.ListLayout):
@@ -368,101 +322,3 @@ class BlockRepeatView(view.TimeDraggable, view.ModelView):
     qp.drawEllipse(QPointF(x, y - 0.5), r * px, r * py)
     qp.drawEllipse(QPointF(x, y + 0.5), r * px, r * py)
 
-class BlockMenu(QMenu):
-  def __init__(self, block, tracks, parent=None):
-    QMenu.__init__(self, parent)
-    self.block = block
-    self.tracks = tracks
-    split_action = QAction(icon.get('split'), 'Split', self)
-    split_action.setStatusTip('Split the block into multiple blocks')
-    split_action.triggered.connect(self.on_split)
-    self.addAction(split_action)
-    join_action = QAction(icon.get('join'), 'Join', self)
-    join_action.setStatusTip('Join selected blocks into one')
-    join_action.triggered.connect(self.on_join)
-    self.addAction(join_action)
-    delete_action = QAction(icon.get('delete'), 'Delete', self)
-    delete_action.setStatusTip('Delete this block')
-    delete_action.triggered.connect(self.on_delete)
-    self.addAction(delete_action)
-    # disable actions that can't be performed
-    # get all the selected blocks
-    selected = self.get_selected_blocks()
-    # if the block is the only one selected, it can be split
-    split_action.setEnabled((len(selected) == 0) or 
-      ((len(selected) == 1) and (self.block in selected)))
-    # if more than one block is selected, they can be joined
-    join_action.setEnabled(
-      (len(selected) == 0) or (self.block in selected))
-  # get all blocks in the selection
-  def get_selected_blocks(self):
-    blocks = set()
-    for item in Selection.models:
-      if (hasattr(item, 'events')):
-        blocks.add(item)
-    return(blocks)
-  # get selected events within the current block
-  def get_selected_notes(self):
-    block_events = set(self.block.events)
-    selected_events = set()
-    for item in Selection.models:
-      if ((item in block_events) and (hasattr(item, 'pitch'))):
-        selected_events.add(item)
-    return(selected_events)
-  # join multiple blocks
-  def on_join(self, *args):
-    blocks = self.get_selected_blocks()
-    blocks.add(self.block)
-    view.ViewManager.begin_action((blocks, self.tracks))
-    if (len(blocks) > 1):
-      self.block.join(blocks, tracks=self.tracks)
-    else:
-      self.block.join_repeats()
-    view.ViewManager.end_action()
-  # split a block at selected note boundaries
-  def on_split(self, *args):
-    current_track = None
-    for track in self.tracks:
-      if (self.block in track):
-        current_track = track
-        break
-    # if the block has multiple repeats, split the repeats
-    if (self.block.events.duration < self.block.duration):
-      view.ViewManager.begin_action(track)
-      self.block.split_repeats(track=current_track)
-      view.ViewManager.end_action()
-    else:
-      times = [ ]
-      # get selected events in the block
-      selected_events = self.get_selected_notes()
-      # if events are selected in the block, find boundaries 
-      #  between selected and deselected events
-      if (len(selected_events) > 0):
-        # sort all block events by time
-        events = list(self.block.events)
-        events.sort(key=lambda e: e.time)
-        # find boundaries
-        was_selected = (events[0] in selected_events)
-        for event in events:
-          # count notes only
-          if (not hasattr(event, 'pitch')): continue
-          is_selected = (event in selected_events)
-          if (is_selected != was_selected):
-            times.append(event.time)
-            was_selected = is_selected
-      # if there are times to split on, we can split
-      if (len(times) > 0):
-        view.ViewManager.begin_action((self.block, current_track))
-        self.block.split(times, track=current_track)
-        view.ViewManager.end_action()
-  # delete the block
-  def on_delete(self, *args):
-    current_track = None
-    for track in self.tracks:
-      if (self.block in track):
-        current_track = track
-        break
-    if (current_track is None): return
-    view.ViewManager.begin_action(current_track)
-    current_track.remove(self.block)
-    view.ViewManager.end_action()

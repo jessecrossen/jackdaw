@@ -5,7 +5,8 @@ from PySide.QtGui import *
 
 import observable
 from model import Selection
-import state
+from undo import UndoManager
+import menu
 
 # make a mixin that adds parent searching
 class ParentSeekable(object):
@@ -101,6 +102,14 @@ class View(ParentSeekable, QGraphicsObject):
   # redraw the view
   def paint(self, qp, options, widget):
     pass
+  # show context menus
+  def contextMenuEvent(self, event):
+    if (not menu.ContextMenu.has_menu_for_view(self)):
+      event.ignore()
+      return
+    context_menu = menu.ContextMenu(item=self, event=event,
+                                    parent=event.widget())
+    context_menu.popup(event.screenPos())
 
 # make a base class for views of models
 class ModelView(View):
@@ -227,7 +236,7 @@ class Selectable(Interactive):
     Interactive.__init__(self)
     self.allow_multiselect = True
   def on_click(self, event):
-    ViewManager.begin_action(end_timeout=500)
+    UndoManager.begin_action(end_timeout=500)
     if ((self.allow_multiselect) and 
         (event.modifiers() == Qt.ShiftModifier)):
       self.model.selected = True
@@ -253,9 +262,9 @@ class Deleteable(Interactive):
     document = None
     if (document_view is not None):
       document = document_view.document
-    ViewManager.begin_action(document)
+    UndoManager.begin_action(document)
     self._delete_selected_child_items(root_item)
-    ViewManager.end_action()
+    UndoManager.end_action()
   # delete selected children of the given item
   def _delete_selected_child_items(self, item, parents=()):
     children = set(item.childItems())
@@ -346,7 +355,7 @@ class BoxSelectable(Interactive, ModelView):
         return
     Interactive.mouseReleaseEvent(self, event)
   def select_box(self, event, r):
-    ViewManager.begin_action(end_timeout=500)
+    UndoManager.begin_action(end_timeout=500)
     modifiers = event.modifiers()
     if ((modifiers != Qt.ShiftModifier) and 
         (modifiers != Qt.ControlModifier)):
@@ -403,7 +412,7 @@ class TimeDraggable(Selectable):
       node = node.parentItem()
     return(delta_time * 10.0)
   def on_drag_start_x(self, event):
-    ViewManager.begin_action()
+    UndoManager.begin_action()
     # select the model if it isn't selected
     can_select = hasattr(self.model, 'selected')
     if ((not can_select) or (not self.model.selected)):
@@ -453,10 +462,10 @@ class TimeDraggable(Selectable):
   # reset state after dragging to avoid memory leaks
   def on_drag_end_x(self, event):
     self._drag_start_times = dict()
-    ViewManager.end_action()
+    UndoManager.end_action()
   # handle keypresses
   def on_key_x(self, event):
-    ViewManager.begin_action(end_timeout=500)
+    UndoManager.begin_action(end_timeout=500)
     # get the time difference equivalent to one pixel
     delta_time = self.mapFromScene(1, 0).x() - self.mapFromScene(0, 0).x()
     if (event.key() == Qt.Key_Left):
@@ -474,7 +483,7 @@ class PitchDraggable(Selectable):
     Selectable.__init__(self)
     self._drag_start_pitches = dict()
   def on_drag_start_y(self, event):
-    ViewManager.begin_action()
+    UndoManager.begin_action()
     # select the model if it isn't selected
     if (not self.model.selected):
       Selection.deselect_all()
@@ -494,10 +503,10 @@ class PitchDraggable(Selectable):
   # reset state after dragging to avoid memory leaks
   def on_drag_end_y(self, event):
     self._drag_start_pitches = dict()
-    ViewManager.end_action()
+    UndoManager.end_action()
   # handle keypresses
   def on_key_y(self, event):
-    ViewManager.begin_action(end_timeout=500)
+    UndoManager.begin_action(end_timeout=500)
     # get the time difference equivalent to one pixel
     delta_pitch = 1
     if (event.key() == Qt.Key_Down):
@@ -699,76 +708,9 @@ class NameLabel(EditableLabel):
   def on_edited(self, text):
     self._model.name = text
   def focusInEvent(self, e):
-    ViewManager.begin_action(self._model)
+    UndoManager.begin_action(self._model)
     EditableLabel.focusInEvent(self, e)
   def focusOutEvent(self, e):
     EditableLabel.focusOutEvent(self, e)
-    ViewManager.end_action()
-
-# make a singleton for handling things like selection state
-class ViewManagerSingleton(observable.Object):
-  def __init__(self):
-    observable.Object.__init__(self)
-    self.reset()
-  # reset the state of the manager
-  def reset(self):
-    # whether snapping to event times is enabled
-    self.snap_time = True
-    # the time difference within which to snap, in seconds
-    self.snap_window = 0.15
-    # the time that has been snapped to
-    self._snapped_time = None
-    # make a stack to manage undo operations
-    self._undo_stack = state.UndoStack()
-    self._action_things = None
-    self._end_action_timer = QTimer()
-    self._end_action_timer.setSingleShot(True)
-    self._end_action_timer.timeout.connect(self.end_action)
-  # keep track of time snapping
-  @property
-  def snapped_time(self):
-    return(self._snapped_time)
-  @snapped_time.setter
-  def snapped_time(self, value):
-    if (value != self._snapped_time):
-      self._snapped_time = value
-      self.on_change()
-  # expose properties of the undo stack, adding selection restoring
-  #  and event grouping
-  @property
-  def can_undo(self):
-    return(self._undo_stack.can_undo)
-  @property
-  def can_redo(self):
-    return(self._undo_stack.can_redo)
-  def undo(self, *args):
-    self._undo_stack.undo()
-    self.on_change()
-  def redo(self, *args):
-    self._undo_stack.redo()
-    self.on_change()
-  def begin_action(self, things=(), end_timeout=None):
-    first_one = True
-    if (end_timeout is not None):
-      first_one = False
-      if (self._end_action_timer.isActive()):
-        self._end_action_timer.stop()
-      else:
-        first_one = True
-      self._end_action_timer.start(end_timeout)
-    elif (self._end_action_timer.isActive()):
-      self._end_action_timer.stop()
-      self.end_action()
-    if (first_one):
-      self._action_things = (things, Selection, Selection.models)
-      self._undo_stack.begin_action(self._action_things)
-      self.on_change()
-  def end_action(self):
-    self._undo_stack.end_action(self._action_things)
-    self._action_things = None
-    self.on_change()
-    self._end_action_timer.stop() 
-    return(False)
-# make a singleton instance
-ViewManager = ViewManagerSingleton()
+    UndoManager.end_action()
 

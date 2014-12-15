@@ -5,6 +5,7 @@ from PySide.QtGui import *
 
 import unit
 import view
+from undo import UndoManager
 from button_view import DeleteButton, AddButton, DragButton, ResizeButton
 
 class UnitView(view.ModelView):
@@ -66,7 +67,7 @@ class UnitView(view.ModelView):
     document_view = self.parentItemWithAttribute('document')
     patch_bay = None if document_view is None else document_view.document.patch_bay
     if (workspace_view):
-      view.ViewManager.begin_action((workspace_view, patch_bay))
+      UndoManager.begin_action((workspace_view, patch_bay))
       if (patch_bay is not None):
         patch_bay.remove_connections_for_unit(self.unit)
         if (self._input_layout is not None):
@@ -76,7 +77,7 @@ class UnitView(view.ModelView):
           for item in self._output_layout.items:
             patch_bay.remove_connections_for_unit(item)
       workspace_view.units.remove(self.unit)
-      view.ViewManager.end_action()
+      UndoManager.end_action()
   # handle the user wanting to add to the unit (this will have different 
   #  behaviors depending on the type of unit)
   def on_add(self):

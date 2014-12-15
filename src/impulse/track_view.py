@@ -7,6 +7,7 @@ import track
 import view
 from doc import ViewScale
 from model import Selection
+from undo import UndoManager
 from block_view import BlockView
 import unit_view
 import transport_view
@@ -569,9 +570,9 @@ class MultitrackUnitView(unit_view.UnitView):
     # allow the set of tracks to be deleted
     self.allow_delete = True
   def on_add(self):
-    view.ViewManager.begin_action(self.unit.tracks)
+    UndoManager.begin_action(self.unit.tracks)
     self.unit.tracks.add_track()
-    view.ViewManager.end_action()
+    UndoManager.end_action()
   def layout(self):
     size = self._content.minimumSizeHint()
     self.unit.width = max(size.width(), self.unit.width)

@@ -6,7 +6,7 @@ from PySide.QtGui import *
 import observable
 
 import view
-import icon
+import menu
 from unit_view import UnitView, UnitInputView, UnitOutputView, ConnectionView
 
 import track
@@ -122,18 +122,13 @@ class WorkspaceView(view.Interactive, view.ModelView):
       else:
         self._index_port_views(child, input_map, output_map)
   # show a context menu with document actions
-  def on_click(self, e):
-    item = self.scene().itemAt(e.scenePos())
+  def on_click(self, event):
+    item = self.scene().itemAt(event.scenePos())
     if (item is not self): return
-    menu = AddUnitMenu(parent=e.widget(),
-                       document=self.document,
-                       scene_pos=e.scenePos())
-    menu.popup(e.screenPos())
-  def contextMenuEvent(self, e):
-    menu = WorkspaceContextMenu(parent=e.widget(),
-                                document=self.document,
-                                scene_pos=e.scenePos())
-    menu.popup(e.screenPos())
+    add_menu = menu.WorkspaceMenu(document=self.document,
+                                  event=event,
+                                  parent=event.widget())
+    add_menu.popup(event.screenPos())
   
 # lay units out on the workspace
 class UnitListLayout(view.ListLayout):
@@ -174,77 +169,4 @@ class UnitListLayout(view.ListLayout):
     if (moving_unit):
       extents = extents.united(old_extents)
     self.extents = extents
-
-class AddUnitMenu(QMenu):
-  def __init__(self, document, scene_pos, parent=None):
-    QMenu.__init__(self, parent)
-    self.document = document
-    self.units = document.units
-    self.scene_pos = scene_pos
-    self.add_action('transport', 'Transport', 
-                    'Add a transport control unit', self.on_add_transport)
-    self.add_action('multitrack', 'Tracks', 
-                    'Add a unit for track recording and playback', 
-                    self.on_add_multitrack)
-    self.add_action('instrument', 'Sampler Instrument...', 
-                    'Add a sampler unit', self.on_add_sampler)
-    self.add_action('speaker', 'Audio Output', 
-                    'Add a system audio output unit', self.on_add_audio_output)
-  def add_action(self, icon_name, name, description, callback):
-    action = QAction(icon.get(icon_name), name, self)
-    action.setStatusTip(description)
-    action.triggered.connect(callback)
-    self.addAction(action)
-  # add a generic unit
-  def add_unit(self, unit):
-    view.ViewManager.begin_action(self.units)
-    self.units.append(unit)
-    view.ViewManager.end_action()
-  # add a sampler
-  def on_add_sampler(self, *args):
-    instrument = sampler.Instrument.new_from_browse()
-    if (instrument is None): return
-    instruments = sampler.InstrumentList([ instrument ])
-    self.add_unit(sampler.InstrumentListUnit(
-        name='Sampler',
-        instruments=instruments,
-        x=self.scene_pos.x(),
-        y=self.scene_pos.y()))
-  # add an audio output
-  def on_add_audio_output(self, *args):
-    self.add_unit(audio.SystemPlaybackUnit(
-        name='Audio Out',
-        x=self.scene_pos.x(),
-        y=self.scene_pos.y()))
-  # add a transport controller
-  def on_add_transport(self, *args):
-    self.add_unit(transport.TransportUnit(
-        transport=self.document.transport,
-        name='Transport',
-        x=self.scene_pos.x(),
-        y=self.scene_pos.y()))
-  # add a multitrack unit
-  def on_add_multitrack(self, *args):
-    empty_track = track.Track(transport=self.document.transport)
-    tracks = track.TrackList(
-      tracks=(empty_track,),
-      transport=self.document.transport)
-    self.add_unit(track.MultitrackUnit(
-        tracks=tracks,
-        view_scale=self.document.view_scale,
-        transport=self.document.transport,
-        name='Tracks',
-        x=self.scene_pos.x(),
-        y=self.scene_pos.y()))
-
-class WorkspaceContextMenu(QMenu):
-  def __init__(self, document, scene_pos, parent=None):
-    QMenu.__init__(self, parent)
-    self.document = document
-    self.scene_pos = scene_pos
-    self.add_menu = AddUnitMenu(parent=self, 
-                                document=document, scene_pos=scene_pos)
-    self.add_menu.setTitle('Add')
-    self.add_menu.setIcon(icon.get('add'))
-    self.addMenu(self.add_menu)
   
