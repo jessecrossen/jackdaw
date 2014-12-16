@@ -192,7 +192,7 @@ class NoteLayout(view.ListLayout):
     view.ListLayout.destroy(self)
   def layout(self):
     pitch_map = dict()
-    i = 0.0
+    i = 0.5
     for pitch in reversed(self._track.pitches):
       pitch_map[pitch] = i
       i += 1.0
@@ -203,11 +203,12 @@ class NoteLayout(view.ListLayout):
           y = pitch_map[note.pitch]
         except KeyError:
           y = -1.0
-        view.setRect(QRectF(note.time, y, note.duration, 1.0))
+        view.setPos(QPointF(note.time, y))
 
 # represent a note event in a block
 class NoteView(view.TimeDraggable, view.PitchDraggable, view.Deleteable, view.ModelView):
-  RADIUS = 2.0
+  # the minimum distance from the centerline to the note's edge
+  MIN_RADIUS = 0.125
   def __init__(self, note, parent=None):
     view.ModelView.__init__(self, note, parent)
     view.TimeDraggable.__init__(self)
@@ -216,37 +217,113 @@ class NoteView(view.TimeDraggable, view.PitchDraggable, view.Deleteable, view.Mo
   @property
   def note(self):
     return(self._model)
-  # ensure the note always has some width
-  def rect(self):
-    r = view.ModelView.rect(self)
-    if (r.width() < 0.001):
-      r.setWidth(0.001)
-    sr = self.mapRectToScene(r)
-    min_width = sr.height() / 2.0
-    if (sr.width() < min_width):
-      r.setWidth(min_width * (r.width() / sr.width()))
+  # get the bounding rectangle encompassing the note's shape
+  def boundingRect(self):
+    note = self.note
+    r = QRectF(0.0, - 0.5, note.duration, 1.0)
+    for (time, bend) in note.bend:
+      if (bend - 0.5 < r.top()):
+        r.setTop(bend - 0.5)
+      elif (bend + 0.5 > r.bottom()):
+        r.setBottom(bend + 0.5)
     return(r)
+  # allow the note to have a complex interaction area
+  def shape(self):
+    note = self.note
+    path = QPainterPath()
+    if (len(note.bend) < 2):
+      path.addRect(QRectF(0.0, - 0.5, note.duration, 1.0))
+      return(path)
+    uppers = list()
+    lowers = list()
+    for (time, bend) in note.bend:
+      uppers.append(QPointF(time, bend - 0.5))
+      lowers.append(QPointF(time, bend + 0.5))
+    lowers.reverse()
+    path.addPolygon(uppers + lowers)
+    return(path)
   def paint(self, qp, options, widget):
     selected = self.note.selected
     role = QPalette.Highlight if selected else QPalette.WindowText
     color = self.palette.color(QPalette.Normal, role)
-    # dim notes to show velocity
-    velocity = 1.0
-    try:
-      velocity = self.note.velocity
-    except AttributeError: pass
-    if (velocity < 1.0):
-      color.setAlphaF(0.1 + (0.9 * velocity))
     qp.setBrush(QBrush(color))
     qp.setPen(Qt.NoPen)
-    r = self.rect()
-    width = r.width()
-    height = r.height()
-    t = qp.deviceTransform()
-    rx = self.RADIUS / t.m11()
-    ry = self.RADIUS / t.m22()
-    qp.drawRoundedRect(QRectF(0.0, 0.0, width, height), rx, ry)
-
+    note = self.note
+    # get the note's initial velocity
+    velocity = 1.0
+    try:
+      velocity = note.velocity
+    except AttributeError: pass
+    # make a function to convert velocity to a radius from the centerline
+    def vr(velocity):
+      return((0.5 - self.MIN_RADIUS) * velocity)
+    # if the note has no bends or aftertouch, we can optimize by drawing a rectangle
+    if ((len(note.bend) < 2) and (len(note.aftertouch) < 2)):
+      r = vr(velocity)
+      qp.drawRect(QRectF(0.0, -r, note.duration, 2 * r))
+      return
+    # make a routine to return the slope between two points for interpolation
+    def slope(a, b):
+      try:
+        return((b[1] - a[1]) / (b[0] - a[0]))
+      except ZeroDivisionError:
+        return(0.0)
+    # draw bends and aftertouch changes
+    bends = note.bend
+    if (len(bends) < 2):
+      bends = ((0.0, 0.0), (note.duration, 0.0))
+    velocities = note.aftertouch
+    if (len(velocities) < 2):
+      velocities = ((0.0, velocity), (note.duration, velocity))
+    bend = bends[0]
+    bindex = 1
+    next_bend = bends[bindex]
+    bslope = slope(bend, next_bend)
+    velocity = velocities[0]
+    vindex = 1
+    next_velocity = velocities[vindex]
+    vslope = slope(velocity, next_velocity)
+    uppers = list()
+    lowers = list()
+    t = 0.0
+    while (t <= note.duration):
+      y = bend[1]
+      r = vr(velocity[1])
+      uppers.append(QPointF(t, y - r))
+      lowers.append(QPointF(t, y + r))
+      if ((next_velocity[0] > t) and
+          (next_velocity[0] < next_bend[0]) and 
+          (vindex < len(velocities))):
+        dt = next_velocity[0] - t
+        t = next_velocity[0]
+        velocity = next_velocity
+        vindex += 1
+        if (vindex < len(velocities)):
+          next_velocity = velocities[vindex]
+          vslope = slope(velocity, next_velocity)
+        else:
+          vslope = 0.0
+        bend = (t, bend[1] + (dt * bslope))
+      elif ((next_bend[0] > t) and
+            (next_bend[0] <= next_velocity[0]) and 
+            (bindex < len(bends))):
+        dt = next_bend[0] - t
+        t = next_bend[0]
+        bend = next_bend
+        bindex += 1
+        if (bindex < len(bends)):
+          next_bend = bends[bindex]
+          bslope = slope(bend, next_bend)
+        else:
+          bslope = 0.0
+        velocity = (t, velocity[1] + (dt * vslope))
+      elif (t < note.duration):
+        t = note.duration
+      else:
+        break
+    lowers.reverse()
+    qp.drawPolygon(uppers + lowers)
+    
 # represent the start of a block
 class BlockStartView(view.TimeDraggable, view.ModelView):
   WIDTH = 6.0

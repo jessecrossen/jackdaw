@@ -128,8 +128,14 @@ class DeviceAdapterList(observable.List):
       adapter.device = None
   # adapter list serialization
   def serialize(self):
+    # serialize only devices with some connections
+    used_devices = list()
+    for device in self:
+      if ((device.source_connections > 0) or 
+          (device.sink_connections > 0)):
+        used_devices.append(device)
     return({ 
-      'adapters': list(self)
+      'adapters': used_devices
     })
 serializable.add(DeviceAdapterList)
 

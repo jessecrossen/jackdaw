@@ -454,7 +454,8 @@ class TimeDraggable(Selectable):
       if (abs(delta) < abs(closest_delta)):
         closest_time = snap_time
         closest_delta = delta
-    if (abs(closest_delta) < snap_threshold):
+    if ((closest_delta is not None) and 
+        (abs(closest_delta) < snap_threshold)):
       delta_time += closest_delta
     # move all the models to the new position
     for (model, start_time) in self._drag_start_times.iteritems():

@@ -110,6 +110,8 @@ class Source(object):
   def __init__(self):
     self._source_type = 'mono'
     self._source_port = None
+    # keep track of the number of connections to the port for bookkeeping
+    self.source_connections = 0
   # return the type of signal emitted by this source
   @property
   def source_type(self):
@@ -131,6 +133,8 @@ class Sink(object):
   def __init__(self):
     self._sink_type = 'mono'
     self._sink_port = None
+    # keep track of the number of connections to the port for bookkeeping
+    self.sink_connections = 0
   # return the type of signal emitted by this source
   @property
   def sink_type(self):
@@ -176,11 +180,13 @@ class Connection(Model):
     if (value is not self._source):
       if (self._source is not None):
         old_source = self._source
+        old_source.source_connections -= 1
         try:
           self._source.remove_observer(self.on_change)
         except AttributeError: pass
       self._source = value
       if (self._source is not None):
+        self._source.source_connections += 1
         try:
           self._source.add_observer(self.on_change)
         except AttributeError: pass
@@ -199,11 +205,13 @@ class Connection(Model):
     if (value is not self._sink):
       if (self._sink is not None):
         old_sink = self._sink
+        old_sink.sink_connections -= 1
         try:
           self._sink.remove_observer(self.on_change)
         except AttributeError: pass
       self._sink = value
       if (self._sink is not None):
+        self._sink.sink_connections += 1
         try:
           self._sink.add_observer(self.on_change)
         except AttributeError: pass
@@ -262,6 +270,10 @@ class Connection(Model):
         client.disconnect(source_port, sink_port)
   # disconnect when deleted
   def __del__(self):
+    if (self._source is not None):
+      self._source.source_connections -= 1
+    if (self._sink is not None):
+      self._sink.sink_connections -= 1
     if ((self._connected_source_port is not None) and 
           (self._connected_sink_port is not None)):
       self.route(self._connected_source_port, 

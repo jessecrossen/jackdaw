@@ -22,6 +22,7 @@ class Track(unit.Source, unit.Sink, ModelList):
                      solo=False, mute=False, arm=False,
                      pitch_names=None, controller_names=None, 
                      controller_outputs=None,
+                     bend_range=2.0,
                      transport=None):
     ModelList.__init__(self, blocks)
     unit.Source.__init__(self)
@@ -32,6 +33,7 @@ class Track(unit.Source, unit.Sink, ModelList):
     self._solo = solo
     self._mute = mute
     self._arm = arm
+    self._bend_range = bend_range
     if (pitch_names is None): 
       pitch_names = dict()
     self._pitch_names = pitch_names
@@ -86,6 +88,27 @@ class Track(unit.Source, unit.Sink, ModelList):
     if (value != self._name):
       self._name = value
       self.on_change()
+  # get and set the +/- range of 14-bit pitch bend values in semitones
+  @property
+  def bend_range(self):
+    return(self._bend_range)
+  @bend_range.setter
+  def bend_range(self, value):
+    if (value != self._bend_range):
+      self._bend_range = value
+      self.on_change()
+      self.send_bend_range()
+  # send the current pitch bend range to the midi output port
+  def send_bend_range(self):
+    port = self.source_port
+    semitones = int(math.floor(self._bend_range))
+    cents = int(math.floor((self._bend_range - semitones) * 100.0))
+    for channel in range(0, 16):
+      cc = 0xB0 | channel
+      port.send((cc, 0x65, 0x00))
+      port.send((cc, 0x64, 0x00))
+      port.send((cc, 0x06, semitones))
+      port.send((cc, 0x26, cents))
   # get and set user-defined names for pitches
   @property
   def pitch_names(self):
@@ -305,6 +328,7 @@ class Track(unit.Source, unit.Sink, ModelList):
       'mute': self.mute,
       'arm': self.arm,
       'pitch_names': self.pitch_names,
+      'bend_range': self.bend_range,
       'controller_names': self.controller_names,
       'controller_outputs': self.controller_outputs,
       'transport': self.transport
@@ -462,6 +486,8 @@ class TrackInputHandler(midi.InputHandler):
     self._target_block = None
     # hold a set of notes for all "voices" currently playing, keyed by pitch
     self._playing_notes = dict()
+    # hold a set of bend values keyed by channel for global bend
+    self._channel_bends = dict()
     # hold a set of controller numbers we've received input for
     self._active_controllers = set()
     # listen to a transport so we know when we're recording
@@ -501,6 +527,7 @@ class TrackInputHandler(midi.InputHandler):
       self._target_block.duration = duration
       self._target_block.events.duration = duration
       self._target_block = None
+      self._channel_bends = dict()
     # extend the target block when the transport time changes
     current_time = self.transport.time
     base_time = 0.0
@@ -537,6 +564,12 @@ class TrackInputHandler(midi.InputHandler):
       if (kind == 0x9):
         note = block.Note(time=(time - base_time), 
                     pitch=pitch, velocity=velocity, duration=0)
+        note.channel = channel
+        # add initial pitch bend if there is any on the note's channel
+        if (channel in self._channel_bends):
+          channel_bend = self._channel_bends[channel]
+          if (channel_bend != 0.0):
+            note.add_bend(0.0, channel_bend)
         self._playing_notes[pitch] = note
         if (self._target_block is not None):
           self._target_block.events.append(note)
@@ -547,7 +580,39 @@ class TrackInputHandler(midi.InputHandler):
         # this indicates a note-off with no prior note-on, not a big deal
         except KeyError: return
         note.duration = max(0, time - (base_time + note.time))
+        # cap the bend and velocity curves, if any
+        if (len(note.bend) > 0):
+          note.add_bend(note.duration, note.bend[-1][1])
+        if (len(note.aftertouch) > 0):
+          note.add_aftertouch(note.duration, note.aftertouch[-1][1])
+        # remove the note from the list of playing notes
         del self._playing_notes[pitch]
+    # polyphonic aftertouch
+    elif (kind == 0xA):
+      pitch = data1
+      velocity = data2 / 127.0
+      if (pitch in self._playing_notes):
+        note = self._playing_notes[pitch]
+        # make sure the note's velocity curve has fixed endpoints
+        #  for optimized drawing routines
+        if (len(note.aftertouch) == 0):
+          note.add_aftertouch(0.0, note.velocity)
+        note.add_aftertouch(time - (base_time + note.time), velocity)
+    # pitch bend
+    elif (kind == 0xE):
+      bend = (float(0x2000 - ((data2 << 7) | data1)) / float(0x2000))
+      bend *= self.target.bend_range
+      self._channel_bends[channel] = bend
+      # if the playing notes have multiple channels, assume we're using a 
+      #  channel rotation scheme for polyphonic pitch bends
+      notes_by_channel = dict()
+      for note in self._playing_notes.itervalues():
+        if (note.channel == channel):
+          # make sure the note's bend curve has fixed endpoints
+          #  for optimized drawing routines
+          if (len(note.bend) == 0):
+            note.add_bend(0.0, 0.0)
+          note.add_bend(time - (base_time + note.time), bend)
     # get control channel messages
     elif (kind == 0xB):
       number = data1
@@ -616,6 +681,8 @@ class TrackOutputHandler(observable.Object):
   def start(self):
     # send initial values for track control channels
     self._send_initial_controller_values()
+    # send pitch bend sensitivity to all channels
+    self.track.send_bend_range()
     # initialize the scheduling time range
     self._scheduled_to = self.transport.time
   def _send_initial_controller_values(self):
@@ -641,6 +708,8 @@ class TrackOutputHandler(observable.Object):
       return
     # if we're already scheduled ahead enough, we're done
     now = self.transport.time
+    if (self._scheduled_to is None):
+      self._scheduled_to = now
     ahead = now - self._scheduled_to
     if (ahead > self.min_schedule_ahead): return
     # get the interval to schedule

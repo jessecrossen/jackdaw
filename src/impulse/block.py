@@ -1,3 +1,4 @@
+import math
 import copy
 
 from PySide.QtCore import Signal
@@ -11,13 +12,24 @@ from model import Model, ModelList
 #  - pitch is a MIDI note number, 
 #  - velocity is a fraction between 0 and 1
 class Note(Model):
-  pitch_changed = Signal(object, float, float)
-  def __init__(self, time=None, pitch=None, velocity=1, duration=0):
+  range_changed = Signal(object, tuple, tuple)
+  def __init__(self, time=None, pitch=None, velocity=1, duration=0,
+                     bend=None, aftertouch=None):
     Model.__init__(self)
     self._time = time
     self._duration = duration
     self._pitch = pitch
     self._velocity = velocity
+    self._bend = bend if bend is not None else list()
+    self._aftertouch = aftertouch if aftertouch is not None else list()
+    # track the number of full or partial semitones the note occupies above and 
+    #  below its basic pitch due to bends
+    self._bend_max = 0.0
+    self._bend_min = 0.0
+    self._update_bend_range(self._bend)
+    # the channel is used only when recording to handle channel rotation
+    #  schemes for polyphonic pitch bend
+    self.channel = None
   # the time relative to the beginning of its container when the note 
   #  begins playing (in seconds)
   @property
@@ -38,17 +50,24 @@ class Note(Model):
     if (self._duration != value):
       self._duration = value
       self.on_change()
-  # a MIDI note number from 0-127 identifying the note's pitch
+  # a MIDI note number from 0.0-127.0 identifying the note's pitch
   @property
   def pitch(self):
     return(self._pitch)
   @pitch.setter
   def pitch(self, value):
     if (self._pitch != value):
-      old_pitch = self._pitch
+      old_range = (self.min_pitch, self.max_pitch)
       self._pitch = value
-      self.pitch_changed.emit(self, old_pitch, value)
+      self.range_changed.emit(self, old_range, (self.min_pitch, self.max_pitch))
       self.on_change()
+  # the approximate upper range of the note's pitch, including bends
+  @property
+  def max_pitch(self):
+    return(self._pitch + self._bend_max)
+  @property
+  def min_pitch(self):
+    return(self._pitch + self._bend_min)
   # a floating point number from 0-1 identifying how hard the note is played
   @property
   def velocity(self):
@@ -58,6 +77,38 @@ class Note(Model):
     if (self._velocity != value):
       self._velocity = value
       self.on_change()
+  # a list of tuples of (time delta in seconds, pitch delta in semitones)
+  #  describing continuous pitch bends to the note
+  @property
+  def bend(self):
+    return(self._bend)
+  def add_bend(self, time, pitch_delta):
+    entry = (time, pitch_delta)
+    self._bend.append(entry)
+    self._update_bend_range((entry,))
+    self.on_change()
+  # expand the limits of the bend range from the given entries, allowing a 
+  #  small amount of bending before we allocate a whole pitch
+  def _update_bend_range(self, entries):
+    slop = 0.1
+    for entry in entries:
+      bend = entry[1]
+      if (bend > self._bend_max + slop):
+        old_range = (self.min_pitch, self.max_pitch)
+        self._bend_max = bend
+        self.range_changed.emit(self, old_range, (self.min_pitch, self.max_pitch))
+      elif (bend < self._bend_min - slop):
+        old_range = (self.min_pitch, self.max_pitch)
+        self._bend_min = bend
+        self.range_changed.emit(self, old_range, (self.min_pitch, self.max_pitch))
+  # a list of tuples of (time delta in seconds, velocity 0.0 to 1.0)
+  #  describing aftertouch on the note
+  @property
+  def aftertouch(self):
+    return(self._aftertouch)
+  def add_aftertouch(self, time, velocity):
+    self._aftertouch.append((time, velocity))
+    self.on_change()
   # define a copy operation for notes
   def __copy__(self):
     return(Note(time=self.time, 
@@ -72,7 +123,9 @@ class Note(Model):
       'time': self.time,
       'pitch': self.pitch,
       'velocity': self.velocity,
-      'duration': self.duration
+      'duration': self.duration,
+      'bend': self.bend,
+      'aftertouch': self.aftertouch
     })
 serializable.add(Note)
 
@@ -161,7 +214,7 @@ class EventList(ModelList):
   def _add_item(self, item):
     # update the list of pitches
     if (isinstance(item, Note)):
-      self._add_pitch(item.pitch)
+      self._on_note_range_changed(item, None, (item.min_pitch, item.max_pitch))
       last_time = 0.0
       if (len(self._notes) > 0):
         last_time = self._notes[-1].time
@@ -170,7 +223,7 @@ class EventList(ModelList):
       #  keep the list sorted by time
       if (item.time < last_time):
         self._notes.sort(key=lambda e: e.time)
-      item.pitch_changed.connect(self._on_pitch_changed)
+      item.range_changed.connect(self._on_note_range_changed)
     # update the list of controller numbers
     elif (isinstance(item, CCSet)):
       number = item.number
@@ -199,16 +252,26 @@ class EventList(ModelList):
     if (isinstance(item, Note)):
       self._remove_pitch(item.pitch)
       self._notes.remove(item)
-      item.pitch_changed.disconnect(self._on_pitch_changed)
+      item.range_changed.disconnect(self._on_note_range_changed)
     # update the list of controller numbers
     elif (isinstance(item, CCSet)):
       number = item.number
       self._remove_controller_number(number)
       self._ccsets_by_number[number].remove(item)
     ModelList._remove_item(self, item)
-  def _on_pitch_changed(self, item, old_pitch, new_pitch):
-    self._remove_pitch(old_pitch)
-    self._add_pitch(new_pitch)
+  def _on_note_range_changed(self, item, old_range, new_range):
+    def apply_func_to_pitch_range(func, pitch_range):
+      if (pitch_range is None): return
+      (rmin, rmax) = pitch_range
+      if (rmin == rmax):
+        func(int(round(rmin)))
+      else:
+        slop = 0.25
+        for p in range(int(math.floor(rmin)), int(math.ceil(rmax)) + 1):
+          if ((p >= rmin - slop) and (p <= rmax + slop)):
+            func(p)
+    apply_func_to_pitch_range(self._remove_pitch, old_range)
+    apply_func_to_pitch_range(self._add_pitch, new_range)
   # respond to a pitch being added to or removed from the list
   def _add_pitch(self, pitch):
     if (pitch not in self._pitches):

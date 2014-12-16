@@ -69,7 +69,7 @@ class InstrumentListUnitView(unit_view.UnitView):
   def on_add(self):
     instrument = sampler.Instrument.new_from_browse()
     if (instrument is None): return
-    UndoManager.begin_action(self._content)
+    UndoManager.begin_action(self._content.instruments)
     self._content.instruments.append(instrument)
     UndoManager.end_action()
   def layout(self):
