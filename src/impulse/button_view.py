@@ -28,7 +28,7 @@ class ButtonView(view.Interactive, view.View):
   # do layout for repainting
   def inset(self):
     return(6.0)
-  def paint(self, qp, options, widget):
+  def _paint(self, qp):
     # center the icon in the button area
     r = self.boundingRect()
     s = max(0, min(r.width(), r.height()) - (self.inset() * 2))

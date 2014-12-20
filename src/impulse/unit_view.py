@@ -187,7 +187,7 @@ class UnitView(view.ModelView):
     if (self._output_layout):
       self._output_layout.setRect(io_rect)
   # draw a box enclosing the content and title
-  def paint(self, qp, options, widget):
+  def _paint(self, qp):
     pen = self.pen()
     pen.setWidth(2.0)
     qp.setPen(pen)
@@ -325,7 +325,7 @@ class ConnectionView(view.Selectable, view.ModelView):
     stroker.setCapStyle(Qt.RoundCap)
     return(stroker.createStroke(self.wirePath()))
   # draw the connection as a wire
-  def paint(self, qp, options, widget):
+  def _paint(self, qp):
     # make sure there is a parent and endpoints
     if ((self.source_view is None) or (self.sink_view is None) or
         (self.parentItem() is None)): return
@@ -536,7 +536,7 @@ class UnitInputView(UnitPortView):
     x = - (r * 2.0)
     h = (r * 4.0)
     return(QRectF(x, - (h / 2), self.OFFSET - x, h))
-  def paint(self, qp, options, widget):
+  def _paint(self, qp):
     self.drawPort(qp, QPointF(self.OFFSET, 0.0), 
                       QPointF(0.0, 0.0))
   @property
@@ -558,7 +558,7 @@ class UnitOutputView(UnitPortView):
     w = self.OFFSET + (r * 2.0)
     h = (r * 4.0)
     return(QRectF(- self.OFFSET, - (h / 2), w, h))
-  def paint(self, qp, options, widget):
+  def _paint(self, qp):
     self.drawPort(qp, QPointF(- self.OFFSET, 0.0), 
                       QPointF(0.0, 0.0))
   @property

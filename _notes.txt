@@ -10,7 +10,7 @@ DEFECTS:
 - more undoable actions: moving unit, resizing unit, adding patch, recording, time dragging unreliable
 - connections are sometimes respawned while being unplugged
 - dragging the start of a block with control changes is very slow (use a change block)
-- note hit area is not calling/respecting the overridden shape method
+- custom clipping solution is not handling cursors outside the clipped area
 
 FEATURES:
 - tracks can be deleted

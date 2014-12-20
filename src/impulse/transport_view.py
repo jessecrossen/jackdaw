@@ -50,6 +50,9 @@ class TransportView(view.ModelView):
     elif (current_time > end_time - margin_time):
       self.view_scale.time_offset = max(0.0, 
         current_time + margin_time - time_shown)
+  # clip so that the transport will not show up when scrolled off the view
+  def clipRect(self):
+    return(self.boundingRect())
   # do layout
   def layout(self):
     r = self.rect()
@@ -88,7 +91,7 @@ class TransportLayout(view.ModelView):
 class PassedTimeView(view.ModelView):
   def __init__(self, transport, parent=None):
     view.ModelView.__init__(self, model=transport, parent=parent)
-  def paint(self, qp, options, width):
+  def _paint(self, qp):
     r = self.rect()
     qp.setBrush(self.brush(0.05))
     qp.setPen(Qt.NoPen)
@@ -105,7 +108,7 @@ class TimepointView(view.TimeDraggable, view.ModelView):
     r = self.mapRectFromScene(QRectF(0.0, 0.0, 1.0, 0.0))
     px = r.width()
     return(QRectF(- 2.0 * px, 0.0, 4.0 * px, self.rect().height()))
-  def paint(self, qp, options, width):
+  def _paint(self, qp):
     t = qp.deviceTransform()
     px = 1.0 / t.m11()
     qp.setBrush(self._brush)

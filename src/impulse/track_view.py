@@ -33,15 +33,11 @@ class TrackListView(view.BoxSelectable, view.Interactive, view.ModelView):
       lambda t: TrackView(t, view_scale=view_scale))
     self.pitch_key_layout.spacing = self.view_scale.track_spacing
     self.track_layout.spacing = self.view_scale.track_spacing
-    # clip so tracks can be scrolled and zoomed without going outside the box
-    self.track_layout.setFlag(QGraphicsItem.ItemClipsChildrenToShape, True)
     # add a view for the transport
     self.overlay = transport_view.TransportView(
       transport=self.transport,
       view_scale=self.view_scale,
       parent=self)
-    # clip so the transport elements don't get drawn out of bounds
-    self.overlay.setFlag(QGraphicsItem.ItemClipsChildrenToShape, True)
   @property
   def tracks(self):
     return(self._model)
@@ -122,6 +118,9 @@ class TrackLayout(view.ListLayout):
   @property
   def track(self):
     return(self._items)
+  # clip so that blocks scrolled off the view will not be shown
+  def clipRect(self):
+    return(self.boundingRect())
   def layout(self):
     y = self._rect.y()
     r = self.mapRectFromParent(self._rect)
@@ -132,7 +131,10 @@ class TrackLayout(view.ListLayout):
         w = view.model.duration
       except AttributeError:
         w = view.rect().width()
-      view.setRect(QRectF(x, y, w, h))
+      vr = QRectF(x, y, w, h)
+      view.setRect(vr)
+      # hide blocks that are outside the bounds of the layout
+      view.setVisible(vr.intersects(r))
 
 # show a track
 class TrackView(view.ModelView):
@@ -161,7 +163,7 @@ class TrackView(view.ModelView):
     r.setHeight(self.view_scale.height_of_track(self.track))
     return(r)
   # update the placement of the layout
-  def paint(self, qp, options, widget):
+  def _paint(self, qp):
     r = self.rect()
     width = r.width()
     height = r.height()
@@ -349,7 +351,7 @@ class ControllerKeyView(view.ModelView):
     self._name_proxy.widget().setFixedHeight(r.height())
     self._name_proxy.widget().setGeometry(
       QRect(0, 0, r.width() - self.VALUE_WIDTH, r.height()))
-  def paint(self, qp, options, widget):
+  def _paint(self, qp):
     r = self.rect()
     width = r.width()
     height = r.height()

@@ -8,6 +8,7 @@ class Object(QObject):
   def __init__(self):
     QObject.__init__(self)
     self._change_block_level = 0
+    self._changes_in_block = 0
   def add_observer(self, slot):
     self.changed.connect(slot)
   def remove_observer(self, slot):
@@ -19,13 +20,16 @@ class Object(QObject):
       self._change_block_level += 1
       self.changed.emit()
       self._change_block_level = max(0, self._change_block_level - 1)
+    else:
+      self._changes_in_block += 1
   # wrap a block of changes in the following calls to ensure that the changed 
   #  signal only gets emitted once at the end instead of for each change
   def begin_change_block(self):
     self._change_block_level += 1
+    self._changes_in_block = 0
   def end_change_block(self):
     self._change_block_level = max(0, self._change_block_level - 1)
-    if (self._change_block_level == 0):
+    if ((self._change_block_level == 0) and (self._changes_in_block > 0)):
       self.on_change()
     
 # overlay the observable property onto an existing QObject

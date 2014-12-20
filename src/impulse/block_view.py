@@ -20,8 +20,6 @@ class BlockView(view.BoxSelectable, view.TimeDraggable, view.Deleteable, view.Mo
     self.start_view = BlockStartView(self.block.start, self)
     self.end_view = BlockEndView(self.block.end, self)
     self.controller_layout = ControllerLayout(self, self.block.events, self.track)
-    # enable clipping to hide partial repeats
-    self.setFlag(QGraphicsItem.ItemClipsChildrenToShape, True)
   @property
   def block(self):
     return(self._model)
@@ -33,6 +31,7 @@ class BlockView(view.BoxSelectable, view.TimeDraggable, view.Deleteable, view.Mo
     r = self.rect()
     width = r.width()
     height = r.height()
+    pitch_height = float(len(self.track.pitches))
     # add note layouts to cover the duration of the block
     duration = float(self.block.duration)
     repeat_time = float(self.block.events.duration)
@@ -44,20 +43,21 @@ class BlockView(view.BoxSelectable, view.TimeDraggable, view.Deleteable, view.Mo
       else:
         layout = NoteLayout(self, self.block.events.notes, self.track)
         self.note_layouts.append(layout)
-      layout.setPos(QPointF(i * repeat_time, 0.0))
+      layout.setRect(QRectF(i * repeat_time, 0.0, repeat_time, pitch_height))
     # remove extraneous layouts
     for i in range(repeats, len(self.note_layouts)):
       layout = self.note_layouts.pop()
       layout.destroy()
     # place controllers below pitches
-    pitch_height = float(len(self.track.pitches))
     self.controller_layout.setRect(QRectF(0.0, pitch_height, 
                                           width, height - pitch_height))
     # place the block's placeholders
     self.start_view.setRect(QRectF(0.0, 0.0, 0.0, height))
     self.repeat_view.setRect(QRectF(repeat_time, 0.0, 0.0, height))
     self.end_view.setRect(QRectF(duration, 0.0, 0.0, height))
-  def paint(self, qp, options, widget):
+  def clipRect(self):
+    return(self.boundingRect())  
+  def _paint(self, qp):
     r = self.rect()
     width = r.width()
     height = r.height()
@@ -145,7 +145,7 @@ class ControllerView(view.ModelView):
   @property
   def number(self):
     return(self._number)
-  def paint(self, qp, options, widget):
+  def _paint(self, qp):
     r = self.rect()
     t = qp.deviceTransform()
     px = 1.0 / t.m11()
@@ -210,39 +210,64 @@ class NoteView(view.TimeDraggable, view.PitchDraggable, view.Deleteable, view.Mo
   # the minimum distance from the centerline to the note's edge
   MIN_RADIUS = 0.125
   def __init__(self, note, parent=None):
+    self._rect = QRectF()
+    self._bounding_rect = QRectF()
+    self._shape = None
     view.ModelView.__init__(self, note, parent)
     view.TimeDraggable.__init__(self)
     view.PitchDraggable.__init__(self)
     view.Deleteable.__init__(self)
+    self.note.add_observer(self._update_geometry)
+    self._update_geometry()
+  def destroy(self):
+    self.note.remove_observer(self._update_geometry)
+    view.ModelView.destroy(self)
   @property
   def note(self):
     return(self._model)
-  # get the bounding rectangle encompassing the note's shape
-  def boundingRect(self):
+  # update the note's position
+  def setPos(self, pos):
+    old_pos = self.pos()
+    if ((pos.x() != old_pos.x()) or (pos.y() != old_pos.y())):
+      self._update_geometry()
+    view.ModelView.setPos(self, pos)
+  # update the note's geometry
+  def _update_geometry(self):
+    self.prepareGeometryChange()
+    # invalidate the cached shape
+    self._shape = None
+    # update the rectangle and bounding rectangle
     note = self.note
-    r = QRectF(0.0, - 0.5, note.duration, 1.0)
-    for (time, bend) in note.bend:
-      if (bend - 0.5 < r.top()):
-        r.setTop(bend - 0.5)
-      elif (bend + 0.5 > r.bottom()):
-        r.setBottom(bend + 0.5)
-    return(r)
+    pitch = note.pitch
+    ymin = (note.pitch - note.max_pitch) - 0.5
+    ymax = (note.pitch - note.min_pitch) + 0.5
+    r = QRectF(0.0, ymin, note.duration, ymax - ymin)
+    self._bounding_rect = r
+    pos = self.pos()
+    self._rect = QRectF(r.x() + pos.x(), r.y() + pos.y(), r.width(), r.height())
+    self.update()
+  # get the note's extents
+  def rect(self):
+    return(self._rect)
+  def boundingRect(self):
+    return(self._bounding_rect)
   # allow the note to have a complex interaction area
   def shape(self):
-    note = self.note
-    path = QPainterPath()
-    if (len(note.bend) < 2):
-      path.addRect(QRectF(0.0, - 0.5, note.duration, 1.0))
-      return(path)
-    uppers = list()
-    lowers = list()
-    for (time, bend) in note.bend:
-      uppers.append(QPointF(time, bend - 0.5))
-      lowers.append(QPointF(time, bend + 0.5))
-    lowers.reverse()
-    path.addPolygon(uppers + lowers)
-    return(path)
-  def paint(self, qp, options, widget):
+    if (self._shape is None):
+      note = self.note
+      self._shape = QPainterPath()
+      if (len(note.bend) < 2):
+        self._shape.addRect(QRectF(0.0, - 0.5, note.duration, 1.0))
+      else:
+        uppers = list()
+        lowers = list()
+        for (time, bend) in note.bend:
+          uppers.append(QPointF(time, bend - 0.5))
+          lowers.append(QPointF(time, bend + 0.5))
+        lowers.reverse()
+        self._shape.addPolygon(uppers + lowers)
+    return(self._shape)
+  def _paint(self, qp):
     selected = self.note.selected
     role = QPalette.Highlight if selected else QPalette.WindowText
     color = self.palette.color(QPalette.Normal, role)
@@ -324,6 +349,7 @@ class NoteView(view.TimeDraggable, view.PitchDraggable, view.Deleteable, view.Mo
     lowers.reverse()
     qp.drawPolygon(uppers + lowers)
     
+    
 # represent the start of a block
 class BlockStartView(view.TimeDraggable, view.ModelView):
   WIDTH = 6.0
@@ -334,7 +360,7 @@ class BlockStartView(view.TimeDraggable, view.ModelView):
   def boundingRect(self):
     r = self.mapRectFromScene(QRectF(0.0, 0.0, self.WIDTH, 0.0))
     return(QRectF(0.0, 0.0, r.width(), self.rect().height()))
-  def paint(self, qp, options, widget):
+  def _paint(self, qp):
     qp.setBrush(self.brush())
     qp.setPen(Qt.NoPen)
     t = qp.deviceTransform()
@@ -358,7 +384,7 @@ class BlockEndView(view.TimeDraggable, view.ModelView):
   def boundingRect(self):
     r = self.mapRectFromScene(QRectF(0.0, 0.0, self.WIDTH, 0.0))
     return(QRectF(- r.width(), 0.0, r.width(), self.rect().height()))
-  def paint(self, qp, options, widget):
+  def _paint(self, qp):
     qp.setBrush(self.brush())
     qp.setPen(Qt.NoPen)
     t = qp.deviceTransform()
@@ -384,7 +410,7 @@ class BlockRepeatView(view.TimeDraggable, view.ModelView):
     px = r.width()
     return(QRectF(- ((self.WIDTH - 1) * px), 0.0, 
       self.WIDTH * px, self.rect().height()))
-  def paint(self, qp, options, width):
+  def _paint(self, qp):
     qp.setBrush(self.brush(0.25))
     qp.setPen(Qt.NoPen)
     t = qp.deviceTransform()

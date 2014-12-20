@@ -83,6 +83,10 @@ class View(ParentSeekable, QGraphicsObject):
   def boundingRect(self):
     r = self.rect()
     return(QRectF(0.0, 0.0, r.width(), r.height()))
+  # return the rectangle the item and its children should be clipped to,
+  #  or None if no clipping is needed
+  def clipRect(self):
+    return(None)
   # update layout when added to the scene, in case widgets need to be added
   def itemChange(self, change, value):
     if (change == QGraphicsItem.ItemSceneHasChanged):
@@ -99,8 +103,33 @@ class View(ParentSeekable, QGraphicsObject):
   # do layout of subviews
   def layout(self):
     pass
+  # get the effective clipping rectangle of the view in local coordinates
+  def effectiveClipRect(self):
+    r = self.clipRect()
+    node = self.parentItem()
+    while (node):
+      try:
+        cr = node.clipRect()
+      except AttributeError:
+        cr = None
+      if (cr is not None):
+        cr = self.mapRectFromItem(node, cr)
+        if (r is None):
+          r = cr
+        else:
+          r = r.intersected(cr)
+      node = node.parentItem()
+    return(r)
   # redraw the view
   def paint(self, qp, options, widget):
+    # clip if needed
+    r = self.effectiveClipRect()
+    if (r is not None):
+      qp.setClipRect(r)
+    # paint the view
+    self._paint(qp)
+  # override this for simplified and enhanced view painting
+  def _paint(self, qp):
     pass
   # show context menus
   def contextMenuEvent(self, event):
@@ -157,12 +186,23 @@ class Interactive(object):
   @property
   def dragging(self):
     return(self._dragging)
+  # ignore an event if its location is outside the clipped area of the view,
+  #  and return whether it was ignored
+  def ignoreIfClipped(self, event):
+    cr = self.effectiveClipRect()
+    if (cr is not None):
+      if (not cr.contains(event.pos())):
+        event.ignore()
+        return(True)
+    return(False)  
   # handle mouse events
   def mousePressEvent(self, event):
+    if (self.ignoreIfClipped(event)): return
     if (event.button() != Qt.LeftButton): return
     self._dragging = False
     self._drag_start_pos = event.scenePos()
   def mouseMoveEvent(self, event):
+    if (self.ignoreIfClipped(event)): return
     if ((event.buttons() & Qt.LeftButton) == Qt.NoButton): return
     pos = event.scenePos()
     scene_delta = QPointF(
@@ -177,6 +217,7 @@ class Interactive(object):
     if (self._dragging):
       self.on_drag(event, delta.x(), delta.y())
   def mouseReleaseEvent(self, event):
+    if (self.ignoreIfClipped(event)): return
     if (self._dragging):
       self._dragging = False
       self.on_drag_end(event)
@@ -569,6 +610,9 @@ class ListLayout(ParentSeekable, QGraphicsObject):
     self._do_layout()
   def boundingRect(self):
     return(self.mapRectFromParent(self._rect))
+  def clipRect(self):
+    return(None)
+  # this definition is required or nothing in the layout will be drawn
   def paint(self, qp, options, widget):
     pass
   def update_views(self):
@@ -654,7 +698,7 @@ class NamedModelView(ModelView):
       name_view = self.name_proxy.widget()
       name_view.setFixedWidth(r.width())
       self.name_proxy.setPos(QPointF(0.0, 0.0))
-  def paint(self, qp, options, widget):
+  def _paint(self, qp):
     r = self.boundingRect()
     qp.setPen(Qt.NoPen)
     color = self.palette.color(QPalette.Normal, QPalette.Base)
