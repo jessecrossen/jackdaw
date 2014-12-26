@@ -10,6 +10,12 @@ import icon
 from model import Selection
 from undo import UndoManager
 
+import sampler
+import audio
+import transport
+import track
+import midi
+
 # this class holds the stack of views and models a context click 
 #  might refer to
 class ContextMenu(QMenu):
@@ -73,6 +79,8 @@ class WorkspaceMenu(QMenu):
                     'Add a sampler unit', self.on_add_sampler)
     self.add_action('speaker', 'Audio Output', 
                     'Add a system audio output unit', self.on_add_audio_output)
+    self.add_action('data', 'MIDI Monitor', 
+                    'Add a visual MIDI message monitor', self.on_add_midi_monitor)
   def add_action(self, icon_name, name, description, callback):
     action = QAction(icon.get(icon_name), name, self)
     action.setStatusTip(description)
@@ -117,6 +125,12 @@ class WorkspaceMenu(QMenu):
         view_scale=self.document.view_scale,
         transport=self.document.transport,
         name='Tracks',
+        x=self.scene_pos.x(),
+        y=self.scene_pos.y()))
+  # add a midi monitor
+  def on_add_midi_monitor(self, *args):
+    self.add_unit(midi.MidiMonitorUnit(
+        name='Monitor',
         x=self.scene_pos.x(),
         y=self.scene_pos.y()))
 ContextMenu.register_context('WorkspaceView', WorkspaceMenu, ('document',))
@@ -296,3 +310,36 @@ class ControllerMenu(QMenu):
         self.events.remove(event)
     self.events.end_change_block()
 ContextMenu.register_context('ControllerView', ControllerMenu, ('events', 'number'))
+
+# make a context menu for midi monitor unit
+class MidiMonitorMenu(QMenu):
+  def __init__(self, unit, event, parent):
+    QMenu.__init__(self, parent)
+    self.setTitle('MIDI Monitor')
+    self.setIcon(icon.get('data'))
+    self.unit = unit
+    self.style_menu = QMenu(self)
+    self.style_menu.setTitle('Style')
+    styles = (('hex', 'Hexadecimal'), 
+              ('decimal', 'Decimal'),
+              ('binary', 'Binary'))
+    for (style, label) in styles:
+      action = QAction(label, self.style_menu)
+      action.setStatusTip(
+        'Set the display style to %s' % label.lower())
+      action.triggered.connect(functools.partial(self.on_set_style, style))
+      if (style == self.unit.style):
+        action.setIcon(icon.get('check'))
+      self.style_menu.addAction(action)
+    self.addMenu(self.style_menu)
+    action = QAction('Show Time', self)
+    action.setStatusTip('Show the times of MIDI events')
+    action.triggered.connect(self.on_toggle_show_time)
+    if (self.unit.show_time):
+      action.setIcon(icon.get('check'))
+    self.addAction(action)
+  def on_set_style(self, style):
+    self.unit.style = style
+  def on_toggle_show_time(self):
+    self.unit.show_time = not self.unit.show_time
+ContextMenu.register_context('MidiMonitorUnitView', MidiMonitorMenu, ('unit',))

@@ -3,7 +3,6 @@ ON DECK:
 - add a method of editing ccs
 - make an algorithm for merging cc data when joining blocks
 - add a context menu action to change the controller number of ccs
-- add a unit to show midi messages in realtime
 
 DEFECTS:
 - scrollbar is no longer working correctly with transport tracking

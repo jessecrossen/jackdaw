@@ -198,3 +198,56 @@ class InputHandler(observable.Object):
   # handle input, reimplement to pass data to the target
   def handle_message(data, time):
     pass
+  
+# a unit for examining MIDI messages
+class MidiMonitorUnit(unit.Sink, unit.Unit):
+  def __init__(self, style='hex', show_time=False, *args, **kwargs):
+    unit.Unit.__init__(self, *args, **kwargs)
+    unit.Sink.__init__(self)
+    self._style = style
+    self._show_time = show_time
+    self.messages = list()
+    self._max_messages = 100
+    self._client = jackpatch.Client('jackdaw-monitor')
+    self._sink_type = 'midi'
+    self._sink_port = jackpatch.Port(client=self._client,
+      name='capture', flags=jackpatch.JackPortIsInput)
+    self._timer = QTimer()
+    self._timer.setInterval(0)
+    self._timer.timeout.connect(self.receive)
+    self._timer.start()
+  @property
+  def style(self):
+    return(self._style)
+  @style.setter
+  def style(self, value):
+    if (value != self._style):
+      self._style = value
+      self.on_change()
+  @property
+  def show_time(self):
+    return(self._show_time)
+  @show_time.setter
+  def show_time(self, value):
+    if (value != self._show_time):
+      self._show_time = value
+      self.on_change()
+  def receive(self):
+    message_added = False
+    while (True):
+      result = self._sink_port.receive()
+      if (result is None): break
+      (data, time) = result
+      self.messages.append((data, time))
+      message_added = True
+    if (message_added):
+      # trim the message list if it gets too long to conserve memory
+      if (len(self.messages) > self._max_messages):
+        self.messages = self.messages[-self._max_messages:]
+      self.on_change()
+  def serialize(self):
+    obj = unit.Unit.serialize(self)
+    obj['style'] = self.style
+    obj['show_time'] = self.show_time
+    return(obj)
+serializable.add(MidiMonitorUnit)

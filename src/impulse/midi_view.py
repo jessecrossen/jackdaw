@@ -86,3 +86,45 @@ class DeviceListUnitView(unit_view.UnitView):
 # register the view for placement on the workspace
 unit_view.UnitView.register_unit_view(
   midi.DeviceListUnit, DeviceListUnitView)
+
+# make a view that displays incoming MIDI messages
+class MidiMonitorUnitView(unit_view.UnitView):
+  def __init__(self, *args, **kwargs):
+    unit_view.UnitView.__init__(self, *args, **kwargs)
+    self._input_layout = unit_view.InputListLayout(self, (self.unit,), 
+                          lambda t: unit_view.UnitInputView(t))
+    self.allow_resize_height = True
+    text = QGraphicsTextItem(self)
+    text.setPos(QPointF(0.0, 0.0))
+    font = QFont('monospace')
+    font.setStyleHint(QFont.Monospace)
+    text.setFont(font)
+    self._content = text
+    self._metrics = QFontMetrics(font)
+    self.unit.add_observer(self.render)
+  def destroy(self):
+    self.unit.remove_observer(self.render)
+    unit_view.UnitView.destroy(self)
+  # show a textual represenation of MIDI events
+  def render(self):
+    messages = self.unit.messages
+    lines = list()
+    line_height = self._metrics.lineSpacing()
+    max_height = self.unit.height
+    style = self.unit.style
+    show_time = self.unit.show_time
+    for (data, time) in reversed(messages):
+      if (style == 'decimal'):
+        line = ', '.join(map(str, data))+' '
+      elif (style == 'binary'):
+        line = ' '.join(map('{0:08b}'.format, data))+' '
+      else:
+        line = ('%02X ' * len(data)) % tuple(data)
+      if (show_time):
+        line += '(%0.3f)' % time
+      lines.append(line)
+      if (len(lines) * line_height >= max_height): break
+    self._content.setPlainText('\n'.join(reversed(lines)))
+    self.layout()
+unit_view.UnitView.register_unit_view(
+  midi.MidiMonitorUnit, MidiMonitorUnitView)
