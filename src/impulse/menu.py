@@ -290,15 +290,29 @@ ContextMenu.register_context('BlockView', BlockMenu, ('block',))
 class ControllerMenu(QMenu):
   def __init__(self, events, number, event, parent):
     QMenu.__init__(self, parent)
-    self.setTitle('Controller')
+    self.setTitle('Controller %d' % number)
     self.setIcon(icon.get('controller'))
     self.events = events
     self.number = number
+    change_action = QAction('Change number', self)
+    change_action.setStatusTip('Change the number of this controller')
+    change_action.triggered.connect(self.on_change)
+    self.addAction(change_action)
     delete_action = QAction(icon.get('delete'), 'Delete', self)
     delete_action.setStatusTip(
       'Delete all changes on controller %d' % self.number)
     delete_action.triggered.connect(self.on_delete)
     self.addAction(delete_action)
+  def on_change(self):
+    dialog = QInputDialog()
+    dialog.setLabelText('Change controller number %d to:' % self.number)
+    dialog.setInputMode(QInputDialog.IntInput)
+    dialog.setIntRange(0, 119)
+    dialog.setIntValue(self.number)
+    if (dialog.exec_() != 0):
+      new_number = dialog.intValue()
+      if (new_number != self.number):
+        self.events.remap_ccsets(self.number, new_number)
   def on_delete(self):
     self.events.begin_change_block()
     for event in set(self.events):

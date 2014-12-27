@@ -46,8 +46,9 @@ class Mixin(QObject):
 class List(Object):
   def __init__(self, seq=()):
     Object.__init__(self)
-    self._items = list(seq)
-    for item in self._items:
+    self._items = list()
+    for item in seq:
+      self._items.append(item)
       self._add_item(item)
   # make this hashable so it can receive callbacks
   def __hash__(self):

@@ -228,11 +228,7 @@ class EventList(ModelList):
     elif (isinstance(item, CCSet)):
       number = item.number
       self._add_controller_number(number)
-      if (number in self._ccsets_by_number):
-        ccsets = self._ccsets_by_number[number]
-      else:
-        ccsets = observable.List()
-        self._ccsets_by_number[number] = ccsets
+      ccsets = self.ccsets_for_controller(number)
       last_time = 0.0
       if (len(ccsets) > 0):
         last_time = ccsets[-1].time
@@ -241,11 +237,11 @@ class EventList(ModelList):
       #  keep the list sorted by time
       if (item.time < last_time):
         ccsets.sort(key=lambda e: e.time)
-    last_time = 0.0
-    if (len(self) > 0):
-      last_time = self[-1].time
     ModelList._add_item(self, item)
-    if (item.time < last_time):
+    last_time = 0.0
+    # if an item is appended out of order, sort the whole list by time
+    if ((len(self) >= 2) and (self[-1] is item) and
+        (item.time < self[-2].time)):
       self.sort(key=lambda e: e.time)
   def _remove_item(self, item):
     # update the list of pitches
@@ -259,6 +255,7 @@ class EventList(ModelList):
       self._remove_controller_number(number)
       self._ccsets_by_number[number].remove(item)
     ModelList._remove_item(self, item)
+  # handle a change to a note's minimum or maximum pitch
   def _on_note_range_changed(self, item, old_range, new_range):
     def apply_func_to_pitch_range(func, pitch_range):
       if (pitch_range is None): return
@@ -296,6 +293,19 @@ class EventList(ModelList):
     self._controller_counts[number] -= 1
     if (self._controller_counts[number] <= 0):
       self._controllers.remove(number)
+  # change the controller number of all control-change messages 
+  #  on a given controller
+  def remap_ccsets(self, source, dest):
+    if (source == dest): return
+    self.begin_change_block()
+    old_ccsets = self.ccsets_for_controller(source)
+    old_ccsets.begin_change_block()
+    for event in old_ccsets:
+      self.append(CCSet(time=event.time, number=dest, value=event.value))
+    for event in list(old_ccsets):
+      self.remove(event)
+    old_ccsets.end_change_block()
+    self.end_change_block()
   # get a list of all notes in the list
   @property
   def notes(self):
