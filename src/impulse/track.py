@@ -458,7 +458,7 @@ class TrackList(ModelList):
 serializable.add(TrackList)
 
 # make a unit that represents the track list of the document
-class MultitrackUnit(unit.Unit):
+class SequencerUnit(unit.Unit):
   def __init__(self, tracks, view_scale, transport, *args, **kwargs):
     unit.Unit.__init__(self, *args, **kwargs)
     self.tracks = tracks
@@ -475,7 +475,7 @@ class MultitrackUnit(unit.Unit):
     obj['transport'] = self.transport
     obj['view_scale'] = self.view_scale
     return(obj)
-serializable.add(MultitrackUnit)
+serializable.add(SequencerUnit)
 
 # interprets note and control channel messages and adds them to a track
 class TrackInputHandler(midi.InputHandler):

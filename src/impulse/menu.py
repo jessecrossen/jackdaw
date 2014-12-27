@@ -72,9 +72,9 @@ class WorkspaceMenu(QMenu):
     self.scene_pos = event.scenePos()
     self.add_action('transport', 'Transport', 
                     'Add a transport control unit', self.on_add_transport)
-    self.add_action('multitrack', 'Tracks', 
-                    'Add a unit for track recording and playback', 
-                    self.on_add_multitrack)
+    self.add_action('tracks', 'Sequencer', 
+                    'Add a unit for MIDI recording and playback', 
+                    self.on_add_sequencer)
     self.add_action('instrument', 'Sampler Instrument...', 
                     'Add a sampler unit', self.on_add_sampler)
     self.add_action('speaker', 'Audio Output', 
@@ -114,17 +114,17 @@ class WorkspaceMenu(QMenu):
         name='Transport',
         x=self.scene_pos.x(),
         y=self.scene_pos.y()))
-  # add a multitrack unit
-  def on_add_multitrack(self, *args):
+  # add a sequencer unit
+  def on_add_sequencer(self, *args):
     empty_track = track.Track(transport=self.document.transport)
     tracks = track.TrackList(
       tracks=(empty_track,),
       transport=self.document.transport)
-    self.add_unit(track.MultitrackUnit(
+    self.add_unit(track.SequencerUnit(
         tracks=tracks,
         view_scale=self.document.view_scale,
         transport=self.document.transport,
-        name='Tracks',
+        name='Sequencer',
         x=self.scene_pos.x(),
         y=self.scene_pos.y()))
   # add a midi monitor

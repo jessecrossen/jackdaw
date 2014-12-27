@@ -5,7 +5,7 @@ import yaml
 import observable
 import serializable
 from model import Model, ModelList
-from track import TrackList, MultitrackUnit
+from track import TrackList, SequencerUnit
 from transport import Transport
 from midi import DeviceAdapterList, DeviceListUnit
 from audio import SystemPlaybackUnit

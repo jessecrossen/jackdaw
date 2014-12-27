@@ -496,9 +496,9 @@ class PitchKeyView(view.ModelView):
 class TrackListOutputLayout(view.ListLayout):
   def __init__(self, parent, tracks, view_scale):
     self.view_scale = view_scale
-    self.view_scale.add_observer(self.layout)
     view.ListLayout.__init__(self, parent, tracks, 
                              lambda t: TrackOutputLayout(self, t, view_scale))
+    self.view_scale.add_observer(self.layout)
   def destroy(self):
     self.view_scale.remove_observer(self.layout)
     view.ListLayout.destroy(self)
@@ -514,13 +514,13 @@ class TrackListOutputLayout(view.ListLayout):
 class TrackOutputLayout(view.ListLayout):
   def __init__(self, parent, track, view_scale):
     self.track = track
-    self.track.add_observer(self.on_track_change)
     self.view_scale = view_scale
-    self.view_scale.add_observer(self.layout)
     self.note_output_view = unit_view.UnitOutputView(self.track)
     view.ListLayout.__init__(self, parent, (), 
                              lambda t: unit_view.UnitOutputView(t))
     self.note_output_view.setParentItem(self)
+    self.track.add_observer(self.on_track_change)
+    self.view_scale.add_observer(self.layout)
   def destroy(self):
     self.track.remove_observer(self.on_track_change)
     self.view_scale.remove_observer(self.layout)
@@ -551,7 +551,7 @@ class TrackOutputLayout(view.ListLayout):
       y += h
 
 # make a unit view containing a list of tracks
-class MultitrackUnitView(unit_view.UnitView):
+class SequencerUnitView(unit_view.UnitView):
   def __init__(self, *args, **kwargs):
     unit_view.UnitView.__init__(self, *args, **kwargs)
     self._content = TrackListView(
@@ -594,4 +594,4 @@ class MultitrackUnitView(unit_view.UnitView):
       i += 1
     return(y)
 # register the view for placement on the workspace
-unit_view.UnitView.register_unit_view(track.MultitrackUnit, MultitrackUnitView)
+unit_view.UnitView.register_unit_view(track.SequencerUnit, SequencerUnitView)
