@@ -93,6 +93,7 @@ class MidiMonitorUnitView(unit_view.UnitView):
     unit_view.UnitView.__init__(self, *args, **kwargs)
     self._input_layout = unit_view.InputListLayout(self, (self.unit,), 
                           lambda t: unit_view.UnitInputView(t))
+    self.allow_resize_width = True
     self.allow_resize_height = True
     text = QGraphicsTextItem(self)
     text.setPos(QPointF(0.0, 0.0))
@@ -105,6 +106,12 @@ class MidiMonitorUnitView(unit_view.UnitView):
   def destroy(self):
     self.unit.remove_observer(self.render)
     unit_view.UnitView.destroy(self)
+  # allow the area to expand independent of the text view
+  def content_size(self):
+    s = unit_view.UnitView.content_size(self)
+    s.setWidth(max(s.width(), self.unit.width))
+    s.setHeight(max(s.height(), self.unit.height))
+    return(s)
   # show a textual represenation of MIDI events
   def render(self):
     messages = self.unit.messages

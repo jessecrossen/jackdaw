@@ -82,14 +82,17 @@ class UnitView(view.ModelView):
   #  behaviors depending on the type of unit)
   def on_add(self):
     pass
+  # get the size of the content (override for independent sizing)
+  def content_size(self):
+    return(self._content.boundingRect().size())
   # manage the rect to keep it centered on the content size
   def rect(self):
     r = view.ModelView.rect(self)
     if (self._content):
-      cr = self._content.boundingRect()
       m = self.MARGIN
-      w = cr.width() + (m * 2)
-      h = cr.height() + (m * 2)
+      content_size = self.content_size()
+      w = content_size.width() + (m * 2)
+      h = content_size.height() + (m * 2)
       h += self.TOP_HEIGHT
       if ((self.allow_resize_width) or (self.allow_resize_height) or 
           (self.allow_add)):
