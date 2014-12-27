@@ -601,7 +601,7 @@ class TrackInputHandler(midi.InputHandler):
     # pitch bend
     elif (kind == 0xE):
       bend = (float(0x2000 - ((data2 << 7) | data1)) / float(0x2000))
-      bend *= self.target.bend_range
+      bend *= (self.target.bend_range / 2.0)
       self._channel_bends[channel] = bend
       # if the playing notes have multiple channels, assume we're using a 
       #  channel rotation scheme for polyphonic pitch bends
@@ -642,9 +642,11 @@ class TrackOutputHandler(observable.Object):
     # the amount of time to schedule events into the future
     self.min_schedule_ahead = 0.5
     self.max_schedule_ahead = 1.0
-    # a dict mapping note values to the times at which 
+    # a dict mapping notes to the times at which 
     #  each note should stop playing
-    self._open_notes = dict()
+    self._note_ends = dict()
+    # dict mapping channel numbers to the current pitch bend on that channel
+    self._channel_bends = dict()
     self.port = port
     self.track = track
     self._transport = None
@@ -756,8 +758,21 @@ class TrackOutputHandler(observable.Object):
         try:
           velocity = int(math.floor(event.velocity * 127.0))
         except AttributeError: pass
-        self.port.send((0x90, pitch, velocity), t1 - now)
-        self._open_notes[pitch] = t2
+        event.channel = len(self._note_ends) & 0xF
+        # apply any initial pitch bend to the note
+        if (len(event.bend) > 0):
+          (bt, bend) = event.bend[0]
+          if (bt != 0.0):
+            bend = 0.0
+          current_bend = 0.0
+          if (event.channel in self._channel_bends):
+            current_bend = self._channel_bends[event.channel]
+          if (bend != current_bend):
+            self._send_pitch_bend(event.channel, bend, t1 - now)
+        # begin the note
+        note_on = 0x90 | (event.channel & 0xF)
+        self.port.send((note_on, pitch, velocity), t1 - now)
+        self._note_ends[event] = t2
       # send control changes
       else:
         number = None
@@ -768,20 +783,50 @@ class TrackOutputHandler(observable.Object):
         except AttributeError: pass
         else:
           self.track.output_for_controller(number).send_value(value, t1 - now)
+    # schedule pitch bends and aftertouch in the current interval
+    for (note, t) in self._note_ends.iteritems():
+      st = t - note.duration
+      for (bt, bend) in note.bend:
+        bt += st
+        if (bt >= begin) and (bt < end):
+          self._send_pitch_bend(note.channel, bend, bt - now)
+      for (at, velocity) in note.aftertouch:
+        at += st
+        if (at >= begin) and (at < end):
+          aftertouch = 0xA0 | (note.channel & 0xF)
+          self.port.send(
+            (aftertouch, note.pitch, int(velocity * 127.0)), at - now)
     # schedule ending events if they are in the current interval
-    open_notes = dict()
-    for (pitch, t) in self._open_notes.iteritems():
+    note_ends = dict()
+    for (note, t) in self._note_ends.iteritems():
       if ((t >= begin) and (t < end)):
-        self.port.send((0x80, pitch, 0), t - now)
+        self._send_note_off(note, t - now)
       else:
-        open_notes[pitch] = t
-    self._open_notes = open_notes
+        note_ends[note] = t
+    self._note_ends = note_ends
     self._scheduled_to = end
+  # send a note-off event
+  def _send_note_off(self, note, time=0.0):
+    note_off = 0x80 | (note.channel & 0xF)
+    self.port.send((note_off, note.pitch, 0), time)
+  # send a pitch bend
+  def _send_pitch_bend(self, channel, bend, time):
+    bend = bend * (float(0x4000) / self.track.bend_range)
+    bend = min(max(0x0000, int(float(0x2000) + bend)), 0x4000)
+    msb = (bend >> 7) & 0x7F
+    lsb = bend & 0x7F
+    pitch_bend = 0xE0 | (channel & 0xF)
+    self.port.send((pitch_bend, lsb, msb), time)
+    self._channel_bends[channel] = bend
   # schedule endings for all currently playing notes
   def end_all_notes(self):
-    for (pitch, t) in self._open_notes.iteritems():
-      self.port.send((0x80, pitch, 0), 0.0)
-    self._open_notes = dict()
+    for (note, t) in self._note_ends.iteritems():
+      self._send_note_off(note, 0.0)
+    # zero pitch bends on all channels
+    for (channel, bend) in self._channel_bends.iteritems():
+      if (bend != 0.0):
+        self._send_pitch_bend(channel, 0.0, 0.0)
+    self._note_ends = dict()
   # stop playback
   def stop(self):
     self.end_all_notes()

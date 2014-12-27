@@ -209,6 +209,7 @@ class MidiMonitorUnit(unit.Sink, unit.Unit):
     self.messages = list()
     self._max_messages = 100
     self._client = jackpatch.Client('jackdaw-monitor')
+    self._client.activate()
     self._sink_type = 'midi'
     self._sink_port = jackpatch.Port(client=self._client,
       name='capture', flags=jackpatch.JackPortIsInput)

@@ -27,8 +27,8 @@ class Note(Model):
     self._bend_max = 0.0
     self._bend_min = 0.0
     self._update_bend_range(self._bend)
-    # the channel is used only when recording to handle channel rotation
-    #  schemes for polyphonic pitch bend
+    # the channel is used only when recording and playback to handle 
+    #  channel rotation schemes for polyphonic pitch bend
     self.channel = None
   # the time relative to the beginning of its container when the note 
   #  begins playing (in seconds)
