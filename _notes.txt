@@ -2,7 +2,6 @@ ON DECK:
 - add a method of editing ccs
 - make an algorithm for merging cc data when joining blocks
 - add a context menu action to change the controller number of ccs
-- show a minimal area for all notes
 - give jackpatch the ability to clear the send queue of a port
 
 DEFECTS:

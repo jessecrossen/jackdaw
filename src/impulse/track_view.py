@@ -148,15 +148,28 @@ class TrackView(view.ModelView):
     self.block_layout = TrackLayout(self, track, 
       lambda b: BlockView(b, track=track))
     self.on_scale()
+  def destroy(self):
+    self.view_scale.remove_observer(self.on_scale)
+    view.ModelView.destroy(self)
   @property
   def track(self):
     return(self._model)
   # respond to scaling
   def on_scale(self):
-    t = QTransform()
-    t.scale(self.view_scale.pixels_per_second, self.view_scale.pitch_height)
-    t.translate(- self.view_scale.time_offset, 0)
-    self.block_layout.setTransform(t)
+    old_transform = self.block_layout.transform()
+    
+    new_transform = QTransform()
+    new_transform.scale(self.view_scale.pixels_per_second, 
+                        self.view_scale.pitch_height)
+    new_transform.translate(- self.view_scale.time_offset, 0)
+    self.block_layout.setTransform(new_transform)
+    # if the transform scale changes, force all blocks to update their layouts
+    #  to handle any scale-dependent geometry
+    if ((old_transform.m11() != new_transform.m11()) or 
+        (old_transform.m22() != new_transform.m22())):
+      self.block_layout.layout()
+      for view in self.block_layout.views:
+        view.layout()
   # provide a height for layout in the parent
   def rect(self):
     r = view.ModelView.rect(self)

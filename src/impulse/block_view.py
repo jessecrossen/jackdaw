@@ -227,21 +227,24 @@ class NoteView(view.TimeDraggable, view.PitchDraggable, view.Deleteable, view.Mo
     return(self._model)
   # update the note's position
   def setPos(self, pos):
-    old_pos = self.pos()
-    if ((pos.x() != old_pos.x()) or (pos.y() != old_pos.y())):
-      self._update_geometry()
+    self._update_geometry()
     view.ModelView.setPos(self, pos)
   # update the note's geometry
   def _update_geometry(self):
     self.prepareGeometryChange()
     # invalidate the cached shape
     self._shape = None
+    # give the note a minimum size, so it's selectable even if small
+    t = self.sceneTransform()
+    sx = t.m11()
+    sy = t.m22()
+    min_duration = 0.5 * (sy / sx)
     # update the rectangle and bounding rectangle
     note = self.note
     pitch = note.pitch
     ymin = (note.pitch - note.max_pitch) - 0.5
     ymax = (note.pitch - note.min_pitch) + 0.5
-    r = QRectF(0.0, ymin, note.duration, ymax - ymin)
+    r = QRectF(0.0, ymin, max(min_duration, note.duration), ymax - ymin)
     self._bounding_rect = r
     pos = self.pos()
     self._rect = QRectF(r.x() + pos.x(), r.y() + pos.y(), r.width(), r.height())
@@ -256,8 +259,11 @@ class NoteView(view.TimeDraggable, view.PitchDraggable, view.Deleteable, view.Mo
     if (self._shape is None):
       note = self.note
       self._shape = QPainterPath()
-      if (len(note.bend) < 2):
-        self._shape.addRect(QRectF(0.0, - 0.5, note.duration, 1.0))
+      # make a box around very short notes or notes without bends
+      min_duration = self._bounding_rect.width()
+      if ((note.duration < min_duration) or (len(note.bend) < 2)):
+        self._shape.addRect(QRectF(0.0, - 0.5, 
+          max(min_duration, note.duration), 1.0))
       else:
         uppers = list()
         lowers = list()
@@ -274,6 +280,10 @@ class NoteView(view.TimeDraggable, view.PitchDraggable, view.Deleteable, view.Mo
     qp.setBrush(QBrush(color))
     qp.setPen(Qt.NoPen)
     note = self.note
+    # get the transform to pixels
+    t = qp.deviceTransform()
+    sx = t.m11()
+    sy = t.m22()
     # get the note's initial velocity
     velocity = 1.0
     try:
@@ -281,9 +291,16 @@ class NoteView(view.TimeDraggable, view.PitchDraggable, view.Deleteable, view.Mo
     except AttributeError: pass
     # make a function to convert velocity to a radius from the centerline
     def vr(velocity):
-      return((0.5 - self.MIN_RADIUS) * velocity)
+      return(self.MIN_RADIUS + ((0.5 - self.MIN_RADIUS) * velocity))
+    # if the note is very short, like a percussion hit, we can draw a triangle
+    #  to represent it
+    if ((note.duration * sx) < (0.5 * sy)):
+      r = vr(velocity)
+      w = (r * sy) / sx
+      qp.drawPolygon((QPointF(0.0, -r), QPointF(0.0, r), QPointF(w, 0.0)))
+      return
     # if the note has no bends or aftertouch, we can optimize by drawing a rectangle
-    if ((len(note.bend) < 2) and (len(note.aftertouch) < 2)):
+    elif ((len(note.bend) < 2) and (len(note.aftertouch) < 2)):
       r = vr(velocity)
       qp.drawRect(QRectF(0.0, -r, note.duration, 2 * r))
       return
@@ -348,7 +365,6 @@ class NoteView(view.TimeDraggable, view.PitchDraggable, view.Deleteable, view.Mo
         break
     lowers.reverse()
     qp.drawPolygon(uppers + lowers)
-    
     
 # represent the start of a block
 class BlockStartView(view.TimeDraggable, view.ModelView):
