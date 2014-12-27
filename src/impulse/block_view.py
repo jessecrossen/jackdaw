@@ -5,6 +5,7 @@ from PySide.QtGui import *
 
 import observable
 import view
+import block
 from doc import ViewScale
 
 # represent a block of events on a track
@@ -135,10 +136,11 @@ class ControllerLayout(view.ListLayout):
         view.setRect(QRectF(0.0, y, width, controller_height))
 
 # display control changes for a particular controller number
-class ControllerView(view.ModelView):
+class ControllerView(view.Interactive, view.ModelView):
   def __init__(self, events, number, parent=None):
     self._number = number
     view.ModelView.__init__(self, events, parent)
+    view.Interactive.__init__(self)
   @property
   def events(self):
     return(self._model)
@@ -180,6 +182,46 @@ class ControllerView(view.ModelView):
       qp.drawRect(QRectF(x, y - py, w, 2 * py))
       if (repeat_time <= 0): break
       x += repeat_time
+  def on_drag(self, event, delta_x, delta_y):
+    h = self.rect().height()
+    ta = event.lastPos().x()
+    va = min(max(0.0, 1.0 - (event.lastPos().y() / h)), 1.0)
+    tb = event.pos().x()
+    vb = min(max(0.0, 1.0 - (event.pos().y() / h)), 1.0)
+    # if there has been no horizontal movement, there's no range to alter
+    if (ta == tb): return
+    elif (ta < tb):
+      t1 = ta; t2 = tb
+      v1 = va; v2 = vb
+    else:
+      t1 = tb; t2 = ta
+      v1 = vb; v2 = va
+    # alter all controller values between the two times, interpolated onto
+    #  the line between the last two points
+    ccsets = self.events.ccsets_for_controller(self.number)
+    self.events.begin_change_block()
+    ccsets.begin_change_block()
+    dt = t2 - t1
+    dv = v2 - v1
+    count = 0
+    on_end = False
+    for ccset in ccsets:
+      t = ccset.time
+      if ((t < t1) or (t > t2)): continue
+      ccset.value = v1 + (((t - t1) / dt) * dv)
+      count += 1
+      # determine whether there's a controller change on the endpoint 
+      #  of the drag, so we don't double-add one there
+      if (t == tb):
+        on_end = True
+    # if no events have been modified, we must be in a flat zone, so create 
+    #  new events to follow the user's mouse movement
+    if (count == 0):
+      self.events.append(block.CCSet(time=ta, number=self.number, value=va))
+    if ((count < 2) and (not on_end)):
+      self.events.append(block.CCSet(time=tb, number=self.number, value=vb))
+    ccsets.end_change_block()
+    self.events.end_change_block()
 
 # do layout for notes in a block
 class NoteLayout(view.ListLayout):
