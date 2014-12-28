@@ -186,15 +186,17 @@ class Interactive(object):
   @property
   def dragging(self):
     return(self._dragging)
+  # return whether an event is inside the clipped area, if any
+  def eventInClipRect(self, event):
+    cr = self.effectiveClipRect()
+    return((cr is None) or (cr.contains(event.pos()))):
   # ignore an event if its location is outside the clipped area of the view,
   #  and return whether it was ignored
   def ignoreIfClipped(self, event):
-    cr = self.effectiveClipRect()
-    if (cr is not None):
-      if (not cr.contains(event.pos())):
-        event.ignore()
-        return(True)
-    return(False)  
+    if (not self.eventInClipRect(event)):
+      event.ignore()
+      return(True)
+    return(False)
   # handle mouse events
   def mousePressEvent(self, event):
     if (self.ignoreIfClipped(event)): return
@@ -356,6 +358,7 @@ class BoxSelectable(Interactive, ModelView):
     r = QRectF(tl.x(), tl.y(), br.x() - tl.x(), br.y() - tl.y())
     return(r.normalized())
   def mousePressEvent(self, event):
+    if (self.ignoreIfClipped(event)): return
     if (not self.model.selected):
       self._box_origin = event.pos()
       self._box_rect = QRectF(

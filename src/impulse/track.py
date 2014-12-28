@@ -820,6 +820,8 @@ class TrackOutputHandler(observable.Object):
     self._channel_bends[channel] = bend
   # schedule endings for all currently playing notes
   def end_all_notes(self):
+    # clear any pending events in the send queue
+    self.port.clear_send()
     for (note, t) in self._note_ends.iteritems():
       self._send_note_off(note, 0.0)
     # zero pitch bends on all channels

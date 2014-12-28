@@ -1,13 +1,10 @@
 ON DECK:
-- make an algorithm for merging cc data when joining blocks
-- give jackpatch the ability to clear the send queue of a port
+- custom clipping solution is not handling cursors outside the clipped area
 
 DEFECTS:
 - scrollbar is no longer working correctly with transport tracking
 - more undoable actions: moving unit, resizing unit, adding patch, recording, time dragging unreliable
-- connections are sometimes respawned while being unplugged
 - dragging the start of a block with control changes is very slow (use a change block)
-- custom clipping solution is not handling cursors outside the clipped area
 
 FEATURES:
 - tracks can be deleted
