@@ -1,9 +1,13 @@
 ON DECK:
-- dragging the start of a block with control changes is very slow (use a change block)
+- add an alternate file format that's faster than YAML (cPickle)
 
 DEFECTS:
 - scrollbar is no longer working correctly with transport tracking
 - more undoable actions: moving unit, resizing unit, adding patch, recording, time dragging unreliable
+
+OPTIMIZATIONS:
+- optimize state saving and deletion process (use serialization)
+- limit time spent processing midi messages per-pass to maintain responsiveness
 
 FEATURES:
 - tracks can be deleted
@@ -20,8 +24,3 @@ FEATURES:
 - resizing a unit pushes connected units along with the edges
 - selectable protocols for transport control
 - midi file import/export for block event lists
-
-OPTIMIZATIONS:
-- add an alternate file format that's faster than YAML (cPickle)
-- optimize state saving and deletion process (use serialization)
-- limit time spent processing midi messages per-pass to maintain responsiveness

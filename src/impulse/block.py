@@ -378,6 +378,9 @@ class BlockStart(Model):
       (self._block.time + self._block.events.duration) - value)
     if (value != self._block.events.duration):
       delta = self._block.events.duration - duration
+      
+      print delta
+      
       min_event_time = None
       for event in self._block.events:
         if ((min_event_time is None) or (event.time < min_event_time)):
@@ -385,11 +388,13 @@ class BlockStart(Model):
       if ((delta > 0) and (delta > min_event_time)):
         delta = min_event_time
       if (delta != 0.0):
+        self._block.events.begin_change_block()
         for event in self._block.events:
           event.time -= delta
         self._block.events.duration -= delta
         self._block.time += delta
         self._block.duration -= delta
+        self._block.events.end_change_block()
         
 # a placeholder model for manipulating the duration of a block
 class BlockEnd(Model):

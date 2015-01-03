@@ -195,6 +195,8 @@ class Interactive(object):
     return(self._dragging)
   # return whether an event is inside the clipped area, if any
   def eventInClipRect(self, event):
+    # when dragging, the mouse is grabbed so we can ignore clipping
+    if (self._dragging): return(True)
     cr = self.effectiveClipRect()
     return((cr is None) or (cr.contains(event.pos())))
   # ignore an event if its location is outside the clipped area of the view,
