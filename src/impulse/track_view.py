@@ -133,8 +133,6 @@ class TrackLayout(view.ListLayout):
         w = view.rect().width()
       vr = QRectF(x, y, w, h)
       view.setRect(vr)
-      # hide blocks that are outside the bounds of the layout
-      view.setVisible(vr.intersects(r))
 
 # show a track
 class TrackView(view.ModelView):
@@ -156,19 +154,16 @@ class TrackView(view.ModelView):
     return(self._model)
   # respond to scaling
   def on_scale(self):
-    old_transform = self.block_layout.transform()
-    
-    new_transform = QTransform()
-    new_transform.scale(self.view_scale.pixels_per_second, 
+    t = QTransform()
+    t.scale(self.view_scale.pixels_per_second, 
                         self.view_scale.pitch_height)
-    new_transform.translate(- self.view_scale.time_offset, 0)
-    self.block_layout.setTransform(new_transform)
-    # if the transform scale changes, force all blocks to update their layouts
-    #  to handle any scale-dependent geometry
-    if ((old_transform.m11() != new_transform.m11()) or 
-        (old_transform.m22() != new_transform.m22())):
-      self.block_layout.layout()
-      for view in self.block_layout.views:
+    t.translate(- self.view_scale.time_offset, 0)
+    self.block_layout.setTransform(t)
+    # force all blocks to update their layouts to handle 
+    #  scale-dependent geometry and/or clipping changes
+    self.block_layout.layout()
+    for view in self.block_layout.views:
+      if (view.isVisible()):
         view.layout()
   # provide a height for layout in the parent
   def rect(self):

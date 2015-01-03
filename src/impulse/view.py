@@ -28,6 +28,26 @@ class ParentSeekable(object):
         break
       node = node.parentItem()
     return(None)
+  # get the effective clipping rectangle of the view in local coordinates
+  def effectiveClipRect(self):
+    try:
+      r = self.clipRect()
+    except AttributeError:
+      r = None
+    node = self.parentItem()
+    while (node):
+      try:
+        cr = node.clipRect()
+      except AttributeError:
+        cr = None
+      if (cr is not None):
+        cr = self.mapRectFromItem(node, cr)
+        if (r is None):
+          r = cr
+        else:
+          r = r.intersected(cr)
+      node = node.parentItem()
+    return(r)
 
 # make a base class for views
 class View(ParentSeekable, QGraphicsObject):
@@ -79,6 +99,10 @@ class View(ParentSeekable, QGraphicsObject):
       self._size = QSizeF(rect.width(), rect.height())
       if (sizeChanged):
         self.layout()
+    # hide the view if it's completely clipped
+    cr = self.effectiveClipRect()
+    self.setVisible((cr is None) or 
+                    (cr.intersects(self.boundingRect())))
   # make a default implementation of the bounding box
   def boundingRect(self):
     r = self.rect()
@@ -103,23 +127,6 @@ class View(ParentSeekable, QGraphicsObject):
   # do layout of subviews
   def layout(self):
     pass
-  # get the effective clipping rectangle of the view in local coordinates
-  def effectiveClipRect(self):
-    r = self.clipRect()
-    node = self.parentItem()
-    while (node):
-      try:
-        cr = node.clipRect()
-      except AttributeError:
-        cr = None
-      if (cr is not None):
-        cr = self.mapRectFromItem(node, cr)
-        if (r is None):
-          r = cr
-        else:
-          r = r.intersected(cr)
-      node = node.parentItem()
-    return(r)
   # redraw the view
   def paint(self, qp, options, widget):
     # clip if needed
@@ -189,7 +196,7 @@ class Interactive(object):
   # return whether an event is inside the clipped area, if any
   def eventInClipRect(self, event):
     cr = self.effectiveClipRect()
-    return((cr is None) or (cr.contains(event.pos()))):
+    return((cr is None) or (cr.contains(event.pos())))
   # ignore an event if its location is outside the clipped area of the view,
   #  and return whether it was ignored
   def ignoreIfClipped(self, event):

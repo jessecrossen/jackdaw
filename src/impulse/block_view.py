@@ -57,7 +57,7 @@ class BlockView(view.BoxSelectable, view.TimeDraggable, view.Deleteable, view.Mo
     self.repeat_view.setRect(QRectF(repeat_time, 0.0, 0.0, height))
     self.end_view.setRect(QRectF(duration, 0.0, 0.0, height))
   def clipRect(self):
-    return(self.boundingRect())  
+    return(self.boundingRect())
   def _paint(self, qp):
     r = self.rect()
     width = r.width()
@@ -233,6 +233,7 @@ class NoteLayout(view.ListLayout):
     self._track.remove_observer(self.layout)
     view.ListLayout.destroy(self)
   def layout(self):
+    cr = self.effectiveClipRect()
     pitch_map = dict()
     i = 0.5
     for pitch in reversed(self._track.pitches):
@@ -246,6 +247,7 @@ class NoteLayout(view.ListLayout):
         except KeyError:
           y = -1.0
         view.setPos(QPointF(note.time, y))
+        view.setVisible((cr is None) or (view.rect().intersects(cr)))
 
 # represent a note event in a block
 class NoteView(view.TimeDraggable, view.PitchDraggable, view.Deleteable, view.ModelView):
@@ -287,6 +289,10 @@ class NoteView(view.TimeDraggable, view.PitchDraggable, view.Deleteable, view.Mo
     ymin = (note.pitch - note.max_pitch) - 0.5
     ymax = (note.pitch - note.min_pitch) + 0.5
     r = QRectF(0.0, ymin, max(min_duration, note.duration), ymax - ymin)
+    # apply clipping if needed
+    cr = self.effectiveClipRect()
+    if (cr is not None):
+      r = cr.intersected(r)
     self._bounding_rect = r
     pos = self.pos()
     self._rect = QRectF(r.x() + pos.x(), r.y() + pos.y(), r.width(), r.height())

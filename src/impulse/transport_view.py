@@ -25,12 +25,17 @@ class TransportView(view.ModelView):
   @property
   def transport(self):
     return(self._model)
+  # clip so that transport features will be hidden when scrolled off the view
+  def clipRect(self):
+    return(self.boundingRect())
   # respond to scaling
   def on_scale(self):
     t = QTransform()
     t.scale(self.view_scale.pixels_per_second, 1.0)
     t.translate(- self.view_scale.time_offset, 0)
     self.time_layout.setTransform(t)
+    # update the layout to refresh clipping
+    self.time_layout.layout()
   # make sure the transport stays visible
   def check_bounds(self):
     pps = self.view_scale.pixels_per_second

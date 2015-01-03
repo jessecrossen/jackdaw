@@ -1,10 +1,9 @@
 ON DECK:
-- custom clipping solution is not handling cursors outside the clipped area
+- dragging the start of a block with control changes is very slow (use a change block)
 
 DEFECTS:
 - scrollbar is no longer working correctly with transport tracking
 - more undoable actions: moving unit, resizing unit, adding patch, recording, time dragging unreliable
-- dragging the start of a block with control changes is very slow (use a change block)
 
 FEATURES:
 - tracks can be deleted
