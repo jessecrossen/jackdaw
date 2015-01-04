@@ -75,7 +75,7 @@ class WorkspaceView(view.Interactive, view.ModelView):
   def autoconnect(self):
     # index all connection views by source and sink
     connection_map = dict()
-    connection_views = self.connection_layer.childItems()
+    connection_views = set(self.connection_layer.childItems())
     for view in connection_views:
       try:
         source = view.source_view.target
@@ -94,8 +94,14 @@ class WorkspaceView(view.Interactive, view.ModelView):
     for conn in self.patch_bay:
       # if either end of the connection is missing, it's not valid
       if ((conn.source is None) or (conn.sink is None)): continue
-      # skip connections we already have views for
-      if ((conn.source, conn.sink) in connection_map): continue
+      # skip connections we already have views for, and remove them 
+      #  from the list so we know which views have no connection in 
+      #  the patch bay
+      if ((conn.source, conn.sink) in connection_map):
+        view = connection_map[(conn.source, conn.sink)]
+        if (view in connection_views):
+          connection_views.remove(view)
+        continue
       # index all port views by target
       if ((input_map is None) or (output_map is None)):
         input_map = dict()
@@ -110,7 +116,10 @@ class WorkspaceView(view.Interactive, view.ModelView):
         view.sink_view = sink_view
         # add it to the map so we don't do this twice when given a 
         #  double connection
-        connection_map[(conn.source, conn.sink)] = view    
+        connection_map[(conn.source, conn.sink)] = view
+    # remove all connection views with no connection in the patch bay
+    for view in connection_views:
+      view.destroy()
   # index all source and destination views
   def _index_port_views(self, node, input_map, output_map):
     children = node.childItems()

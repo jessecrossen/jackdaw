@@ -1,5 +1,5 @@
 ON DECK:
-- more undoable actions: moving unit, resizing unit, adding patch, recording, time dragging unreliable
+- do layouts down the chain when undoing to establish visibility
 
 DEFECTS:
 

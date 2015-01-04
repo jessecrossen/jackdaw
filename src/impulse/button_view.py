@@ -4,6 +4,7 @@ from PySide.QtCore import *
 from PySide.QtGui import *
 
 import view
+from undo import UndoManager
 
 # implement a simple flat button with an icon
 class ButtonView(view.Interactive, view.View):
@@ -106,6 +107,7 @@ class ResizeButton(ButtonView):
       ])
   # handle dragging
   def on_drag_start(self, event):
+    UndoManager.begin_action(self._target)
     self._start_rect = self._target.rect()
     self._start_bounds = self._target.boundingRect().normalized()
     if (self._start_bounds.width() == 0):
@@ -153,6 +155,7 @@ class ResizeButton(ButtonView):
     try:
       self._target.on_change()
     except AttributeError: pass
+    UndoManager.end_action()
 
 # show a button for dragging things
 class DragButton(ButtonView):
@@ -190,6 +193,7 @@ class DragButton(ButtonView):
     view.Interactive.mouseReleaseEvent(self, event)
   # handle dragging
   def on_drag_start(self, event):
+    UndoManager.begin_action(self._target)
     self._start_pos = self._target.pos()
   def on_drag(self, event, delta_x, delta_y):
     if (self._start_pos is not None):
@@ -199,3 +203,4 @@ class DragButton(ButtonView):
     try:
       self._target.on_change()
     except AttributeError: pass
+    UndoManager.end_action()

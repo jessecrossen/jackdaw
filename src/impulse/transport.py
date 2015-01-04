@@ -6,9 +6,15 @@ import observable
 import serializable
 import unit
 import midi
+from undo import UndoManager
 
 # a transport to keep track of timepoints, playback, and recording
 class Transport(observable.Object, unit.Sink):
+  # extra signals
+  recording_will_start = Signal()
+  recording_started = Signal()
+  recording_will_stop = Signal()
+  recording_stopped = Signal()
   # regular init stuff
   def __init__(self, time=0.0, duration=0.0, cycling=False, marks=()):
     observable.Object.__init__(self)
@@ -90,12 +96,20 @@ class Transport(observable.Object, unit.Sink):
     value = (value == True)
     if (self._recording != value):
       self.playing = False
+      if (value):
+        self.recording_will_start.emit()
+      else:
+        self.recording_will_stop.emit()
       self._recording = value
       if (self._recording):
         self.start()
       else:
         self.pause()
       self.on_change()
+      if (value):
+        self.recording_started.emit()
+      else:
+        self.recording_stopped.emit()
   # whether the transport is playing or recording
   @property
   def is_rolling(self):
@@ -220,6 +234,7 @@ class Transport(observable.Object, unit.Sink):
     self.time = self.time + self.skip_delta
   # toggle a mark at the current time
   def toggle_mark(self, *args):
+    UndoManager.begin_action(self.marks)
     t = self.time
     found = False
     for mark in set(self.marks):
@@ -228,6 +243,7 @@ class Transport(observable.Object, unit.Sink):
         found = True
     if (not found):
       self.marks.append(Mark(time=t))
+    UndoManager.end_action()
   def on_marks_change(self):
     if (self._sorting_marks): return
     self._sorting_marks = True

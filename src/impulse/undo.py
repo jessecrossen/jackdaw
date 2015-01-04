@@ -15,6 +15,12 @@ class UndoStack(object):
   # store the state of the given objects before changes are made
   def begin_action(self, things):
     self._begin_state = self.save_state(things)
+  # add items to the beginning state
+  def add_to_action(self, things):
+    new_state = self.save_state(things)
+    for (key, value) in new_state.iteritems():
+      if (key not in self._begin_state):
+        self._begin_state[key] = value
   # store the state of the given objects after changes are made
   def end_action(self, things):
     # if no action was in the works, we can skip this
@@ -133,6 +139,7 @@ class UndoManagerSingleton(observable.Object):
     self._end_action_timer = QTimer()
     self._end_action_timer.setSingleShot(True)
     self._end_action_timer.timeout.connect(self.end_action)
+    self._group = None
   # expose properties of the undo stack, adding selection restoring
   #  and event grouping
   @property
@@ -147,7 +154,21 @@ class UndoManagerSingleton(observable.Object):
   def redo(self, *args):
     self._undo_stack.redo()
     self.on_change()
-  def begin_action(self, things=(), end_timeout=None):
+  def begin_action(self, things=(), end_timeout=None, group=None):
+    # allow some action groups to group other actions
+    if (self._group is not None):
+      if (things is not None):
+        if (type(things) is not types.TupleType):
+          things = (things,)
+        for thing in things:
+          if (self._action_things is None):
+            self._action_things = ()
+          if (thing not in self._action_things):
+            self._action_things = self._action_things + (thing,)
+            self._undo_stack.add_to_action(thing)
+      return
+    self._group = group
+    # handle timeouts
     first_one = True
     if (end_timeout is not None):
       first_one = False
@@ -163,7 +184,11 @@ class UndoManagerSingleton(observable.Object):
       self._action_things = (things, Selection, Selection.models)
       self._undo_stack.begin_action(self._action_things)
       self.on_change()
-  def end_action(self):
+  def end_action(self, group=None):
+    # end the group if we get the identifier for the outermost group
+    if (self._group is not None):
+      if (self._group != group): return
+      self._group = None
     self._undo_stack.end_action(self._action_things)
     self._action_things = None
     self.on_change()

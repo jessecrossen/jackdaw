@@ -224,6 +224,13 @@ class ConnectionView(view.Selectable, view.ModelView):
   def connection(self):
     return(self._model)
   @property
+  def patch_bay(self):
+    workspace_view = self.parentItemWithAttribute('patch_bay')
+    if (workspace_view):
+      return(workspace_view.patch_bay)
+    else:
+      return(None)
+  @property
   def source_view(self):
     return(self._source_view)
   @source_view.setter
@@ -364,6 +371,7 @@ class ConnectionView(view.Selectable, view.ModelView):
       qp.drawEllipse(p, r, r)
   # allow the ends of the connection to be dragged out of their ports
   def on_drag_start(self, event):
+    UndoManager.begin_action((self.connection, self.patch_bay))
     pos = event.pos()
     source = self._source_pos
     sink = self._sink_pos
@@ -391,6 +399,7 @@ class ConnectionView(view.Selectable, view.ModelView):
   def on_drag_end(self, event):
     self.finalize_connection()
     QApplication.instance().restoreOverrideCursor()
+    UndoManager.end_action()
   # remove the connection when it's selected and the user presses delete
   def keyPressEvent(self, event):
     if ((self.connection.selected) and 
@@ -409,9 +418,9 @@ class ConnectionView(view.Selectable, view.ModelView):
         (isinstance(self.sink_view, UnitInputView))):
       self.connection.source = self.source_view.target
       self.connection.sink = self.sink_view.target
-      workspace_view = self.parentItemWithAttribute('patch_bay')
-      if (workspace_view):
-        workspace_view.patch_bay.append(self.connection)
+      patch_bay = self.patch_bay
+      if (patch_bay is not None):
+        patch_bay.append(self.connection)
     else:
       self.connection.source = None
       self.connection.sink = None
@@ -434,6 +443,12 @@ class UnitPortView(view.Interactive, view.ModelView):
   @property
   def target(self):
     return(self._model)
+  @property
+  def patch_bay(self):
+    workspace_view = self.parentItemWithAttribute('patch_bay')
+    if (workspace_view is not None):
+      return(workspace_view.patch_bay)
+    return(None)
   # get the type of signal the port accepts
   @property
   def port_type(self):
@@ -480,6 +495,7 @@ class UnitPortView(view.Interactive, view.ModelView):
       qp.drawLine(p, base)
   # handle dragging a connection from a port
   def on_drag_start(self, event):
+    UndoManager.begin_action(self.patch_bay)
     # make a connection and add it to the workspace
     connection = unit.Connection()
     view = ConnectionView(connection)
@@ -519,6 +535,7 @@ class UnitPortView(view.Interactive, view.ModelView):
     # remove the view if it didn't form a connection
     view.finalize_connection()
     QApplication.instance().restoreOverrideCursor()
+    UndoManager.end_action()
   # when added to the scene, automatically add views for any 
   #  connections to or from the target if there are any
   def on_added_to_scene(self):

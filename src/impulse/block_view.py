@@ -7,6 +7,7 @@ import observable
 import view
 import block
 from doc import ViewScale
+from undo import UndoManager
 
 # represent a block of events on a track
 class BlockView(view.BoxSelectable, view.TimeDraggable, view.Deleteable, view.ModelView):
@@ -182,6 +183,8 @@ class ControllerView(view.Interactive, view.ModelView):
       qp.drawRect(QRectF(x, y - py, w, 2 * py))
       if (repeat_time <= 0): break
       x += repeat_time
+  def on_drag_start(self, event):
+    UndoManager.begin_action(self.events)
   def on_drag(self, event, delta_x, delta_y):
     h = self.rect().height()
     ta = event.lastPos().x()
@@ -222,6 +225,8 @@ class ControllerView(view.Interactive, view.ModelView):
       self.events.append(block.CCSet(time=tb, number=self.number, value=vb))
     ccsets.end_change_block()
     self.events.end_change_block()
+  def on_drag_end(self, event):
+    UndoManager.end_action()
 
 # do layout for notes in a block
 class NoteLayout(view.ListLayout):

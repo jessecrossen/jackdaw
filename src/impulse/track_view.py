@@ -583,6 +583,18 @@ class SequencerUnitView(unit_view.UnitView):
     self.allow_add = True
     # allow the set of tracks to be deleted
     self.allow_delete = True
+    # connect for recording undo/redo
+    if (self.unit.transport is not None):
+      self.unit.transport.recording_will_start.connect(self.on_record_start)
+      self.unit.transport.recording_stopped.connect(self.on_record_stop)
+  def destroy(self):
+    if (self.unit.transport is not None):
+      self.unit.transport.recording_will_start.disconnect(self.on_record_start)
+      self.unit.transport.recording_stopped.disconnect(self.on_record_stop)
+  def on_record_start(self):
+    UndoManager.begin_action(self.unit.tracks, group='record')
+  def on_record_stop(self):
+    UndoManager.end_action(group='record')
   def on_add(self):
     UndoManager.begin_action(self.unit.tracks)
     self.unit.tracks.add_track()

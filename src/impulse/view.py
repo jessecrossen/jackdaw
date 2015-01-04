@@ -99,9 +99,13 @@ class View(ParentSeekable, QGraphicsObject):
       self._size = QSizeF(rect.width(), rect.height())
       if (sizeChanged):
         self.layout()
-    # hide the view if it's completely clipped
+    # hide the view if it's completely clipped and not being dragged
+    try:
+      dragging = self.dragging
+    except AttributeError:
+      dragging = False
     cr = self.effectiveClipRect()
-    self.setVisible((cr is None) or 
+    self.setVisible((dragging) or (cr is None) or 
                     (cr.intersects(self.boundingRect())))
   # make a default implementation of the bounding box
   def boundingRect(self):
