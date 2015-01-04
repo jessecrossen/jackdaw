@@ -1,6 +1,10 @@
 # coding=utf-8
 
 import yaml
+try:
+  import cPickle as pickle
+except:
+  import pickle
 
 import observable
 import serializable
@@ -20,6 +24,12 @@ class ViewScale(observable.Object):
     self._time_offset = time_offset
     self._pitch_height = pitch_height
     self._controller_height = controller_height
+  def serialize(self):
+    return({
+      'pixels_per_second': self.pixels_per_second,
+      'time_offset': self.time_offset,
+      'pitch_height': self.pitch_height
+    })
   @property
   def pixels_per_second(self):
     return(self._pixels_per_second)
@@ -61,12 +71,6 @@ class ViewScale(observable.Object):
     return(float(x) / self._pixels_per_second)
   def x_of_time(self, time):
     return(float(time) * self._pixels_per_second)
-  def serialize(self):
-    return({
-      'pixels_per_second': self.pixels_per_second,
-      'time_offset': self.time_offset,
-      'pitch_height': self.pitch_height
-    })
   def height_of_track(self, track):
     min_height = 4 * self.pitch_height
     pitches_height = len(track.pitches) * self.pitch_height
@@ -117,6 +121,14 @@ class Document(Model):
       patch_bay = PatchBay()
     self.patch_bay = patch_bay
     self.patch_bay.add_observer(self.on_change)
+  def serialize(self):
+    return({
+      'devices': self.devices,
+      'transport': self.transport,
+      'view_scale': self.view_scale,
+      'units': self.units,
+      'patch_bay': self.patch_bay
+    })
   @property
   def model_refs(self):
     return((self.transport, self.view_scale, self.devices, 
@@ -132,16 +144,25 @@ class Document(Model):
   # save the document to a file
   def save(self):
     output_stream = open(self.path, 'w')
-    output_stream.write(yaml.dump(self))
+    if (self.path.endswith('.yml')):
+      output_stream.write(yaml.dump(self))
+    else:
+      output_stream.write(pickle.dumps(self, protocol=2))
     output_stream.close()
-  # document serialization
-  def serialize(self):
-    return({
-      'devices': self.devices,
-      'transport': self.transport,
-      'view_scale': self.view_scale,
-      'units': self.units,
-      'patch_bay': self.patch_bay
-    })
+  # load a document from a file
+  @classmethod
+  def get_from_path(self, path):
+    if (len(path) == 0): return(None)
+    input_stream = open(path, 'r')
+    if (not input_stream): return(None)
+    s = input_stream.read()
+    input_stream.close()
+    document = None
+    if (path.endswith('.yml')):
+      document = yaml.load(s)
+    if (document is None):
+      document = pickle.loads(s)
+    if (isinstance(document, self.__class__)):
+      document.path = path
+    return(document)
 serializable.add(Document)
-

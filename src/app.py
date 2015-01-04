@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import sys
+import platform
 
 from PySide.QtCore import *
 from PySide.QtGui import *
@@ -12,7 +13,10 @@ class App(QApplication):
     QApplication.__init__(self, sys.argv)
     self._window = windows.DocumentWindow(self)
     self._window.show()
-    self._window.file_load_path('/home/jesse/Documents/impulse/test.yml')
+    # open test file for rapid debugging
+    if (platform.node() == 'boombox.home.net'):
+      self._window.document = doc.Document.get_from_path(
+        '/home/jesse/Documents/impulse/test.jdp')
     # start the sampler engine
     sampler.LinuxSampler.start()
 

@@ -228,18 +228,9 @@ class DocumentWindow(QMainWindow):
   # open an existing document
   def file_open(self):
     (path, group) = QFileDialog.getOpenFileName(self,
-      "Open Project", "~", "Project Files (*.yml);;All Files (*.*)")
-    self.file_load_path(path)
-  # open the existing document at the given path
-  def file_load_path(self, path):
-    if (len(path) == 0): return
-    input_stream = open(path, 'r')
-    if (not input_stream): return
-    s = input_stream.read()
-    input_stream.close()
-    document = yaml.load(s)
-    if (isinstance(document, doc.Document)):
-      document.path = path
+      "Open Project", "~", "Project Files (*.jdp *.yml);;All Files (*.*)")
+    document = doc.Document.get_from_path(path)
+    if (document is not None):
       self.document = document
   # save the document
   def file_save(self):
@@ -251,7 +242,7 @@ class DocumentWindow(QMainWindow):
   # save the document with a different file name
   def file_save_as(self):
     (path, group) = QFileDialog.getSaveFileName(self,
-        "Save Project", "~", "Project Files (*.yml);;All Files (*.*)")
+        "Save Project", "~", "Project Files (*.jdp *.yml);;All Files (*.*)")
     if (len(path) == 0): return
     self.document.path = path
     self.document.save()
