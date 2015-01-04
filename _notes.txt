@@ -1,10 +1,9 @@
 ON DECK:
-- do layouts down the chain when undoing to establish visibility
+- limit time spent processing midi messages per-pass to maintain responsiveness
 
 DEFECTS:
 
 OPTIMIZATIONS:
-- limit time spent processing midi messages per-pass to maintain responsiveness
 
 FEATURES:
 - tracks can be deleted
