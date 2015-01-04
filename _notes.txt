@@ -1,5 +1,4 @@
 ON DECK:
-- optimize state saving and deletion process (use serialization)
 - more undoable actions: moving unit, resizing unit, adding patch, recording, time dragging unreliable
 
 DEFECTS:
