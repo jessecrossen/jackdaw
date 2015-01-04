@@ -1,12 +1,10 @@
 ON DECK:
-- add an alternate file format that's faster than YAML (cPickle)
-
-DEFECTS:
-- scrollbar is no longer working correctly with transport tracking
+- optimize state saving and deletion process (use serialization)
 - more undoable actions: moving unit, resizing unit, adding patch, recording, time dragging unreliable
 
+DEFECTS:
+
 OPTIMIZATIONS:
-- optimize state saving and deletion process (use serialization)
 - limit time spent processing midi messages per-pass to maintain responsiveness
 
 FEATURES:

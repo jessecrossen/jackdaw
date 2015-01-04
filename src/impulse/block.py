@@ -378,9 +378,6 @@ class BlockStart(Model):
       (self._block.time + self._block.events.duration) - value)
     if (value != self._block.events.duration):
       delta = self._block.events.duration - duration
-      
-      print delta
-      
       min_event_time = None
       for event in self._block.events:
         if ((min_event_time is None) or (event.time < min_event_time)):

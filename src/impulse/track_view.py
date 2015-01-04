@@ -87,7 +87,10 @@ class TrackListView(view.BoxSelectable, view.Interactive, view.ModelView):
     self.overlay.setRect(r)
   def update_scrollbar(self):
     if (not self.scrollbar): return
-    width = self._size.width()
+    try:
+      width = self.track_layout.rect().width()
+    except AttributeError:
+      width = self._size.width()
     # update the range to fit the timeline, using milliseconds because
     #  it can't have a float value
     shown_duration = width / self.view_scale.pixels_per_second
@@ -99,6 +102,7 @@ class TrackListView(view.BoxSelectable, view.Interactive, view.ModelView):
     self.scrollbar.setMaximum(int(math.ceil(maximum * 1000)))
     self.scrollbar.setPageStep(int(math.floor(shown_duration * 1000)))
     self.scrollbar.setSingleStep(1000)
+    self.scrollbar.setValue(int(self.view_scale.time_offset * 1000))
   # handle scrolling
   def on_scroll(self):
     time = float(self.scrollbar.value()) / 1000.0
