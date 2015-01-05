@@ -175,7 +175,9 @@ class InputHandler(observable.Object):
   def target(self):
     return(self._target)
   # check for input
-  def receive(self):
+  def receive(self, limit_time=True):
+    # limit processing time to maintain responsiveness
+    time_limit = time.time() + 0.100
     # wrap the target in a change block so each midi event doesn't waste a lot
     #  of time causing cascading changes
     target_and_refs = (self._target,)
@@ -189,8 +191,12 @@ class InputHandler(observable.Object):
     while (True):
       result = self._port.receive()
       if (result is None): break
-      (data, time) = result
-      self.handle_message(data, time)
+      (data, msg_time) = result
+      self.handle_message(data, msg_time)
+      # handle at least one message per run, but limit overall processing time
+      #  to keep the UI responsive, allowing the jackpatch buffer to handle 
+      #  the backlog
+      if ((limit_time) and (time.time() > time_limit)): break
     for model in target_and_refs:
       try:
         model.end_change_block()

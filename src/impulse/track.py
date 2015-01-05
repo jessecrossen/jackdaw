@@ -523,6 +523,8 @@ class TrackInputHandler(midi.InputHandler):
       self._target_block = block.Block(block.EventList(), time=self.transport.time)
       self.target.append(self._target_block)
     elif ((not record) and (self._target_block is not None)):
+      # receive all queued events
+      self.receive(limit_time=False)
       duration = max(0, self.transport.time - self._target_block.time)
       self._target_block.duration = duration
       self._target_block.events.duration = duration

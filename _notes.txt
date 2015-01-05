@@ -1,16 +1,15 @@
 ON DECK:
-- limit time spent processing midi messages per-pass to maintain responsiveness
+- tracks can be deleted
+- block backgrounds can be colored, color follows eventlist linkages
+- unit backgrounds can be colored
 
 DEFECTS:
 
 OPTIMIZATIONS:
 
 FEATURES:
-- tracks can be deleted
 - make JACK clients/units for basic analog synth components
 - make a control surface for mix/pan visualization/control
-- block backgrounds can be colored, color follows eventlist linkages
-- unit backgrounds can be colored
 - special grouping unit which moves all units inside it when moved
 - allow blocks to be moved between tracks
 - make logo and rename project

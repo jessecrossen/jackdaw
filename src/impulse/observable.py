@@ -12,7 +12,9 @@ class Object(QObject):
   def add_observer(self, slot):
     self.changed.connect(slot)
   def remove_observer(self, slot):
-    self.changed.disconnect(slot)
+    try:
+      self.changed.disconnect(slot)
+    except RuntimeError: pass
   def on_change(self):
     if (self._change_block_level <= 0):
       # block change events from firing while sending the signal to avoid 
