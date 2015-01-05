@@ -162,7 +162,7 @@ class Document(Model):
       document = yaml.load(s)
     if (document is None):
       document = pickle.loads(s)
-    if (isinstance(document, self.__class__)):
+    if (document is not None):
       document.path = path
     return(document)
 serializable.add(Document)
