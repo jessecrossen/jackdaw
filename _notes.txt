@@ -1,9 +1,9 @@
 ON DECK:
-- tracks can be deleted
 - block backgrounds can be colored, color follows eventlist linkages
 - unit backgrounds can be colored
 
 DEFECTS:
+- connections aren't restored properly after undoing a track delete
 
 OPTIMIZATIONS:
 

@@ -67,7 +67,7 @@ class UnitView(view.ModelView):
     document_view = self.parentItemWithAttribute('document')
     patch_bay = None if document_view is None else document_view.document.patch_bay
     if (workspace_view):
-      UndoManager.begin_action((workspace_view, patch_bay))
+      UndoManager.begin_action((workspace_view.units, patch_bay))
       if (patch_bay is not None):
         patch_bay.remove_connections_for_unit(self.unit)
         if (self._input_layout is not None):

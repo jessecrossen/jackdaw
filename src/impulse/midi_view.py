@@ -93,6 +93,7 @@ class MidiMonitorUnitView(unit_view.UnitView):
     unit_view.UnitView.__init__(self, *args, **kwargs)
     self._input_layout = unit_view.InputListLayout(self, (self.unit,), 
                           lambda t: unit_view.UnitInputView(t))
+    self.allow_delete = True
     self.allow_resize_width = True
     self.allow_resize_height = True
     text = QGraphicsTextItem(self)

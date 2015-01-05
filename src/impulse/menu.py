@@ -181,6 +181,31 @@ class InstrumentMenu(QMenu):
 ContextMenu.register_context('InstrumentView', InstrumentMenu, ('instrument',))
 ContextMenu.register_context('InstrumentListView', None, ('instruments',))
 
+class TrackMenu(QMenu):
+  def __init__(self, track, event, parent):
+    QMenu.__init__(self, parent)
+    self.setTitle('Track')
+    self.setIcon(icon.get('track'))
+    self.track = track
+    try:
+      self.tracks = parent.tracks
+    except AttributeError:
+      self.tracks = None
+    try:
+      self.patch_bay = parent.document.patch_bay
+    except AttributeError:
+      self.patch_bay = None
+    delete_action = QAction(icon.get('delete'), 'Delete', self)
+    delete_action.setStatusTip('Delete this track')
+    delete_action.triggered.connect(self.on_delete)
+    self.addAction(delete_action)
+  # delete the block
+  def on_delete(self, *args):
+    UndoManager.begin_action((self.tracks, self.patch_bay))
+    self.tracks.remove(self.track)
+    UndoManager.end_action()
+ContextMenu.register_context('TrackView', TrackMenu, ('track',))
+
 class BlockMenu(QMenu):
   def __init__(self, block, event, parent):
     QMenu.__init__(self, parent)
