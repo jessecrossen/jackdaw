@@ -180,7 +180,7 @@ serializable.add(CCSet)
 
 # represents a series of events grouped into a logical block with a duration
 class EventList(ModelList):
-  def __init__(self, events=(), duration=60, divisions=1):
+  def __init__(self, events=(), hue=None, duration=60, divisions=1):
     self._duration = duration
     self._divisions = divisions
     self._pitches = [ ]
@@ -189,6 +189,7 @@ class EventList(ModelList):
     self._controllers = [ ]
     self._controller_counts = dict()
     self._ccsets_by_number = dict()
+    self._hue = hue
     ModelList.__init__(self, events)
   # the total length of time the events occur in (in seconds)
   @property
@@ -208,6 +209,15 @@ class EventList(ModelList):
   def divisions(self, value):
     if (self._divisions != value):
       self._divisions = value
+      self.on_change()
+  # the hue to draw the event list in (0.0 - 1.0 or None for no color)
+  @property
+  def hue(self):
+    return(self._hue)
+  @hue.setter
+  def hue(self, value):
+    if (self._hue != value):
+      self._hue = value
       self.on_change()
   # maintain lists of pitches, controllers, notes, and control changes for 
   #  optimized traversal of the event list
@@ -357,11 +367,14 @@ class EventList(ModelList):
     return(self._snap_times)
   # serialization
   def serialize(self):
-    return({ 
+    d = { 
       'events': list(self),
       'duration': self.duration,
-    'divisions': self.divisions
-    })
+      'divisions': self.divisions
+    }
+    if (self.hue is not None):
+      d['hue'] = self.hue
+    return(d)
 serializable.add(EventList)
 
 # a placeholder model for manipulating the beginning of a block's events

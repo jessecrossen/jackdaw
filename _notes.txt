@@ -1,5 +1,4 @@
 ON DECK:
-- block backgrounds can be colored, color follows eventlist linkages
 - unit backgrounds can be colored
 
 DEFECTS:

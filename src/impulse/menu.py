@@ -216,6 +216,7 @@ class BlockMenu(QMenu):
       self.tracks = parent.tracks
     except AttributeError:
       self.tracks = None
+    self.addMenu(HueMenu(self.block.events, self))
     split_action = QAction(icon.get('split'), 'Split', self)
     split_action.setStatusTip('Split the block into multiple blocks')
     split_action.triggered.connect(self.on_split)
@@ -382,3 +383,30 @@ class MidiMonitorMenu(QMenu):
   def on_toggle_show_time(self):
     self.unit.show_time = not self.unit.show_time
 ContextMenu.register_context('MidiMonitorUnitView', MidiMonitorMenu, ('unit',))
+
+# make a menu to select colors for an element
+class HueMenu(QMenu):
+  def __init__(self, target, parent):
+    QMenu.__init__(self, parent)
+    self._target = target
+    self.setTitle('Color')
+    self.setIcon(icon.get('colors'))
+    hues = (
+      ('Red', 0.0),
+      ('Orange', (1.0 / 12.0)),
+      ('Yellow', (2.0 / 12.0)),
+      ('Green', (4.0 / 12.0)),
+      ('Cyan', (6.0 / 12.0)),
+      ('Blue', (7.0 / 12.0)),
+      ('Purple', (9.0 / 12.0)),
+      ('Magenta', (11.0 / 12.0))
+    )
+    for (name, hue) in hues:
+      color = QColor()
+      color.setHsvF(hue, 1.0, 1.0)
+      action = QAction(name, self)
+      action.setIcon(icon.get('color', color))
+      action.triggered.connect(functools.partial(self.on_hue, hue))
+      self.addAction(action)
+  def on_hue(self, hue):
+    self._target.hue = hue

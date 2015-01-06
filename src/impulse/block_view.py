@@ -68,6 +68,10 @@ class BlockView(view.BoxSelectable, view.TimeDraggable, view.Deleteable, view.Mo
     if (selected):
       qp.setBrush(self.palette.brush(
         QPalette.Normal, QPalette.Highlight))
+    elif (self.block.events.hue is not None):
+      color = QColor()
+      color.setHslF(self.block.events.hue, 1.0, 0.8)
+      qp.setBrush(QBrush(color))
     else:
       qp.setBrush(QBrush(self.palette.color(QPalette.Normal, QPalette.Base)))
     qp.setPen(Qt.NoPen)
