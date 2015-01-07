@@ -1,5 +1,6 @@
 import os
 import sys
+import re
 import glob
 import functools
 
@@ -22,32 +23,39 @@ class ContextMenu(QMenu):
   # keep a map from view classes to the context menus that should be 
   #  shown for them
   _context_map = dict()
-  def __init__(self, item, event, parent=None):
+  def __init__(self, item, event, parent=None, view=None):
     QMenu.__init__(self, parent)
     # navigate up the view chain and add to the context
     menus = list()
     while (item is not None):
       class_name = item.__class__.__name__
       if (class_name in self._context_map):
-        (menu_class, attributes) = self._context_map[class_name]
-        kwargs = dict()
-        kwargs['parent'] = self
-        kwargs['event'] = event
-        for attribute in attributes:
-          model = getattr(item, attribute)
-          # pass model properties as keyword arguments to the menu
-          kwargs[attribute] = model
-          # add all model properties to the current class so they can be used
-          #  by menus to walk up the hierarchy
-          setattr(self, attribute, model)
-        if (menu_class is not None):
-          menus.append((menu_class, kwargs))
+        self.add_menu(item, event, class_name, menus)
+      for key in self._context_map.iterkeys():
+        if (('*' in key) and (re.match(key, class_name))):
+          self.add_menu(item, event, key, menus)
       item = item.parentItem()
     # build menus after model properties have been set so they're accessible
     #  from all menus via this class
     for (menu_class, kwargs) in menus:
       menu = menu_class(**kwargs)
       self.addMenu(menu)
+  # add a menu for the given key in the context map
+  def add_menu(self, item, event, key, menus):
+    (menu_class, attributes) = self._context_map[key]
+    kwargs = dict()
+    kwargs['parent'] = self
+    kwargs['event'] = event
+    kwargs['view'] = item
+    for attribute in attributes:
+      model = getattr(item, attribute)
+      # pass model properties as keyword arguments to the menu
+      kwargs[attribute] = model
+      # add all model properties to the current class so they can be used
+      #  by menus to walk up the hierarchy
+      setattr(self, attribute, model)
+    if (menu_class is not None):
+      menus.append((menu_class, kwargs))
   # register a menu class for a certain model/view type
   @classmethod
   def register_context(cls, view_class_name, menu_class, model_attributes):
@@ -56,14 +64,15 @@ class ContextMenu(QMenu):
   @classmethod
   def has_menu_for_view(cls, item):
     class_name = item.__class__.__name__
-    if (class_name not in cls._context_map): return(False)
-    (menu_class, model_attributes) = cls._context_map[class_name]
-    return(menu_class is not None)
-
+    for key in cls._context_map.iterkeys():
+      if (re.match(key, class_name)):
+        (menu_class, model_attributes) = cls._context_map[key]
+        if (menu_class is not None): return(True)
+    return(False)
 ContextMenu.register_context('TrackListView', None, ('tracks',))
 
 class WorkspaceMenu(QMenu):
-  def __init__(self, document, event, parent):
+  def __init__(self, document, event, parent, view=None):
     QMenu.__init__(self, parent)
     self.setTitle('Add Unit')
     self.setIcon(icon.get('workspace'))
@@ -137,7 +146,7 @@ ContextMenu.register_context('WorkspaceView', WorkspaceMenu, ('document',))
 
 # make a context menu for an instrument
 class InstrumentMenu(QMenu):
-  def __init__(self, instrument, event, parent=None):
+  def __init__(self, instrument, event, parent=None, view=None):
     QMenu.__init__(self, parent)
     self.setTitle('Instrument')
     self.setIcon(icon.get('instrument'))
@@ -182,7 +191,7 @@ ContextMenu.register_context('InstrumentView', InstrumentMenu, ('instrument',))
 ContextMenu.register_context('InstrumentListView', None, ('instruments',))
 
 class TrackMenu(QMenu):
-  def __init__(self, track, event, parent):
+  def __init__(self, track, event, parent, view=None):
     QMenu.__init__(self, parent)
     self.setTitle('Track')
     self.setIcon(icon.get('track'))
@@ -207,7 +216,7 @@ class TrackMenu(QMenu):
 ContextMenu.register_context('TrackView', TrackMenu, ('track',))
 
 class BlockMenu(QMenu):
-  def __init__(self, block, event, parent):
+  def __init__(self, block, event, parent, view=None):
     QMenu.__init__(self, parent)
     self.setTitle('Block')
     self.setIcon(icon.get('block'))
@@ -216,7 +225,6 @@ class BlockMenu(QMenu):
       self.tracks = parent.tracks
     except AttributeError:
       self.tracks = None
-    self.addMenu(HueMenu(self.block.events, self))
     split_action = QAction(icon.get('split'), 'Split', self)
     split_action.setStatusTip('Split the block into multiple blocks')
     split_action.triggered.connect(self.on_split)
@@ -225,6 +233,7 @@ class BlockMenu(QMenu):
     join_action.setStatusTip('Join selected blocks into one')
     join_action.triggered.connect(self.on_join)
     self.addAction(join_action)
+    self.addMenu(HueMenu(self.block.events, self))
     delete_action = QAction(icon.get('delete'), 'Delete', self)
     delete_action.setStatusTip('Delete this block')
     delete_action.triggered.connect(self.on_delete)
@@ -314,7 +323,7 @@ ContextMenu.register_context('BlockView', BlockMenu, ('block',))
 
 # make a context menu for a controller view
 class ControllerMenu(QMenu):
-  def __init__(self, events, number, event, parent):
+  def __init__(self, events, number, event, parent, view=None):
     QMenu.__init__(self, parent)
     self.setTitle('Controller %d' % number)
     self.setIcon(icon.get('controller'))
@@ -351,9 +360,26 @@ class ControllerMenu(QMenu):
     self.events.end_change_block()
 ContextMenu.register_context('ControllerView', ControllerMenu, ('events', 'number'))
 
+# make a context menu for a unit
+class UnitMenu(QMenu):
+  def __init__(self, unit, event, parent, view=None):
+    QMenu.__init__(self, parent)
+    self.setTitle('Unit')
+    self.setIcon(icon.get('unit'))
+    self.unit = unit
+    self.view = view
+    self.addMenu(HueMenu(self.unit, self))
+    delete_action = QAction(icon.get('delete'), 'Delete', self)
+    delete_action.setStatusTip('Delete %s' % self.unit.name)
+    delete_action.triggered.connect(self.on_delete)
+    self.addAction(delete_action)
+  def on_delete(self):
+    self.view.on_delete()
+ContextMenu.register_context('.*UnitView', UnitMenu, ('unit',))
+
 # make a context menu for midi monitor unit
 class MidiMonitorMenu(QMenu):
-  def __init__(self, unit, event, parent):
+  def __init__(self, unit, event, parent, view=None):
     QMenu.__init__(self, parent)
     self.setTitle('MIDI Monitor')
     self.setIcon(icon.get('data'))
@@ -392,20 +418,25 @@ class HueMenu(QMenu):
     self.setTitle('Color')
     self.setIcon(icon.get('colors'))
     hues = (
-      ('Red', 0.0),
-      ('Orange', (1.0 / 12.0)),
-      ('Yellow', (2.0 / 12.0)),
-      ('Green', (4.0 / 12.0)),
-      ('Cyan', (6.0 / 12.0)),
-      ('Blue', (7.0 / 12.0)),
-      ('Purple', (9.0 / 12.0)),
-      ('Magenta', (11.0 / 12.0))
+      ('None', None),
+      ('Red', 0),
+      ('Orange', 30),
+      ('Yellow', 60),
+      ('Green', 120),
+      ('Cyan', 180),
+      ('Blue', 220),
+      ('Purple', 270),
+      ('Magenta', 330)
     )
     for (name, hue) in hues:
-      color = QColor()
-      color.setHsvF(hue, 1.0, 1.0)
       action = QAction(name, self)
-      action.setIcon(icon.get('color', color))
+      if (hue is not None):
+        hue = (hue / 360.0)
+        color = QColor()
+        color.setHsvF(hue, 1.0, 1.0)
+        action.setIcon(icon.get('color', color))
+      else:
+        action.setIcon(icon.get('color_none'))
       action.triggered.connect(functools.partial(self.on_hue, hue))
       self.addAction(action)
   def on_hue(self, hue):

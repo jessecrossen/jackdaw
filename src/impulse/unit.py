@@ -8,13 +8,14 @@ from PySide.QtCore import *
 # represent a unit, which can be connected to other units
 class Unit(Model):
   name_changed = Signal()
-  def __init__(self, name='Unit', x=0, y=0, width=0, height=0):
+  def __init__(self, name='Unit', x=0, y=0, width=0, height=0, hue=None):
     Model.__init__(self)
     self._name = name
     self._x = x
     self._y = y
     self._width = width
     self._height = height
+    self._hue = hue
   # get and set the name of the unit
   @property
   def name(self):
@@ -25,6 +26,15 @@ class Unit(Model):
       self._name = value
       self.on_change()
       self.name_changed.emit()
+  # the hue to draw the unit in (0.0 - 1.0 or None for no color)
+  @property
+  def hue(self):
+    return(self._hue)
+  @hue.setter
+  def hue(self, value):
+    if (self._hue != value):
+      self._hue = value
+      self.on_change()
   # get and set the position of the unit on the workspace
   @property
   def x(self):
@@ -91,6 +101,8 @@ class Unit(Model):
       obj['width'] = self.width
     if (self.height > 0):
       obj['height'] = self.height
+    if (self.hue is not None):
+      obj['hue'] = self.hue
     return(obj)
 serializable.add(Unit)
 

@@ -14,6 +14,7 @@ from transport import Transport
 from midi import DeviceAdapterList, DeviceListUnit
 from audio import SystemPlaybackUnit
 from unit import UnitList, PatchBay
+from undo import UndoManager
 
 # make a units-to-pixels mapping with observable changes
 class ViewScale(observable.Object):
@@ -133,6 +134,18 @@ class Document(Model):
   def model_refs(self):
     return((self.transport, self.view_scale, self.devices, 
             self.units, self.patch_bay))
+  # remove a unit from the document
+  def remove_unit(self, unit, inputs=(), outputs=()):
+    units = self.units
+    patch_bay = self.patch_bay
+    UndoManager.begin_action((units, patch_bay, inputs, outputs))
+    patch_bay.remove_connections_for_unit(unit)
+    for item in inputs:
+      patch_bay.remove_connections_for_unit(item)
+    for item in outputs:
+      patch_bay.remove_connections_for_unit(item)
+    units.remove(unit)
+    UndoManager.end_action()
   # update the duration of the transport based on the length of the tracks
   def update_transport_duration(self):
     duration = 0.0

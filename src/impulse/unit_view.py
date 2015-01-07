@@ -63,21 +63,16 @@ class UnitView(view.ModelView):
     return(UnitView(unit))
   # handle the user wanting to remove the unit
   def on_delete(self):
-    workspace_view = self.parentItemWithAttribute('units')
     document_view = self.parentItemWithAttribute('document')
-    patch_bay = None if document_view is None else document_view.document.patch_bay
-    if (workspace_view):
-      UndoManager.begin_action((workspace_view.units, patch_bay))
-      if (patch_bay is not None):
-        patch_bay.remove_connections_for_unit(self.unit)
-        if (self._input_layout is not None):
-          for item in self._input_layout.items:
-            patch_bay.remove_connections_for_unit(item)
-        if (self._output_layout is not None):
-          for item in self._output_layout.items:
-            patch_bay.remove_connections_for_unit(item)
-      workspace_view.units.remove(self.unit)
-      UndoManager.end_action()
+    if (document_view):
+      document = document_view.document
+      inputs = ()
+      outputs = ()
+      if (self._input_layout is not None):
+        inputs = self._input_layout.items
+      if (self._output_layout is not None):
+        outputs = self._output_layout.items
+      document.remove_unit(self.unit, inputs=inputs, outputs=outputs)
   # handle the user wanting to add to the unit (this will have different 
   #  behaviors depending on the type of unit)
   def on_add(self):
@@ -194,7 +189,12 @@ class UnitView(view.ModelView):
     pen = self.pen()
     pen.setWidth(2.0)
     qp.setPen(pen)
-    qp.setBrush(self.brush(0.15))
+    if (self.unit.hue is not None):
+      color = QColor()
+      color.setHsvF(self.unit.hue, 1.0, 1.0, 0.30)
+      qp.setBrush(QBrush(color))
+    else:
+      qp.setBrush(self.brush(0.15))
     r = self.boundingRect()
     r.adjust(1, 1, -1, -1)
     qp.drawRoundedRect(r, 4.0, 4.0)
