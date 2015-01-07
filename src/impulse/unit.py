@@ -167,7 +167,7 @@ class Sink(object):
 class Connection(Model):
   # keep a central JACK client for managing connections between ports
   jack_client = None
-  def __init__(self, source=None, sink=None):
+  def __init__(self, source=None, sink=None, hue=None):
     Model.__init__(self)
     self._source = None
     self._sink = None
@@ -175,6 +175,7 @@ class Connection(Model):
     self._connected_sink_port = None
     self.source = source
     self.sink = sink
+    self._hue = hue
   @property
   def model_refs(self):
     refs = [ ]
@@ -233,7 +234,15 @@ class Connection(Model):
       try:
         QTimer.singleShot(10, old_sink.on_change)
       except AttributeError: pass
-      
+  # the hue to draw the connection in (0.0 - 1.0 or None for no color)
+  @property
+  def hue(self):
+    return(self._hue)
+  @hue.setter
+  def hue(self, value):
+    if (self._hue != value):
+      self._hue = value
+      self.on_change()
   # lazy-load a jack client to make patchbay connections
   def get_jack_client(self):
     if (Connection.jack_client is None):
@@ -307,10 +316,13 @@ class Connection(Model):
     self._on_sink_changed()
   # connection serialization
   def serialize(self):
-    return({ 
+    obj = { 
       'source': self.source,
       'sink': self.sink
-    })
+    }
+    if (self.hue is not None):
+      obj['hue'] = self.hue
+    return(obj)
 serializable.add(Connection)
 
 # represent a patch bay that maintains connections between units

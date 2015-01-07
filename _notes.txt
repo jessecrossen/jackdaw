@@ -1,8 +1,8 @@
 ON DECK:
-- unit backgrounds can be colored
 
 DEFECTS:
 - connections aren't restored properly after undoing a track delete
+- blocks are receiving context clicks in their clipped areas
 
 OPTIMIZATIONS:
 

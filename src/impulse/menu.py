@@ -410,6 +410,23 @@ class MidiMonitorMenu(QMenu):
     self.unit.show_time = not self.unit.show_time
 ContextMenu.register_context('MidiMonitorUnitView', MidiMonitorMenu, ('unit',))
 
+# make a context menu for a connection
+class ConnectionMenu(QMenu):
+  def __init__(self, connection, event, parent, view=None):
+    QMenu.__init__(self, parent)
+    self.setTitle('Connection')
+    self.setIcon(icon.get('connection'))
+    self.connection = connection
+    self.view = view
+    self.addMenu(HueMenu(self.connection, self))
+    delete_action = QAction(icon.get('delete'), 'Disconnect', self)
+    delete_action.setStatusTip('Remove this connection')
+    delete_action.triggered.connect(self.on_delete)
+    self.addAction(delete_action)
+  def on_delete(self):
+    pass
+ContextMenu.register_context('ConnectionView', ConnectionMenu, ('connection',))
+
 # make a menu to select colors for an element
 class HueMenu(QMenu):
   def __init__(self, target, parent):

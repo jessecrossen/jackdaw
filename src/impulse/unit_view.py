@@ -339,8 +339,16 @@ class ConnectionView(view.Selectable, view.ModelView):
     # make sure there is a parent and endpoints
     if ((self.source_view is None) or (self.sink_view is None) or
         (self.parentItem() is None)): return
+    # make a pen and brush
+    if (self.connection.hue is not None):
+      color = QColor()
+      color.setHsvF(self.connection.hue, 1.0, 1.0)
+      pen = QPen(color)
+      brush = QBrush(color)
+    else:
+      pen = self.pen()
+      brush = self.brush()
     # draw the wire
-    pen = self.pen()
     pen.setWidth(2.0)
     qp.setPen(pen)
     qp.setBrush(Qt.NoBrush)
@@ -355,7 +363,7 @@ class ConnectionView(view.Selectable, view.ModelView):
       qp.drawPath(self.wirePath())
     # draw the endpoints
     qp.setPen(Qt.NoPen)
-    qp.setBrush(self.brush())
+    qp.setBrush(brush)
     self._draw_endpoint(qp, self._source_pos, self.RADIUS)
     self._draw_endpoint(qp, self._sink_pos, self.RADIUS)
   # draw an endpoint at the given point
