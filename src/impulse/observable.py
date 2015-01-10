@@ -29,9 +29,11 @@ class Object(QObject):
   def begin_change_block(self):
     self._change_block_level += 1
     self._changes_in_block = 0
-  def end_change_block(self):
+  def end_change_block(self, emit_if_changed=True):
     self._change_block_level = max(0, self._change_block_level - 1)
-    if ((self._change_block_level == 0) and (self._changes_in_block > 0)):
+    if ((emit_if_changed) and 
+        (self._change_block_level == 0) and 
+        (self._changes_in_block > 0)):
       self.on_change()
     
 # overlay the observable property onto an existing QObject

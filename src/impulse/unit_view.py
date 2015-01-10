@@ -545,17 +545,12 @@ class UnitPortView(view.Interactive, view.ModelView):
     QApplication.instance().restoreOverrideCursor()
     UndoManager.end_action()
   # when added to the scene, automatically add views for any 
-  #  connections to or from the target if there are any
+  #  connections to or from the target
   def on_added_to_scene(self):
     view.ModelView.on_added_to_scene(self)
     workspace_view = self.parentItemWithAttribute('patch_bay')
-    if (workspace_view):
-      patch_bay = workspace_view.patch_bay
-      if (((isinstance(self, UnitInputView)) and 
-           (len(patch_bay.sources_for_sink(self.target)) > 0)) or
-          ((isinstance(self, UnitOutputView)) and 
-           (len(patch_bay.sinks_for_source(self.target)) > 0))):
-        workspace_view.autoconnect()
+    if (workspace_view is not None):
+      workspace_view.autoconnect()
 
 # show an input port to a unit
 class UnitInputView(UnitPortView):

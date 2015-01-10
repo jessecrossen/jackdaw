@@ -134,7 +134,8 @@ class UndoStack(object):
         try:
           setattr(thing, key, value)
         except AttributeError: pass
-    for thing in things.iterkeys():
+    # unblock changes in reverse for symmetry
+    for thing in reversed(things.keys()):
       try:
         thing.end_change_block()
       except AttributeError: pass

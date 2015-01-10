@@ -1,15 +1,14 @@
 ON DECK:
 - allow blocks to be moved between tracks
 - selectable protocols for transport control
+- special grouping unit which moves all units inside it when moved
+- resizing a unit pushes connected units along with the edges
 
 DEFECTS:
-- connections aren't restored properly after undoing a track delete
 
 OPTIMIZATIONS:
 
 FEATURES:
-- special grouping unit which moves all units inside it when moved
-- resizing a unit pushes connected units along with the edges
 - make JACK clients/units for basic analog synth components
 - make JACK clients/units for basic audio ops like mix/pan
 - make a visual control surface for mix/pan control

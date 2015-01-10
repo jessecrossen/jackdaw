@@ -532,7 +532,9 @@ class TrackOutputLayout(view.ListLayout):
     self.note_output_view.setParentItem(self)
     self.track.add_observer(self.on_track_change)
     self.view_scale.add_observer(self.layout)
+    self.on_track_change()
   def destroy(self):
+    self.note_output_view.destroy()
     self.track.remove_observer(self.on_track_change)
     self.view_scale.remove_observer(self.layout)
     view.ListLayout.destroy(self)
