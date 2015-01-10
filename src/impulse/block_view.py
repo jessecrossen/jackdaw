@@ -89,6 +89,86 @@ class BlockView(view.BoxSelectable, view.TimeDraggable, view.Deleteable, view.Mo
       while ((div_time > 0) and (t < self.block.duration)):
         qp.drawLine(QPointF(t, 0), QPointF(t, height))
         t += div_time
+  # group block drags as a single undo block
+  def on_drag_start(self, event):
+    UndoManager.begin_action(self.block, group='drag_block')
+    view.Interactive.on_drag_start(self, event)
+  def on_drag_end(self, event):
+    view.Interactive.on_drag_end(self, event)
+    UndoManager.end_action(group='drag_block')
+  # handle shifting between tracks
+  def on_key_y(self, event):
+    delta = 0
+    if (event.key() == Qt.Key_Up):
+      delta = -1
+    elif (event.key() == Qt.Key_Down):
+      delta = 1
+    self.change_track(delta)
+  def on_drag_start_y(self, event):
+    tracks_view = self.parentItemWithAttribute('tracks')
+    tracks = tracks_view.tracks if tracks_view else None
+    # select the block if it isn't selected
+    if (not self.block.selected):
+      Selection.deselect_all()
+      self.block.selected = True
+  def on_drag_y(self, event, delta_y):
+    # see what track the mouse is inside
+    tracks_view = self.parentItemWithAttribute('tracks')
+    track_view = self.parentItemWithAttribute('track')
+    if ((tracks_view is None) or (track_view is None)): return
+    tracks = tracks_view.tracks
+    current_track = track_view.track
+    scenePos = event.scenePos()
+    old_index = None
+    new_index = None
+    index = 0
+    for track_view in tracks_view.track_layout.views:
+      if (track_view.track is current_track):
+        old_index = index
+      pos = track_view.mapFromScene(scenePos)
+      if (track_view.contains(QPointF(0.0, pos.y()))):
+        new_index = index
+      index += 1
+    if ((old_index is not None) and 
+        (new_index is not None) and
+        (new_index != old_index)):
+      self.change_track(new_index - old_index)
+  def change_track(self, delta):
+    block = self.block
+    # get the track list and track that contain this block
+    tracks_view = self.parentItemWithAttribute('tracks')
+    track_view = self.parentItemWithAttribute('track')
+    if ((tracks_view is None) or (track_view is None)): return
+    tracks = tracks_view.tracks
+    current_track = track_view.track
+    if (len(tracks) <= 1): return
+    # get the index of the current track
+    current_index = tracks.index(current_track)
+    # get the new track index, and exit if it's not changing
+    new_index = min(max(0, current_index + delta), len(tracks) - 1)
+    if (new_index == current_index): return
+    new_track = tracks[new_index]
+    UndoManager.begin_action((current_track, new_track))
+    # move this view into the new track layout so 
+    #  it maintains its keyboard/mouse focus
+    old_layout = self.parentItem()
+    def find_track_layout(node, track):
+      for item in node.childItems():
+        if ((isinstance(item, view.ListLayout)) and 
+            (hasattr(item, 'track')) and
+            (item.track is track)):
+          return(item)
+        result = find_track_layout(item, track)
+        if (result is not None): return(result)
+      return(None)
+    new_layout = find_track_layout(tracks_view.track_layout, new_track)
+    del old_layout._view_map[block]
+    new_layout._view_map[block] = self
+    self.setParentItem(new_layout)
+    # move the block in the model layer
+    current_track.remove(block)
+    new_track.append(block)
+    UndoManager.end_action()    
 
 # do layout for control changes in a block
 class ControllerLayout(view.ListLayout):

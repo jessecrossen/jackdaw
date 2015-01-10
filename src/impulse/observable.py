@@ -131,6 +131,8 @@ class List(Object):
   def sort(self, **kwargs):
     self._items.sort(**kwargs)
     self.on_change()
+  def index(self, item):
+    return(self._items.index(item))
   # handle models being added and removed from the list
   def _add_item(self, item):
     try:

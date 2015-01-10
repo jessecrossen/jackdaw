@@ -585,11 +585,11 @@ class PitchDraggable(Selectable):
 
 # make a class that manages graphics items representing a list
 class ListLayout(ParentSeekable, QGraphicsObject):
-  def __init__(self, parent, items, view_for_item):
+  def __init__(self, parent, items, new_view_for_item):
     QGraphicsObject.__init__(self, parent)
     self._in_layout = False
     self._updating_views = False
-    self.view_for_item = view_for_item
+    self.new_view_for_item = new_view_for_item
     self._view_map = dict()
     self._views = list()
     self._rect = QRectF(0, 0, 0, 0)
@@ -624,8 +624,11 @@ class ListLayout(ParentSeekable, QGraphicsObject):
   @property
   def views(self):
     return(tuple(self._views))
-  def container(self):
-    return(self._container)
+  # get the view for an existing item in the layout
+  def view_for_item(self, item):
+    if (item in self._view_map):
+      return(self._view_map[item])
+    return(None)
   def rect(self):
     return(self._rect)
   def setRect(self, rect):
@@ -650,7 +653,7 @@ class ListLayout(ParentSeekable, QGraphicsObject):
           old.remove(item)
           view = self._view_map[item]
         else:
-          view = self.view_for_item(item)
+          view = self.new_view_for_item(item)
           if (view is None): continue
           new.add(item)
           view.setParentItem(self)
