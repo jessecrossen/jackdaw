@@ -89,14 +89,9 @@ class View(ParentSeekable, QGraphicsObject):
     pos = self.pos()
     return(QRectF(pos.x(), pos.y(), self._size.width(), self._size.height()))
   def setRect(self, rect):
-    posChanged = ((rect.x() != self.pos().x()) or
-                  (rect.y() != self.pos().y()))
-    sizeChanged = ((rect.width() != self._size.width()) or 
-                   (rect.height() != self._size.height()))
-    if ((posChanged) or (sizeChanged)):
-      self.prepareGeometryChange()
-      self.setPos(rect.x(), rect.y())
-      self._size = QSizeF(rect.width(), rect.height())
+    self.prepareGeometryChange()
+    self.setPos(rect.x(), rect.y())
+    self._size = QSizeF(rect.width(), rect.height())
     # hide the view if it's completely clipped and not being dragged
     try:
       dragging = self.dragging
@@ -118,7 +113,11 @@ class View(ParentSeekable, QGraphicsObject):
   # make a default implementation of the bounding box
   def boundingRect(self):
     r = self.rect()
-    return(QRectF(0.0, 0.0, r.width(), r.height()))
+    r = QRectF(0.0, 0.0, r.width(), r.height())
+    cr = self.effectiveClipRect()
+    if (cr is not None):
+      r = r.intersected(cr)
+    return(r)
   # return the rectangle the item and its children should be clipped to,
   #  or None if no clipping is needed
   def clipRect(self):

@@ -1,20 +1,20 @@
 ON DECK:
+- allow blocks to be moved between tracks
+- selectable protocols for transport control
 
 DEFECTS:
 - connections aren't restored properly after undoing a track delete
-- blocks are receiving context clicks in their clipped areas
 
 OPTIMIZATIONS:
 
 FEATURES:
-- make JACK clients/units for basic analog synth components
-- make a control surface for mix/pan visualization/control
 - special grouping unit which moves all units inside it when moved
-- allow blocks to be moved between tracks
+- resizing a unit pushes connected units along with the edges
+- make JACK clients/units for basic analog synth components
+- make JACK clients/units for basic audio ops like mix/pan
+- make a visual control surface for mix/pan control
 - make logo and rename project
 - write or adapt a standalone JACK LV2 and/or DSSI effects host
 - add a unit for effects processing
 - key modifier for proportional stretch of a block's events
-- resizing a unit pushes connected units along with the edges
-- selectable protocols for transport control
 - midi file import/export for block event lists

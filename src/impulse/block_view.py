@@ -58,7 +58,8 @@ class BlockView(view.BoxSelectable, view.TimeDraggable, view.Deleteable, view.Mo
     self.repeat_view.setRect(QRectF(repeat_time, 0.0, 0.0, height))
     self.end_view.setRect(QRectF(duration, 0.0, 0.0, height))
   def clipRect(self):
-    return(self.boundingRect())
+    r = self.rect()
+    return(QRectF(0.0, 0.0, r.width(), r.height()))
   def _paint(self, qp):
     r = self.rect()
     width = r.width()

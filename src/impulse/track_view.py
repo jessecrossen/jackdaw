@@ -135,8 +135,7 @@ class TrackLayout(view.ListLayout):
         w = view.model.duration
       except AttributeError:
         w = view.rect().width()
-      vr = QRectF(x, y, w, h)
-      view.setRect(vr)
+      view.setRect(QRectF(x, y, w, h))
 
 # show a track
 class TrackView(view.ModelView):
