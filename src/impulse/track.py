@@ -630,9 +630,6 @@ class TrackInputHandler(midi.InputHandler):
             time=0.0, number=number, value=value))
       if (self.target.arm):
         self.target.update_controller_value(number, value)
-    # report unexpected messages
-    else:
-      print('Unhandled message type %02X' % status)
 
 class TrackOutputHandler(observable.Object):
   def __init__(self, port, track, transport):

@@ -366,10 +366,11 @@ class Deleteable(Interactive):
 
 # make a view allow box selection by dragging
 class BoxSelectable(Interactive, ModelView):
-  def __init__(self):
+  def __init__(self, confine_to_bounds=True):
     self._box_origin = None
     self._box_rect = None
     self._box_view = None
+    self._confine_to_bounds = confine_to_bounds
   def map_rect(self, r, source, dest):
     tl = r.topLeft()
     br = r.bottomRight()
@@ -381,8 +382,8 @@ class BoxSelectable(Interactive, ModelView):
     if (self.ignoreIfClipped(event)): return
     if (not self.model.selected):
       self._box_origin = event.pos()
-      self._box_rect = QRectF(
-        self._box_origin.x(), self._box_origin.y(), 0.0, 0.0)
+      self._box_rect = self.mapRectToScene(QRectF(
+        self._box_origin.x(), self._box_origin.y(), 0.0, 0.0))
       self._box_view = QGraphicsRectItem()
       pen = QPen(QColor(0, 0, 0, 128))
       pen.setWidth(2)
@@ -398,11 +399,13 @@ class BoxSelectable(Interactive, ModelView):
       pos = event.pos()
       r = QRectF(origin.x(), origin.y(),
         pos.x() - origin.x(), pos.y() - origin.y()).normalized()
-      g = self.boundingRect()
-      r = r.intersected(QRect(-5, -5, g.width() + 10, g.height() + 10))
+      if (self._confine_to_bounds):
+        g = self.boundingRect()
+        mr = self.mapRectFromScene(QRectF(0.0, 0.0, 5.0, 5.0))
+        g.adjust(- mr.width(), - mr.height(), mr.width(), mr.height())
+        r = r.intersected(g)
       self._box_rect = r
-      self._box_view.setRect(
-        self.mapRectToScene(self._box_rect))
+      self._box_view.setRect(self.mapRectToScene(self._box_rect))
     else:
       Interactive.mouseMoveEvent(self, event)
   def mouseReleaseEvent(self, event):
@@ -413,8 +416,8 @@ class BoxSelectable(Interactive, ModelView):
       self.scene().removeItem(self._box_view)
       self._box_view = None
     if (r):
-      min_dim = min(r.width(), r.height())
-      if (min_dim >= 6):
+      mr = self.mapRectFromScene(QRectF(0.0, 0.0, 6.0, 6.0))
+      if ((r.width() >= mr.width()) and (r.height() >= mr.height())):
         self.select_box(event, r)
         return
     Interactive.mouseReleaseEvent(self, event)

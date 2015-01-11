@@ -16,6 +16,7 @@ import audio
 import transport
 import track
 import midi
+from unit import Unit, GroupUnit
 
 # this class holds the stack of views and models a context click 
 #  might refer to
@@ -96,9 +97,9 @@ class WorkspaceMenu(QMenu):
     action.triggered.connect(callback)
     self.addAction(action)
   # add a generic unit
-  def add_unit(self, unit):
+  def add_unit(self, new_unit):
     UndoManager.begin_action(self.units)
-    self.units.append(unit)
+    self.units.append(new_unit)
     UndoManager.end_action()
   # add a sampler
   def on_add_sampler(self, *args):
@@ -390,13 +391,35 @@ class UnitMenu(QMenu):
     self.setIcon(icon.get('unit'))
     self.unit = unit
     self.view = view
+    selected_units = self.selected_units()
+    if ((self.unit in selected_units) and 
+        (len(selected_units) > 1)):
+      action = QAction('Group Selected Units', self)
+      action.setStatusTip('Add the selected units to a group')
+      action.triggered.connect(self.on_group)
+      self.addAction(action)
     self.addMenu(HueMenu(self.unit, self))
     delete_action = QAction(icon.get('delete'), 'Delete', self)
     delete_action.setStatusTip('Delete %s' % self.unit.name)
     delete_action.triggered.connect(self.on_delete)
     self.addAction(delete_action)
+  # get all selected units
+  def selected_units(self):
+    units = set()
+    for unit in Selection.models:
+      if (isinstance(unit, Unit)):
+        units.add(unit)
+    return(units)
   def on_delete(self):
     self.view.on_delete()
+  def on_group(self):
+    workspace_view = self.view.parentItemWithAttribute('document')
+    if (workspace_view is None): return
+    units = workspace_view.document.units
+    selected_units = self.selected_units()
+    UndoManager.begin_action(units)
+    units.append(GroupUnit(units=selected_units, name='Group'))
+    UndoManager.end_action()
 ContextMenu.register_context('.*UnitView', UnitMenu, ('unit',))
 
 # make a context menu for midi monitor unit
@@ -443,10 +466,8 @@ class ConnectionMenu(QMenu):
     self.addMenu(HueMenu(self.connection, self))
     delete_action = QAction(icon.get('delete'), 'Disconnect', self)
     delete_action.setStatusTip('Remove this connection')
-    delete_action.triggered.connect(self.on_delete)
+    delete_action.triggered.connect(self.view.on_delete)
     self.addAction(delete_action)
-  def on_delete(self):
-    pass
 ContextMenu.register_context('ConnectionView', ConnectionMenu, ('connection',))
 
 # make a menu to select colors for an element

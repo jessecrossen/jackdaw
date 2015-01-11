@@ -117,6 +117,57 @@ class UnitList(ModelList):
     })
 serializable.add(UnitList)
 
+# make a unit that groups other units so they can be moved together
+class GroupUnit(Unit):
+  def __init__(self, units=(), *args, **kwargs):
+    self.units = UnitList(units)
+    Unit.__init__(self, *args, **kwargs)
+    self.units.add_observer(self.on_change)
+  @property
+  def group_bounds(self):
+    r = QRectF(0.0, 0.0, 0.0, 0.0)
+    for unit in self.units:
+      ur = QRectF(unit.x - (unit.width / 2), unit.y - (unit.height / 2),
+                  unit.width, unit.height)
+      if ((r.width() == 0.0) and (r.height() == 0.0)):
+        r = ur
+      else:
+        r = r.united(ur)
+    return(r)
+  @property
+  def x(self):
+    r = self.group_bounds
+    return(r.x() + (r.width() / 2))
+  @x.setter
+  def x(self, new_x):
+    old_x = self.x
+    delta = new_x - old_x
+    if (delta != 0):
+      for unit in self.units:
+        unit.x += delta
+  @property
+  def y(self):
+    r = self.group_bounds
+    return(r.y() + (r.height() / 2))
+  @y.setter
+  def y(self, new_y):
+    old_y = self.y
+    delta = new_y - old_y
+    if (delta != 0):
+      for unit in self.units:
+        unit.y += delta
+  @property
+  def width(self):
+    return(self.group_bounds.width())
+  @property
+  def height(self):
+    return(self.group_bounds.height())
+  def serialize(self):
+    obj = Unit.serialize(self)
+    obj['units'] = list(self.units)
+    return(obj)
+serializable.add(GroupUnit)
+
 # make a mixin to make a model a signal source
 class Source(object):
   def __init__(self):

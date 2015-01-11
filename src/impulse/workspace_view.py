@@ -19,28 +19,29 @@ import audio
 import audio_view
 import transport
 import transport_view
+from model import Selection
 
 # show a workspace with a list of units
-class WorkspaceView(view.Interactive, view.ModelView):
+class WorkspaceView(view.BoxSelectable, view.Interactive, view.ModelView):
   def __init__(self, document, parent=None):
     self._bounding_rect = QRectF()
     view.ModelView.__init__(self, model=document.units, parent=parent)
     view.Interactive.__init__(self)
+    view.BoxSelectable.__init__(self, confine_to_bounds=False)
     # keep a reference to the document
     self.document = document
-    # add a sub-item for connections to keep them behind the units
-    #  for visual and interaction purposes
-    self.connection_layer = QGraphicsRectItem(self)
     # add a layout for the units
     self.units_layout = UnitListLayout(self, 
       document.units, UnitView.view_for_unit)
     self.units_layout.extents_changed.connect(self.on_extents_changed)
+    self.connection_layer = self.units_layout.connection_layer
     # connect to the patch bay
     self.patch_bay = document.patch_bay
     self.patch_bay.add_observer(self.autoconnect)
     # show a cursor that indicates clicking will add a unit
     self.setCursor(Qt.CrossCursor)
   def destroy(self):
+    self.connection_layer = None
     self.units_layout.extents_changed.disconnect(self.on_extents_changed)
     self.patch_bay.remove_observer(self.autoconnect)
     for item in self.connection_layer.childItems():
@@ -134,10 +135,13 @@ class WorkspaceView(view.Interactive, view.ModelView):
   def on_click(self, event):
     item = self.scene().itemAt(event.scenePos())
     if (item is not self): return
-    add_menu = menu.WorkspaceMenu(document=self.document,
-                                  event=event,
-                                  parent=event.widget())
-    add_menu.popup(event.screenPos())
+    if (len(Selection.models) > 0):
+      Selection.deselect_all()
+    else:
+      add_menu = menu.WorkspaceMenu(document=self.document,
+                                    event=event,
+                                    parent=event.widget())
+      add_menu.popup(event.screenPos())
   
 # lay units out on the workspace
 class UnitListLayout(view.ListLayout):
@@ -145,6 +149,14 @@ class UnitListLayout(view.ListLayout):
   def __init__(self, *args, **kwargs):
     self._extents = QRectF()
     view.ListLayout.__init__(self, *args, **kwargs)
+    # add a layer for connections to control their 
+    #  stacking order with respect to the units themselved
+    self.connection_layer = QGraphicsRectItem(self)
+    self.connection_layer.setZValue(-1.0)
+  def destroy(self):
+    self.connection_layer.setParentItem(None)
+    self.connection_layer = None
+    view.ListLayout.destroy(self)
   @property
   def extents(self):
     return(self._extents)

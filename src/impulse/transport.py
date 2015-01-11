@@ -482,8 +482,6 @@ class NanoKontrol2InputHandler(InputHandler):
       else:
         self.clear_holding()
       self.update_led(controller, value > 64)
-    else:
-      print('Unhandled message type %02X' % (controller))
   # handle a button being held down
   def set_holding(self, button):
     self._hold_button = button

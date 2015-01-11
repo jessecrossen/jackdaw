@@ -8,7 +8,7 @@ import view
 from undo import UndoManager
 from button_view import DeleteButton, AddButton, DragButton, ResizeButton
 
-class UnitView(view.ModelView):
+class UnitView(view.Selectable, view.ModelView):
   # define a mapping from unit classes to specific view classes
   _unit_class_to_view_class = dict()
   # the margin to leave around the content
@@ -19,6 +19,7 @@ class UnitView(view.ModelView):
   BOTTOM_HEIGHT = 24.0
   def __init__(self, *args, **kwargs):
     view.ModelView.__init__(self, *args, **kwargs)
+    view.Selectable.__init__(self)
     self.title_proxy = None
     self._size = QSizeF(60.0, 40.0)
     self._content = None
@@ -189,7 +190,9 @@ class UnitView(view.ModelView):
     pen = self.pen()
     pen.setWidth(2.0)
     qp.setPen(pen)
-    if (self.unit.hue is not None):
+    if (self.unit.selected):
+      qp.setBrush(self.brush(0.30))
+    elif (self.unit.hue is not None):
       color = QColor()
       color.setHsvF(self.unit.hue, 1.0, 1.0, 0.30)
       qp.setBrush(QBrush(color))
@@ -198,6 +201,44 @@ class UnitView(view.ModelView):
     r = self.boundingRect()
     r.adjust(1, 1, -1, -1)
     qp.drawRoundedRect(r, 4.0, 4.0)
+
+class GroupUnitView(UnitView):
+  def __init__(self, *args, **kwargs):
+    UnitView.__init__(self, *args, **kwargs)
+    self.allow_delete = True
+    # make a dummy placeholder view for content
+    self._content = QGraphicsRectItem(self)
+    self._content.setVisible(False)
+    self._group_rect = QRectF()
+    # put groups behind other units and the connections layer (which has 
+    #  a z-value of -1.0)
+    self.setZValue(- 2.0)
+  # override layout to ensure the group view contains all grouped units
+  def setRect(self, r):
+    parent = self.parentItem()
+    if (parent is None): return
+    siblings = parent.childItems()
+    gr = QRectF()
+    for view in siblings:
+      if ((hasattr(view, 'unit')) and (view.unit in self.unit.units)):
+        vr = view.rect()
+        if ((gr.width() == 0.0) and (gr.height() == 0.0)):
+          gr = vr
+        else:
+          gr = gr.united(vr)
+    # add a margin around the content
+    cm = int(1.5 * self.MARGIN)
+    gr.adjust(- cm, - cm, cm, cm)
+    self._group_rect = gr
+    # leave room for the unit view's elements and borders
+    m = self.MARGIN
+    r = QRectF(gr)
+    r.adjust(- m, - self.TOP_HEIGHT, m, 0.0)
+    UnitView.setRect(self, r)
+  def content_size(self):
+    return(self._group_rect.size())  
+    
+UnitView.register_unit_view(unit.GroupUnit, GroupUnitView)
 
 # show a connection between two ports
 class ConnectionView(view.Selectable, view.ModelView):
@@ -412,11 +453,13 @@ class ConnectionView(view.Selectable, view.ModelView):
   def keyPressEvent(self, event):
     if ((self.connection.selected) and 
         (event.key() == Qt.Key_Delete) or (event.key() == Qt.Key_Backspace)):
-      self.connection.source = None
-      self.connection.sink = None
-      self.setParent(None)
+      self.on_delete()
     else:
       event.ignore()
+  def on_delete(self):
+    self.connection.source = None
+    self.connection.sink = None
+    self.destroy()
   # deselect the connection if it loses focus
   def focusOutEvent(self, event):
     self.connection.selected = False

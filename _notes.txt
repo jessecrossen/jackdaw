@@ -1,10 +1,15 @@
 ON DECK:
-- special grouping unit which moves all units inside it when moved
-- resizing a unit pushes connected units along with the edges
+- resizing a unit w/shift pushes other units along with the edges
 
 DEFECTS:
 
 OPTIMIZATIONS:
+- the UI is starting to stutter when dragged, profile and optimize
+
+UI:
+- start with a blank workspace and put a helpful message in the center
+- warn when failing to connect to JACK
+- warn when LinuxSampler is not available
 
 FEATURES:
 - write or adapt a standalone JACK LV2 and/or DSSI effects host
