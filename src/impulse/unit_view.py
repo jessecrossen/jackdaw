@@ -234,7 +234,9 @@ class GroupUnitView(UnitView):
     m = self.MARGIN
     r = QRectF(gr)
     r.adjust(- m, - self.TOP_HEIGHT, m, 0.0)
+    self.prepareGeometryChange()
     UnitView.setRect(self, r)
+    self.layout()
   def content_size(self):
     return(self._group_rect.size())  
     

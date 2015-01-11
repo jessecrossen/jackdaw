@@ -145,6 +145,10 @@ class Document(Model):
     for item in outputs:
       patch_bay.remove_connections_for_unit(item)
     units.remove(unit)
+    # remove the unit from any groups it might be a part of
+    for group in units:
+      if ((hasattr(group, 'units')) and (unit in group.units)):
+        group.units.remove(unit)
     UndoManager.end_action()
   # update the duration of the transport based on the length of the tracks
   def update_transport_duration(self):
