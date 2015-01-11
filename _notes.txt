@@ -4,7 +4,8 @@ ON DECK:
 DEFECTS:
 
 OPTIMIZATIONS:
-- the UI is starting to stutter when dragged, profile and optimize
+- the UI is starting to stutter when dragged, profile and optimize 
+    (possibly relates to running layout when position changes)
 
 UI:
 - start with a blank workspace and put a helpful message in the center

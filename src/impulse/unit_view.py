@@ -210,9 +210,6 @@ class GroupUnitView(UnitView):
     self._content = QGraphicsRectItem(self)
     self._content.setVisible(False)
     self._group_rect = QRectF()
-    # put groups behind other units and the connections layer (which has 
-    #  a z-value of -1.0)
-    self.setZValue(- 2.0)
   # override layout to ensure the group view contains all grouped units
   def setRect(self, r):
     parent = self.parentItem()
@@ -236,10 +233,13 @@ class GroupUnitView(UnitView):
     r.adjust(- m, - self.TOP_HEIGHT, m, 0.0)
     self.prepareGeometryChange()
     UnitView.setRect(self, r)
+    # put groups behind other units and the connections layer (z-value -1.0) 
+    #  and order them by size so the biggest are in the back, to support 
+    #  nested groups without traversing the tree
+    self.setZValue(-1.0 - gr.width())
     self.layout()
   def content_size(self):
     return(self._group_rect.size())  
-    
 UnitView.register_unit_view(unit.GroupUnit, GroupUnitView)
 
 # show a connection between two ports
