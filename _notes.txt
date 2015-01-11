@@ -1,5 +1,4 @@
 ON DECK:
-- selectable protocols for transport control
 - special grouping unit which moves all units inside it when moved
 - resizing a unit pushes connected units along with the edges
 
@@ -8,11 +7,11 @@ DEFECTS:
 OPTIMIZATIONS:
 
 FEATURES:
+- write or adapt a standalone JACK LV2 and/or DSSI effects host
+- add a unit for effects processing
 - make JACK clients/units for basic analog synth components
 - make JACK clients/units for basic audio ops like mix/pan
 - make a visual control surface for mix/pan control
-- make logo and rename project
-- write or adapt a standalone JACK LV2 and/or DSSI effects host
-- add a unit for effects processing
 - key modifier for proportional stretch of a block's events
 - midi file import/export for block event lists
+- make logo and rename project

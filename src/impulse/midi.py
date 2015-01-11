@@ -168,6 +168,9 @@ class InputHandler(observable.Object):
     self._timer.setInterval(0)
     self._timer.timeout.connect(self.receive)
     self._timer.start()
+  def destroy(self):
+    self._timer.timeout.disconnect(self.receive)
+    self._timer.stop()
   @property
   def port(self):
     return(self._port)

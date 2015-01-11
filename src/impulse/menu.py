@@ -190,6 +190,28 @@ class InstrumentMenu(QMenu):
 ContextMenu.register_context('InstrumentView', InstrumentMenu, ('instrument',))
 ContextMenu.register_context('InstrumentListView', None, ('instruments',))
 
+class TransportUnitMenu(QMenu):
+  def __init__(self, unit, event, parent, view=None):
+    QMenu.__init__(self, parent)
+    self.setTitle('Transport')
+    self.setIcon(icon.get('transport'))
+    self.transport = unit.transport
+    protocols = self.transport.protocols
+    menu = QMenu()
+    menu.setIcon(icon.get('data'))
+    menu.setTitle('MIDI Protocol')
+    for protocol in protocols.iterkeys():
+      (name, cls) = protocols[protocol]
+      action = QAction(name, menu)
+      if (protocol == self.transport.protocol):
+        action.setIcon(icon.get('check'))
+      action.triggered.connect(functools.partial(self.on_protocol, protocol))
+      menu.addAction(action)
+    self.addMenu(menu)
+  def on_protocol(self, protocol):
+    self.transport.protocol = protocol
+ContextMenu.register_context('TransportUnitView', TransportUnitMenu, ('unit',))
+
 class TrackMenu(QMenu):
   def __init__(self, track, event, parent, view=None):
     QMenu.__init__(self, parent)

@@ -1,4 +1,5 @@
-import jackpatch 
+import jackpatch
+import collections
 
 from PySide.QtCore import Signal, QTimer
 
@@ -16,7 +17,8 @@ class Transport(observable.Object, unit.Sink):
   recording_will_stop = Signal()
   recording_stopped = Signal()
   # regular init stuff
-  def __init__(self, time=0.0, duration=0.0, cycling=False, marks=()):
+  def __init__(self, time=0.0, duration=0.0, cycling=False, marks=(), 
+               protocol='nanokontrol2'):
     observable.Object.__init__(self)
     unit.Sink.__init__(self)
     # set the interval to update at
@@ -58,8 +60,12 @@ class Transport(observable.Object, unit.Sink):
     self._sink_type = 'midi'
     self._sink_port = jackpatch.Port(name='midi.RX', client=self._client,
                                      flags=jackpatch.JackPortIsInput)
-    self._input_handler = TransportInputHandler(
-      port=self.sink_port, transport=self)
+    self._source_port = jackpatch.Port(client=self._client,
+                                       name="midi.TX", 
+                                       flags=jackpatch.JackPortIsOutput)
+    self._input_handler = None
+    self._protocol = None
+    self.protocol = protocol
     # the amount of time to allow between updates of the display
     self.display_interval = 0.05 # seconds
     # start updating
@@ -73,6 +79,27 @@ class Transport(observable.Object, unit.Sink):
   def stop(self, *args):
     self.playing = False
     self.recording = False
+  # the protocol to use to interpret MIDI input
+  @property
+  def protocol(self):
+    return(self._protocol)
+  @protocol.setter
+  def protocol(self, value):
+    if ((value != self._protocol) and (value in self.protocols)):
+      self._protocol = value
+      (name, cls) = self.protocols[value]
+      if (self._input_handler is not None):
+        self._input_handler.destroy()
+      self._input_handler = cls(port=self.sink_port, 
+                                response_port=self._source_port, 
+                                transport=self)
+  # return a map from protocols to handler classes
+  @property
+  def protocols(self):
+    return(collections.OrderedDict((
+      ('realtime', ('System Realtime', SystemRealtimeInputHandler)),
+      ('nanokontrol2', ('Korg NanoKONTROL2', NanoKontrol2InputHandler))
+    )))
   # whether play mode is on
   @property
   def playing(self):
@@ -278,7 +305,8 @@ class Transport(observable.Object, unit.Sink):
       'time': self.time,
       'duration': self.duration,
       'cycling': self.cycling,
-      'marks': list(self.marks)
+      'marks': list(self.marks),
+      'protocol': self.protocol
     })
 serializable.add(Transport)
 
@@ -304,10 +332,31 @@ class Mark(observable.Object):
     })
 serializable.add(Mark)
 
-# a handler for MIDI commands that control the transport
-class TransportInputHandler(midi.InputHandler):
-  def __init__(self, port, transport):
+# a base class for transport input handlers
+class InputHandler(midi.InputHandler):
+  def __init__(self, port, transport, response_port = None):
     midi.InputHandler.__init__(self, port=port, target=transport)
+    self._response_port = response_port
+  @property
+  def transport(self):
+    return(self._target)
+
+# a handler for standard system realtime messages (start/stop only)
+class SystemRealtimeInputHandler(InputHandler):
+  def handle_message(self, data, time):
+    if (len(data) == 1):
+      kind = data[0]
+      # play/continue
+      if ((kind == 0xFA) or (kind == 0xFB)):
+        self.transport.play()
+      # stop
+      elif (kind == 0xFC):
+        self.transport.stop()
+
+# a handler for MIDI transport commands from a Korg NanoKONTROL2
+class NanoKontrol2InputHandler(InputHandler):
+  def __init__(self, *args, **kwargs):
+    InputHandler.__init__(self, *args, **kwargs)
     self._leds = dict()
     self._hold_button = None
     self._hold_timer = None
@@ -318,9 +367,14 @@ class TransportInputHandler(midi.InputHandler):
     self._connected_controllers = set()
     self.transport.add_observer(self.on_transport_change)
     self.on_transport_change()
-  @property
-  def transport(self):
-    return(self._target)
+  def destroy(self):
+    if (self._send_port is not None):
+      client = self._send_port.client
+      sinks = self._send_port.get_connections()
+      for sink in sinks:
+        client.disconnect(self._send_port, sink)
+    self.transport.remove_observer(self.on_transport_change)
+    InputHandler.destroy(self)
   # connect back to all controlling devices
   def on_transport_change(self):
     # update connections to controlling devices
@@ -334,28 +388,21 @@ class TransportInputHandler(midi.InputHandler):
       self.update_led(self.PLAY_BUTTON, self.transport.playing)
       self.update_led(self.RECORD_BUTTON, self.transport.recording)
       self.update_led(self.CYCLE_BUTTON, self.transport.cycling)
-#    if (self.mixer):
-#      for track_index in range(0, 8):
-#        if (track_index < len(self.mixer.tracks)):
-#          track = self.mixer.tracks[track_index]
-#          self.update_led(self.SOLO | track_index, track.solo)
-#          self.update_led(self.MUTE | track_index, track.mute)
-#          self.update_led(self.ARM | track_index, track.arm)
-#        else:
-#          self.update_led(self.SOLO | track_index, False)
-#          self.update_led(self.MUTE | track_index, False)
-#          self.update_led(self.ARM | track_index, False)
   def connect_controller(self, name):
     # get an input port for the device
-    input_ports = self.port.client.get_ports(name_pattern=name+':.*',
-                                             type_pattern='.*midi.*',
-                                            flags=jackpatch.JackPortIsInput)
+    client = self.port.client
+    input_ports = client.get_ports(name_pattern=name+':.*',
+                                   type_pattern='.*midi.*',
+                                   flags=jackpatch.JackPortIsInput)
     if (len(input_ports) == 0): return
     input_port = input_ports[0]
     if (self._send_port is None):
-      self._send_port = jackpatch.Port(client=self.port.client,
-                                       name="midi.TX", 
-                                       flags=jackpatch.JackPortIsOutput)
+      if (self._response_port is not None):
+        self._send_port = self._response_port
+      else:
+        self._send_port = jackpatch.Port(client=client,
+                                         name="midi.TX", 
+                                         flags=jackpatch.JackPortIsOutput)
     self.port.client.connect(self._send_port, input_port)
     self._connected_controllers.add(name)
     self.init_controllers()
@@ -432,29 +479,9 @@ class TransportInputHandler(midi.InputHandler):
           elif (controller == self.SET_MARK_BUTTON):
             self.transport.toggle_mark()
             self.set_holding(controller)
-        #if (self.mixer):
-          #if (controller == self.PREVIOUS_TRACK_BUTTON):
-            #self.mixer.previous_track()
-          #elif (controller == self.NEXT_TRACK_BUTTON):
-            #self.mixer.next_track()
       else:
         self.clear_holding()
       self.update_led(controller, value > 64)
-    #elif (kind in self.PER_TRACK):
-      #track_index = controller & 0x07
-      #if ((self.mixer) and (track_index < len(self.mixer.tracks))):
-        #track = self.mixer.tracks[track_index]
-        #if (kind == self.LEVEL):
-          #track.level = float(value) / 127
-        #elif (kind == self.PAN):
-          #track.pan = ((float(value) / 127) * 2) - 1.0
-        #if (value > 64):
-          #if (kind == self.SOLO):
-            #track.solo = not track.solo
-          #elif (kind == self.MUTE):
-            #track.mute = not track.mute
-          #elif (kind == self.ARM):
-            #track.arm = not track.arm
     else:
       print('Unhandled message type %02X' % (controller))
   # handle a button being held down
