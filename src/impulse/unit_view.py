@@ -38,6 +38,8 @@ class UnitView(view.Selectable, view.ModelView):
     # show a normal cursor to override the workspace cursor
     self.setCursor(Qt.ArrowCursor)
   def destroy(self):
+    if (self._resize_button):
+      self._resize_button.resize.disconnect(self.on_resize)
     self.unit.name_changed.disconnect(self.on_name_changed)
     # removing the content will change the unit view's geometry briefly
     self.prepareGeometryChange()
@@ -112,6 +114,25 @@ class UnitView(view.Selectable, view.ModelView):
   def on_name_changed(self):
     self.prepareGeometryChange()
     self.layout()
+  def on_resize(self, event, width, height):
+    delta_width = width - self.unit.width
+    delta_height = height - self.unit.height
+    if (event.modifiers() == Qt.ShiftModifier):
+      delta_x = delta_width / 2.0
+      delta_y = delta_height / 2.0
+      workspace_view = self.parentItemWithAttribute('units')
+      if (workspace_view is not None):
+        for other_unit in workspace_view.units:
+          if ((other_unit is not self.unit) and 
+              (not isinstance(other_unit, unit.GroupUnit))):
+            if (other_unit.x < self.unit.x):
+              other_unit.x -= delta_x
+            elif (other_unit.x > self.unit.x):
+              other_unit.x += delta_x
+            if (other_unit.y < self.unit.y):
+              other_unit.y -= delta_y
+            elif (other_unit.y > self.unit.y):
+              other_unit.y += delta_y
   def layout(self):
     top_height = self.TOP_HEIGHT
     bottom_height = self.BOTTOM_HEIGHT
@@ -164,11 +185,13 @@ class UnitView(view.Selectable, view.ModelView):
           target=self.unit,
           horizontal=self.allow_resize_width, 
           vertical=self.allow_resize_height)
+        self._resize_button.resize.connect(self.on_resize)
       if (self._resize_button):
         self._resize_button.setRect(
           QRectF(r.right() - bottom_height, r.bottom() - bottom_height, 
                  bottom_height, bottom_height))
     elif (self._resize_button):
+      self._resize_button.resize.disconnect(self.on_resize)
       self._resize_button.destroy()
       self._resize_button = None
     # position the content, if any

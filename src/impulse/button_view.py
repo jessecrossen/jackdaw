@@ -79,6 +79,7 @@ class AddButton(ButtonView):
 
 # show a button for resizing things
 class ResizeButton(ButtonView):
+  resize = Signal(object, float, float)
   def __init__(self, parent, target=None, horizontal=True, vertical=True):
     ButtonView.__init__(self, parent)
     if (target is None):
@@ -138,6 +139,7 @@ class ResizeButton(ButtonView):
       try:
         self._target.prepareGeometryChange()
       except AttributeError: pass
+      self.resize.emit(event, w, h)
       set_rect = False
       if (hasattr(self._target, 'width')):
         self._target.width = w
@@ -148,7 +150,9 @@ class ResizeButton(ButtonView):
       elif (self._vertical):
         set_rect = True
       if (set_rect):
-        self._target.setRect(QRectF(x, y, w, h))
+        try:
+          self._target.setRect(QRectF(x, y, w, h))
+        except AttributeError: pass
   def on_drag_end(self, event):
     self._start_rect = None
     self._start_bounds = None

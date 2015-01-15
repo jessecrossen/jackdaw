@@ -1,5 +1,5 @@
 ON DECK:
-- resizing a unit w/shift pushes other units along with the edges
+- start with a blank workspace and put a helpful message in the center
 
 DEFECTS:
 
@@ -8,7 +8,6 @@ OPTIMIZATIONS:
     (possibly relates to running layout when position changes)
 
 UI:
-- start with a blank workspace and put a helpful message in the center
 - warn when failing to connect to JACK
 - warn when LinuxSampler is not available
 
@@ -21,3 +20,4 @@ FEATURES:
 - key modifier for proportional stretch of a block's events
 - midi file import/export for block event lists
 - make logo and rename project
+- write some basic usage documentation
