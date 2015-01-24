@@ -1,12 +1,13 @@
 #!/usr/bin/env python
 
 import sys
+import os
 import platform
 
 from PySide.QtCore import *
 from PySide.QtGui import *
 
-from impulse import windows, track, block, doc, sampler
+from jackdaw import windows, track, block, doc, sampler
 
 class App(QApplication):
   def __init__(self):
@@ -15,8 +16,9 @@ class App(QApplication):
     self._window.show()
     # open test file for rapid debugging
     if (platform.node() == 'boombox.home.net'):
-      self._window.document = doc.Document.get_from_path(
-        '/home/jesse/Documents/impulse/test.jdp')
+      test_path = '/home/jesse/Documents/test.jdp'
+      if (os.path.exists(test_path)):
+        self._window.document = doc.Document.get_from_path(test_path)
     # start the sampler engine
     sampler.LinuxSampler.start()
 
