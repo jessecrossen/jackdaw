@@ -17,7 +17,7 @@ If you have experience installing python modules, you should be able to get the 
 
 USING
 =====
-This is simple tutorial to cover the basics of using the application. When you start up, you should see an empty document like this:
+This is a simple tutorial to cover the basics of using the application. When you start up, you should see an empty document like this:
 
 <img src="https://raw.githubusercontent.com/jessecrossen/jackdaw/master/screenshots/basics/01-new-document.png"/>
 
@@ -29,7 +29,7 @@ Let's add a unit to get MIDI input from an instrument:
 
 <img src="https://raw.githubusercontent.com/jessecrossen/jackdaw/master/screenshots/basics/03-inputs.png"/>
 
-There's nothing inside the unit because no instruments have been plugged in (or possibly they have not been connected to JACK). At the top left of the unit you can see a grip that allows you to drag it around, and at the top right is an X button in case you want to delete it. Let's plug in a [QuNEXUS](http://www.keithmcmillen.com/products/qunexus/) and see what happens.
+There's nothing inside the unit yet because no instruments have been plugged in (or possibly they have not been connected to JACK). At the top left of the unit you can see a grip that allows you to drag it around, and at the top right is an X button in case you want to delete it. Let's plug in a [QuNEXUS](http://www.keithmcmillen.com/products/qunexus/) and see what happens.
 
 <img src="https://raw.githubusercontent.com/jessecrossen/jackdaw/master/screenshots/basics/04-sampler.png"/>
 
@@ -37,15 +37,19 @@ As you can see, I've also added a sampled instrument by clicking on the workspac
 
 <img src="https://raw.githubusercontent.com/jessecrossen/jackdaw/master/screenshots/basics/05-rename.png"/>
 
-Okay, now we have an input and a synthesizer, but nothing is happening when we play. That's because they need to be connected together. The little stubs on the sides of the units are called **ports**, and they work kind of like the plug jacks on a physical piece of equipment. Ones on the left side of a unit are inputs, ones on the right are outputs. Diamond-shaped ones are MIDI ports, circular ones are audio ports. If there is one "wire" at the base of the port, it's mono, and if there are two it's stereo. To connect two ports, you just drag from one to the other:
+Okay, so now we have an input and a synthesizer, but nothing is happening when we play. That's because they need to be connected together. The little stubs on the sides of the units are called **ports**, and they work kind of like the plug jacks on a physical piece of equipment. Ports on the left side of a unit are inputs, ports on the right are outputs. Diamond-shaped ones are MIDI ports, circular ones are audio ports. If there is one "wire" at the base of the port, it's mono, and if there are two it's stereo. To connect two ports, you just drag from one to the other:
 
 <img src="https://raw.githubusercontent.com/jessecrossen/jackdaw/master/screenshots/basics/06-connecting.png"/>
 
-If you want to disconnect, just grab the wire and drag on it to pull it out and then let go, just like you would with a physical patch cable. You can also click it and press delete on your keyboard, or right-click it and select Delete from the context menu. Okay, but there's still no sound! That's because the sampler isn't automatically connected to any outputs. This is because you might want to route its output through some effects or something like that. To connect it directly to the output, we can click on the workspace and add an **Audio Output** unit, then connect the port on the right side of the sampler to that:
+If you want to disconnect, simply grab the wire and drag on it to pull it out and then let go, just like you would with a physical patch cable. You can also click it and press delete on your keyboard, or right-click it and select Delete from the context menu.
+
+Okay, but there's still no sound! That's because the sampler isn't automatically connected to any outputs, since you might want to route its output through some effects or something like that. To connect it directly to the output, we can click on the workspace and add an **Audio Output** unit, then connect the port on the right side of the sampler to that:
 
 <img src="https://raw.githubusercontent.com/jessecrossen/jackdaw/master/screenshots/basics/07-with-output.png"/>
 
-Notice the doubled line indicating that the sampler output is in stereo. You can connect stereo and mono ports and JACKDAW will try to do the right thing, either mixing stereo down to mono or duplicating the mono channel onto each stereo channel. At any rate, we should now be able to hear some sound when we hit the keys. If not, make sure your volume is up and you're playing in an octave that the sampler instrument actually supports. Another important concept in JACKDAW is that it has hierarchical context menus. Notice how the tuba is inside the sampler unit, which is itself inside the workspace. If you right-click it, you'll see menu entries for each level of this hierarchy. That way you don't need to be that careful exactly where you right-click; as long as the mouse is inside an element, you should get a menu for it. For example, many elements can be given a color to make them stand out in complex documents. Here's the color menu for a unit:
+Notice the doubled line indicating that the sampler output is in stereo. You can connect stereo and mono ports and JACKDAW will try to do the right thing, either mixing stereo down to mono or duplicating the mono channel onto each stereo channel. At any rate, we should now be able to hear some sound when we hit the keys. If not, make sure your volume is up and you're playing in an octave that the sampler instrument actually supports.
+
+Another important concept in JACKDAW is that it has hierarchical context menus. Notice how the tuba is inside the sampler unit, which is itself inside the workspace. If you right-click it, you'll see menu entries for each level of this hierarchy. That way you don't need to be so careful exactly where you right-click; as long as the mouse is inside an element, you should get a menu for it. For example, many elements can be given a color to make them stand out in complex documents. Here's the color menu for a unit:
 
 <img src="https://raw.githubusercontent.com/jessecrossen/jackdaw/master/screenshots/basics/08-color-menu.png"/>
 <img src="https://raw.githubusercontent.com/jessecrossen/jackdaw/master/screenshots/basics/09-colored.png"/>
@@ -56,11 +60,11 @@ So that's a basic setup for fooling around or playing live, but you can also rec
 
 As you can see, we've connected the sequencer unit in between the MIDI instrument and the sampler. The sequencer has more controls than the other units. The main empty area of the unit is a track, which has its own inputs and outputs and works a lot like a track on a 4-track tape recorder (if you're old enough to have used those). The vertical red line is called the **transport** and is kind of like the tape head on a 4-track, marking a specific time where recording and playback will happen. On the bottom left is a + button which allows you to add more tracks (unlike the 4-track you get as many as you want!), and the bottom right has a grip that allows you to make the sequencer wider or narrower as needed. Below the track is a scrollbar that lets you navigate through time. The three buttons to the left of each track allow you to **aRm**, **Mute**, or **Solo** the track. Arming the track opens it up for recording. If the track isn't armed, nothing is going to be written onto it even if an instrument is connected. Muting a track stops it from playing, and soloing it stops *other* tracks from playing so you can hear it alone.
 
-Okay, but at this point, you won't hear anything you play. That's because the track needs to be armed to preview what you're playing:
+At this point, you won't hear anything you play. That's because the track needs to be armed to start previewing what you're playing:
 
 <img src="https://raw.githubusercontent.com/jessecrossen/jackdaw/master/screenshots/basics/11-sequencer-armed.png"/>
 
-Notice the background of the track changes to red, reminding you that it's ready for recording, and you should hear something when you play. This is a good time to practice what you're going to record. Click the big red circle on the toolbar to actually start recording. Click it again to stop. Now you should have a box with some notes in it, which is called a **block**, and is the basic container for a specific musical phrase.
+Notice how the background of the track changes to red, reminding you that it's ready for recording, and you should hear something when you play. This is a good time to practice what you're going to record. When you're ready, click the big red circle on the toolbar to actually start recording. Click it again to stop. Now you should have a box with some notes in it, which is called a **block**, and is the basic container for a specific musical phrase.
 
 <img src="https://raw.githubusercontent.com/jessecrossen/jackdaw/master/screenshots/basics/13-sequencer-data.png"/>
 
