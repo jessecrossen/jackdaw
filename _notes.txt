@@ -1,5 +1,5 @@
 ON DECK:
-- start with a blank workspace and put a helpful message in the center
+- write some basic usage documentation
 
 DEFECTS:
 
@@ -19,5 +19,3 @@ FEATURES:
 - make a visual control surface for mix/pan control
 - key modifier for proportional stretch of a block's events
 - midi file import/export for block event lists
-- make logo and rename project
-- write some basic usage documentation

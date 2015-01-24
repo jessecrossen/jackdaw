@@ -80,6 +80,8 @@ class WorkspaceMenu(QMenu):
     self.document = document
     self.units = document.units
     self.scene_pos = event.scenePos()
+    self.add_action('midi', 'MIDI Inputs', 
+                    'Add a MIDI instrument input unit', self.on_add_midi_input)
     self.add_action('transport', 'Transport', 
                     'Add a transport control unit', self.on_add_transport)
     self.add_action('tracks', 'Sequencer', 
@@ -101,6 +103,15 @@ class WorkspaceMenu(QMenu):
     UndoManager.begin_action(self.units)
     self.units.append(new_unit)
     UndoManager.end_action()
+  # add a MIDI input
+  def on_add_midi_input(self, *args):
+    self.add_unit(midi.DeviceListUnit(
+        name='MIDI Inputs',
+        devices=self.document.devices,
+        require_input=False,
+        require_output=True,
+        x=self.scene_pos.x(),
+        y=self.scene_pos.y()))
   # add a sampler
   def on_add_sampler(self, *args):
     instrument = sampler.Instrument.new_from_browse()

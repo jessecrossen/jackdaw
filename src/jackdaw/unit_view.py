@@ -25,7 +25,7 @@ class UnitView(view.Selectable, view.ModelView):
     self._content = None
     self._input_layout = None
     self._output_layout = None
-    self.allow_delete = False
+    self.allow_delete = True
     self._delete_button = None
     self._drag_button = None
     self.allow_resize_width = False

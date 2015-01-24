@@ -19,6 +19,8 @@ class App(QApplication):
       test_path = '/home/jesse/Documents/test.jdp'
       if (os.path.exists(test_path)):
         self._window.document = doc.Document.get_from_path(test_path)
+    if (self._window.document is None):
+      self._window.document = doc.Document()
     # start the sampler engine
     sampler.LinuxSampler.start()
 

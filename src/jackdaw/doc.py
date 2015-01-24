@@ -104,15 +104,6 @@ class Document(Model):
     # a list of units on the workspace
     if (units is None):
       units = UnitList()
-      units.append(DeviceListUnit(
-        name='Inputs',
-        devices=self.devices, 
-        require_input=False,
-        require_output=True,
-        x=-400))
-      units.append(SystemPlaybackUnit(
-        name='Audio Out',
-        x=400))
     self.units = units
     self.units.add_observer(self.on_change)
     self.units.add_observer(self.update_transport_duration)

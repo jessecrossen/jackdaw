@@ -15,7 +15,7 @@ class DocumentWindow(QMainWindow):
   def __init__(self, app=None):
     QMainWindow.__init__(self)
     self._app = app
-    self.setMinimumSize(QSize(800, 600))
+    self.setMinimumSize(QSize(600, 400))
     self.setWindowTitle('New Document')
     # start with no document
     self._document = None

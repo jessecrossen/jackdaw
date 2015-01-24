@@ -64,8 +64,6 @@ class InstrumentListUnitView(unit_view.UnitView):
                                            lambda t: unit_view.UnitOutputView(t))
     # allow the user to add instruments
     self.allow_add = True
-    # allow the user to remove the unit
-    self.allow_delete = True
   def on_add(self):
     instrument = sampler.Instrument.new_from_browse()
     if (instrument is None): return

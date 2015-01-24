@@ -232,8 +232,6 @@ class TransportUnitView(unit_view.UnitView):
     # add an input so the transport can be controlled via midi
     self._input_layout = unit_view.InputListLayout(self, list((self.unit.transport,)), 
                                          lambda t: unit_view.UnitInputView(t))
-    # allow the user to remove the unit
-    self.allow_delete = True
   def layout(self):
     size = self._content.minimumSizeHint()
     self._content.setRect(QRectF(0, 0, size.width(), size.height()))

@@ -9,7 +9,6 @@ import unit_view
 class SystemPlaybackUnitView(unit_view.UnitView):
   def __init__(self, *args, **kwargs):
     unit_view.UnitView.__init__(self, *args, **kwargs)
-    self.allow_delete = True
     self.input_view = unit_view.UnitInputView(model=self.unit)
     self.input_view.setParentItem(self)
   def layout(self):

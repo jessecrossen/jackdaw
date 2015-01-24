@@ -30,6 +30,9 @@ class WorkspaceView(view.BoxSelectable, view.Interactive, view.ModelView):
     view.BoxSelectable.__init__(self, confine_to_bounds=False)
     # keep a reference to the document
     self.document = document
+    # add a help message
+    self.help_message = "Click anywhere to start adding stuff."
+    self.help_text = None
     # add a layout for the units
     self.units_layout = UnitListLayout(self, 
       document.units, UnitView.view_for_unit)
@@ -72,6 +75,16 @@ class WorkspaceView(view.BoxSelectable, view.Interactive, view.ModelView):
     width = r.width()
     height = r.height()
     self.units_layout.setRect(QRectF(0, 0, width, height))
+    # show/hide the help message
+    if (len(self.document.units) == 0):
+      if (self.help_text is None):
+        self.help_text = QGraphicsTextItem(self.help_message, self)
+    elif (self.help_text is not None):
+      self.help_text.setParentItem(None)
+      self.help_text = None
+    if (self.help_text is not None):
+      hr = self.help_text.boundingRect()
+      self.help_text.setPos(r.center() - hr.center())
   # automatically add connections for an existing port view
   def autoconnect(self):
     # index all connection views by source and sink

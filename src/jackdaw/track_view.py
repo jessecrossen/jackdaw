@@ -582,8 +582,6 @@ class SequencerUnitView(unit_view.UnitView):
     self.allow_resize_width = True
     # allow tracks to be added
     self.allow_add = True
-    # allow the set of tracks to be deleted
-    self.allow_delete = True
     # connect for recording undo/redo
     if (self.unit.transport is not None):
       self.unit.transport.recording_will_start.connect(self.on_record_start)
