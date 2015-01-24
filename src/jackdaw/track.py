@@ -22,7 +22,7 @@ class Track(unit.Source, unit.Sink, ModelList):
                      solo=False, mute=False, arm=False,
                      pitch_names=None, controller_names=None, 
                      controller_outputs=None,
-                     bend_range=2.0,
+                     bend_range=6.0,
                      transport=None):
     ModelList.__init__(self, blocks)
     unit.Source.__init__(self)
@@ -563,7 +563,7 @@ class TrackInputHandler(midi.InputHandler):
       pitch = data1
       velocity = data2 / 127.0
       # note on
-      if (kind == 0x9):
+      if ((kind == 0x9) and (velocity > 0.0)):
         note = block.Note(time=(time - base_time), 
                     pitch=pitch, velocity=velocity, duration=0)
         note.channel = channel
@@ -576,7 +576,7 @@ class TrackInputHandler(midi.InputHandler):
         if (self._target_block is not None):
           self._target_block.events.append(note)
       # note off
-      elif (kind == 0x8):
+      elif ((kind == 0x8) or (velocity == 0.0)):
         try:
           note = self._playing_notes[pitch]
         # this indicates a note-off with no prior note-on, not a big deal

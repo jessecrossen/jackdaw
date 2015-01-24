@@ -2,6 +2,7 @@ ON DECK:
 - write some basic usage documentation
 
 DEFECTS:
+- joining blocks removes bend/velocity info
 
 OPTIMIZATIONS:
 - the UI is starting to stutter when dragged, profile and optimize 

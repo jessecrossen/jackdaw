@@ -323,6 +323,7 @@ class NoteLayout(view.ListLayout):
     self._track.remove_observer(self.layout)
     view.ListLayout.destroy(self)
   def layout(self):
+    r = self.boundingRect()
     cr = self.effectiveClipRect()
     pitch_map = dict()
     i = 0.5
@@ -336,7 +337,7 @@ class NoteLayout(view.ListLayout):
           y = pitch_map[note.pitch]
         except KeyError:
           y = -1.0
-        view.setPos(QPointF(note.time, y))
+        view.setPos(QPointF(r.x() + note.time, r.y() + y))
         view.setVisible((cr is None) or (view.rect().intersects(cr)))
 
 # represent a note event in a block
